@@ -72,23 +72,36 @@ if (cmd === 'bark') {
   // node src/index.mjs bark                       send a test notification with the current config
   // node src/index.mjs bark <key|bark URL> [server] set the device key (the URL the Bark app shows works too), then test
   // node src/index.mjs bark off                   turn notifications off
-  const { BarkNotifier, barkSettings, parseBarkArg } = await import('./notify.mjs');
+  // node src/index.mjs bark encrypt [key|off]      end-to-end encryption (no key: generate one), then test
+  const { BarkNotifier, barkSettings, parseBarkArg, validCipherKey, newCipherKey } = await import('./notify.mjs');
   const arg = process.argv[3];
   if (arg === 'off') { delete cfg.bark; saveConfig(cfg); console.log('bark notifications off'); process.exit(0); }
-  if (arg) {
+  if (arg === 'encrypt') {
+    const given = process.argv[4];
+    if (!cfg.bark?.key) { console.error('set the device key first: node src/index.mjs bark <key>'); process.exit(2); }
+    if (given === 'off') { delete cfg.bark.encrypt; saveConfig(cfg); console.log('bark encryption off'); process.exit(0); }
+    const key = given ?? newCipherKey();
+    if (!validCipherKey(key)) { console.error('key must be 16, 24 or 32 ASCII characters (AES-128/192/256)'); process.exit(2); }
+    cfg.bark.encrypt = key;
+    saveConfig(cfg);
+    console.log('bark encryption key written to', CONFIG_PATH);
+    console.log(`In Bark: 推送加密 / Push Encryption → AES${key.length * 8}, CBC, pkcs7, IV: any 16 characters (each push sends its own)`);
+    if (!given) console.log('Key:', key);
+  } else if (arg) {
     try { cfg.bark = { ...(cfg.bark && typeof cfg.bark === 'object' ? cfg.bark : {}), ...parseBarkArg(arg, process.argv[4]) }; }
     catch (e) { console.error(e.message); process.exit(2); }
     saveConfig(cfg);
     console.log('bark key written to', CONFIG_PATH);
   }
-  const bs = barkSettings(cfg.bark);
+  let bs;
+  try { bs = barkSettings(cfg.bark); } catch (e) { console.error(e.message); process.exit(2); }
   if (!bs) { console.error('no bark key configured: node src/index.mjs bark <key>'); process.exit(2); }
   const ok = await new BarkNotifier({ settings: bs, log: m => console.error(m) }).test();
-  console.log(ok ? 'test notification sent' : 'test notification FAILED');
+  console.log(ok ? `test notification sent${bs.encrypt ? ' (encrypted: "Decryption Failed" on the phone means the key in Bark does not match)' : ''}` : 'test notification FAILED');
   process.exit(ok ? 0 : 1);
 }
 if (cmd === 'remove-claude') { cfg.agents = cfg.agents.filter(a => a.id !== 'claude'); saveConfig(cfg); console.log('removed'); process.exit(0); }
-if (cmd !== 'serve') { console.error('usage: index.mjs [serve|pair|rotate|quota|bark [key|off]|add-claude [prefix…]|remove-claude]'); process.exit(2); }
+if (cmd !== 'serve') { console.error('usage: index.mjs [serve|pair|rotate|quota|bark [key|off|encrypt [key|off]]|add-claude [prefix…]|remove-claude]'); process.exit(2); }
 
 // env overrides (tests / single-agent debugging) replace the first agent's command
 const agentDefs = cfg.agents.map((a, i) => i === 0 && process.env.LEASH_AGENT_CMD
@@ -125,7 +138,7 @@ try {
   if (bs) {
     const notifier = new BarkNotifier({ settings: bs, clients: () => router.clients, log });
     for (const h of hubs) notifier.watch(h);
-    log(`bark notifications on (${bs.always ? 'always' : 'while away'}${bs.detail ? ', with titles' : ''})`);
+    log(`bark notifications on (${bs.always ? 'always' : 'while away'}${bs.encrypt ? ', encrypted' : ''}${bs.detail ? ', with titles' : ''})`);
   } else if (cfg.bark) log('bark: config has no device key; notifications off');
 } catch (e) { log('bark disabled: ' + e.message); }
 

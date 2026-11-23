@@ -3,6 +3,7 @@
 // (iOS mirrors it to a paired Apple Watch). Configure with `"bark": {"key": "…"}` in ~/.leash/config.json
 // or `node src/index.mjs bark <key>`. Nothing here may throw into the hub: every path catches and logs.
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // The app sends a WebSocket ping every 15 s while it runs; a client silent for this long is suspended or gone.
 export const AWAY_MS = 25000;
@@ -20,22 +21,47 @@ const TEXT = {
   },
 };
 
-/** Normalised settings from the config's `bark` block, or null when notifications are off. Never throws. */
+/**
+ * Normalised settings from the config's `bark` block, or null when notifications are off. Throws only for a bad
+ * `encrypt` key: fail closed rather than fall back to plaintext.
+ */
 export function barkSettings(raw) {
   if (!raw || typeof raw !== 'object' || typeof raw.key !== 'string' || !raw.key.trim()) return null;
+  let encrypt = null;
+  if (raw.encrypt != null && raw.encrypt !== false) {
+    const k = typeof raw.encrypt === 'string' ? raw.encrypt : raw.encrypt?.key;
+    if (!validCipherKey(k)) throw new Error('bark.encrypt must be a 16, 24 or 32 character ASCII key (AES-128/192/256)');
+    encrypt = { key: k };
+  }
   let server = typeof raw.server === 'string' && raw.server.trim() ? raw.server.trim() : 'https://api.day.app';
   server = server.replace(/\/+$/, '');
   return {
     key: raw.key.trim(),
     server,
     always: raw.when === 'always',             // default "away": only while no Leash client is on screen
-    detail: raw.detail === true,               // include session / tool titles (they pass through the Bark server)
+    encrypt,                                   // end-to-end: Bark's server and APNs only see ciphertext
+    // include session / tool titles: on by default only when encrypted (otherwise they pass through the Bark server)
+    detail: typeof raw.detail === 'boolean' ? raw.detail : !!encrypt,
     attention: raw.attention !== false,
     turnEnd: raw.turnEnd !== false,
     sound: typeof raw.sound === 'string' && raw.sound ? raw.sound : null,
     url: typeof raw.url === 'string' ? raw.url : 'leash://open',
     text: TEXT[raw.lang] ?? TEXT.zh,
   };
+}
+
+export function validCipherKey(k) { return typeof k === 'string' && [16, 24, 32].includes(k.length) && /^[\x21-\x7e]+$/.test(k); }
+
+/** A random key for the Bark app's 推送加密 / Push Encryption setting (AES256, CBC, pkcs7). */
+export function newCipherKey() { return crypto.randomBytes(24).toString('base64url'); }
+
+/**
+ * Bark's encrypted push format (Bark: CiphertextProcessor.swift / Model/Algorithm.swift): the JSON payload,
+ * AES-CBC with PKCS#7 padding, key and IV used as their ASCII bytes, base64. The bits follow the key length.
+ */
+export function barkEncrypt(json, key, iv) {
+  const c = crypto.createCipheriv(`aes-${key.length * 8}-cbc`, Buffer.from(key, 'latin1'), Buffer.from(iv, 'latin1'));
+  return Buffer.concat([c.update(json, 'utf8'), c.final()]).toString('base64');
 }
 
 /** Accept a bare device key or the URL the Bark app shows (https://api.day.app/<key>/…). */
@@ -131,9 +157,15 @@ export class BarkNotifier {
 
   /** POST one notification. Resolves true/false, never rejects; never logs the key or server. */
   async push({ title, body, level = 'active', group = 'Leash' }) {
-    const payload = { device_key: this.s.key, title, body, level, group };
-    if (this.s.url) payload.url = this.s.url;
-    if (this.s.sound) payload.sound = this.s.sound;
+    const fields = { title, body, level, group };
+    if (this.s.url) fields.url = this.s.url;
+    if (this.s.sound) fields.sound = this.s.sound;
+    let payload;
+    if (this.s.encrypt) {
+      // a fresh IV per push, sent alongside (Bark uses a passed iv over the one saved in the app)
+      const iv = crypto.randomBytes(12).toString('base64url');
+      payload = { device_key: this.s.key, ciphertext: barkEncrypt(JSON.stringify(fields), this.s.encrypt.key, iv), iv };
+    } else payload = { device_key: this.s.key, ...fields };
     try {
       const r = await this.fetch(this.s.server + '/push', {
         method: 'POST',

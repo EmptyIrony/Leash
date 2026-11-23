@@ -6,7 +6,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { BarkNotifier, barkSettings, parseBarkArg } from '../src/notify.mjs';
+import crypto from 'node:crypto';
+import { BarkNotifier, barkSettings, parseBarkArg, barkEncrypt, newCipherKey, validCipherKey } from '../src/notify.mjs';
 import { Hub } from '../src/hub.mjs';
 import { createServer } from '../src/server.mjs';
 
@@ -167,6 +168,39 @@ test('timeout: a hanging Bark server resolves false', async () => {
   const n = new BarkNotifier({ settings: barkSettings({ key: 'k' }), log: () => {}, timeoutMs: 50,
     fetch: (_u, init) => new Promise((_res, rej) => init.signal.addEventListener('abort', () => rej(init.signal.reason))) });
   assert.equal(await n.push({ title: 't', body: 'b' }), false);
+});
+
+const decrypt = (b64, key, iv) => { const d = crypto.createDecipheriv(`aes-${key.length * 8}-cbc`, Buffer.from(key, 'latin1'), Buffer.from(iv, 'latin1')); return Buffer.concat([d.update(Buffer.from(b64, 'base64')), d.final()]).toString('utf8'); };
+
+test('barkEncrypt matches the ciphertexts in Bark\'s own encryption docs', () => {
+  const j = '{"body": "test", "sound": "birdsong"}';
+  assert.equal(barkEncrypt(j, '1234567890123456', '1234567890123456'), '+aPt5cwN9GbTLLSFri60l3h1X00u/9j1FENfWiTxhNHVLGU+XoJ15JJG5W/d/yf0');
+  assert.equal(barkEncrypt(j, '1234567890123456', '1111111111111111'), 'd3QhjQjP5majvNt5CjsvFWwqqj2gKl96RFj5OO+u6ynTt7lkyigDYNA3abnnCLpr');
+});
+
+test('encrypt: bad keys fail closed; a generated key is AES-256 sized; titles default on', () => {
+  for (const k of ['short', 'x'.repeat(20), 'é'.repeat(16), 'a b'.padEnd(16, 'c'), 42, {}]) assert.throws(() => barkSettings({ key: 'k', encrypt: k }), /16, 24 or 32/);
+  const g = newCipherKey();
+  assert.equal(g.length, 32); assert.ok(validCipherKey(g));
+  assert.equal(barkSettings({ key: 'k', encrypt: g }).detail, true);
+  assert.equal(barkSettings({ key: 'k', encrypt: { key: g }, detail: false }).detail, false);
+  assert.equal(barkSettings({ key: 'k', encrypt: false }).encrypt, null);
+});
+
+test('encrypted push: the request carries only device key, ciphertext and a fresh IV', async () => {
+  const key = newCipherKey();
+  const r = rig({ bark: { encrypt: key } });
+  ask(r.hub);
+  ask(r.hub, 'claude:r2');
+  await sleep(5);
+  assert.equal(r.sent.length, 2);
+  const m = r.sent[0];
+  assert.deepEqual(Object.keys(m).sort(), ['ciphertext', 'device_key', 'endpoint', 'iv']);
+  assert.equal(m.iv.length, 16);
+  assert.notEqual(m.iv, r.sent[1].iv);
+  assert.ok(!JSON.stringify(m).includes('rm -rf'));
+  const inner = JSON.parse(decrypt(m.ciphertext, key, m.iv));
+  assert.deepEqual(inner, { title: 'Claude Code 需要批准', body: 'Fix the parser · rm -rf build', level: 'timeSensitive', group: 'Claude Code', url: 'leash://open' });
 });
 
 test('server stamps client.lastSeen on WebSocket pings', async () => {

@@ -47,8 +47,14 @@ Restart the bridge afterwards. Pushes go out only while no Leash client is on sc
 ~25 s of silence counts as away; a request answered within that grace period is not pushed). A Stop you pressed
 yourself is not pushed. Tapping a notification opens Leash. Options in the `bark` block of `~/.leash/config.json`:
 `server` (self-hosted bark-server, default `https://api.day.app`), `when: "always"`, `attention` / `turnEnd: false`,
-`sound`, `lang: "en"`, and `detail: true` to include conversation and tool titles. These are off by default because
-the text passes through the Bark server; by default it only says which agent needs you and how long the turn took.
+`sound`, `lang: "en"`, and `detail` (conversation and tool titles in the text).
+
+**Encryption** (recommended): `node src/index.mjs bark encrypt` generates a 32-character key (or pass your own
+16/24/32-character one) and stores it as `bark.encrypt`. Enter it in Bark → 推送加密 / Push Encryption with AES256, CBC,
+pkcs7 and any 16-character IV. Every push is then AES-CBC encrypted with a fresh IV, so Bark's server and APNs see only
+the device key and ciphertext, and `detail` defaults to on. Without encryption `detail` defaults to off and a push only
+says which agent needs you and how long the turn took. An invalid key turns notifications off rather than sending
+plaintext; "Decryption Failed" on the phone means the key in Bark does not match.
 
 ## How it talks to Antigravity (all official agy surfaces)
 
