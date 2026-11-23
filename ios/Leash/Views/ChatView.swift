@@ -33,6 +33,8 @@ struct ChatView: View {
     @Namespace private var quotaNS
     /// The optimistic bubble has waited ≥ 2 s for its echo: show "Sending…" under it.
     @State private var sendingSlow = false
+    /// The agent's mark above an empty conversation.
+    @ScaledMetric(relativeTo: .title2) private var emptyMark: CGFloat = 28
 
     private var pendingHere: [PendingRequest] { model.pendingFor(store.sessionId) }
     private var permissionRequests: [PendingRequest] { pendingHere.filter { $0.isPermission } }
@@ -182,7 +184,7 @@ struct ChatView: View {
                 .padding(.top, 60)
         } else if store.attached && store.entries.isEmpty && !store.running {
             VStack(spacing: 10) {
-                Image(systemName: "sparkles").font(.title2).foregroundStyle(Theme.accent)
+                AgentIcon(agent: store.agent, size: emptyMark)
                 Group { if store.agent == "claude" { Text("Ask Claude anything") } else { Text("Ask Antigravity anything") } }
                     .font(.headline).fontWidth(.expanded)
                 if let cwd = store.cwd { Text(verbatim: model.shortPath(cwd, agent: store.agent)).font(Theme.mono).foregroundStyle(Theme.textTertiary) }

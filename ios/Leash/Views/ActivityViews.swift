@@ -81,19 +81,29 @@ struct ActivityRow: View {
     @ViewBuilder private var leadingGlyph: some View {
         if blocked { Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention).font(.footnote).symbolEffect(.pulse, options: .repeating).transition(Motion.pop) }
         // one moving signal per row: the shimmering header (a spinner instead when Reduce Motion is on)
-        else if group.live && reduceMotion { ActivitySpinner(size: 14).transition(Motion.pop) }
-        // one Image for live and done, so the sparkle morphs into the end-state symbol in place
+        else if group.live && reduceMotion { ActivitySpinner(size: 14).accessibilityHidden(true).transition(Motion.pop) }
+        // one Image for live and done, so the live marker morphs into the end-state symbol in place
         else {
             Image(systemName: glyphName)
                 .font(glyphFont)
                 .foregroundStyle(glyphColor)
                 .contentTransition(glyphSwap)
                 .transition(Motion.pop)
+                .accessibilityLabel(glyphLabel ?? Text(verbatim: ""))
+                .accessibilityHidden(glyphLabel == nil)
         }
     }
 
+    /// The header already says working / worked; only failure and a stop need saying.
+    private var glyphLabel: Text? {
+        if group.live { return nil }
+        if group.failedCount > 0 { return Text("Failed") }
+        if group.stats?.stopReason == "cancelled" { return Text("Stopped") }
+        return nil
+    }
+
     private var glyphName: String {
-        if group.live { return "sparkle" }
+        if group.live { return "smallcircle.filled.circle" }   // the same "in progress" marker as the checklist
         if group.failedCount > 0 { return "exclamationmark.circle" }
         if group.stats?.stopReason == "cancelled" { return "stop.circle" }
         return "checkmark.circle"
@@ -104,7 +114,7 @@ struct ActivityRow: View {
         return group.failedCount > 0 ? Theme.attention : Theme.textTertiary
     }
 
-    private var glyphFont: Font { group.live ? .footnote.weight(.semibold) : .footnote }
+    private var glyphFont: Font { .footnote }   // one weight, so the ring doesn't change stroke in the swap
 
     private var glyphSwap: ContentTransition { reduceMotion ? .opacity : .symbolEffect(.replace) }
 

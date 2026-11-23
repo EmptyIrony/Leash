@@ -1015,6 +1015,16 @@
         }
       }
     },
+    "Failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
+          }
+        }
+      }
+    },
     "Fastest answers, light reasoning." : {
       "localizations" : {
         "zh-Hans" : {
@@ -2172,6 +2182,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "结束原因"
+          }
+        }
+      }
+    },
+    "Stopped" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
           }
         }
       }
