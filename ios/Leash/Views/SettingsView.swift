@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var scanning = false
     @State private var pasteError: String?
     @AppStorage("haptics") private var haptics = true
+    @AppStorage("liveActivities") private var liveActivities = true
 
     var body: some View {
         NavigationStack {
@@ -64,6 +65,16 @@ struct SettingsView: View {
                 } header: { Text("Feedback") } footer: {
                     Text("Subtle taps for sending, stopping, approvals and finished tasks. Also follows Settings › Sounds & Haptics.")
                 }
+
+                Section {
+                    Toggle("Live Activity", isOn: $liveActivities)
+                    LabeledContent("Apple Watch") {
+                        Text(WatchRelay.shared.watchAppInstalled ? "Leash installed" : "Not installed")
+                    }
+                } header: { Text("Lock Screen & Watch") } footer: {
+                    Text("A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. It updates while Leash is running and says when it may be out of date. The watch app reaches your Mac through this iPhone.")
+                }
+                .onChange(of: liveActivities) { _, on in if !on { model.liveActivity.stopAll() } }
 
                 Section("Status") {
                     LabeledContent("Connection") { ConnectionPill() }

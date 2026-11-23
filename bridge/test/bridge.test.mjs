@@ -769,3 +769,22 @@ test('listPerCwd adds sessions only a per-directory list finds (photo-first Clau
     } finally { c.close(); t.done(); }
   }
 });
+
+test('session/list tells how the bridge\'s last turn in a conversation ended', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    await c.wait(m => m.op === 'ready');
+    const ns = await c.call('session/new', { cwd: path.join(t.home, 'proj') });
+    let list = await c.call('session/list', {});
+    let row = list.sessions.find(s => s.sessionId === ns.sessionId);
+    assert.equal(row._leash.stopReason, null);
+    await c.call('session/prompt', { sessionId: ns.sessionId, prompt: [{ type: 'text', text: 'hi' }] });
+    list = await c.call('session/list', {});
+    row = list.sessions.find(s => s.sessionId === ns.sessionId);
+    assert.equal(row._leash.running, false);
+    assert.equal(row._leash.stopReason, 'end_turn');
+    assert.ok(row._leash.turnEndedAt > 0);
+  } finally { c.close(); t.done(); }
+});

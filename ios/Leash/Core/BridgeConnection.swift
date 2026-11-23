@@ -202,7 +202,18 @@ final class BridgeConnection: NSObject {
     /// Call a bridge / ACP method. `timeout` nil = wait forever (session/prompt).
     func call(_ method: String, _ params: JSON = [:], timeout: Double? = 30) async throws -> JSON {
         let id = nextId; nextId += 1
-        let msg: JSON = ["op": "call", "id": JSON(id), "method": .string(method), "params": params]
+        return try await exchange(["op": "call", "id": JSON(id), "method": .string(method), "params": params], id: id, timeout: timeout)
+    }
+
+    /// Answer a permission / elicitation and wait for the bridge to confirm it (-32002: already resolved).
+    /// Live Activity buttons and the watch need the outcome; the in-app trays use the fire-and-forget `reply`.
+    func replyConfirmed(key: String, result: JSON, timeout: Double = 10) async throws -> JSON {
+        let id = nextId; nextId += 1
+        return try await exchange(["op": "reply", "id": JSON(id), "key": .string(key), "result": result], id: id, timeout: timeout)
+    }
+
+    /// Send `msg` and resume with the bridge's `result` frame for `id`.
+    private func exchange(_ msg: JSON, id: Int, timeout: Double?) async throws -> JSON {
         return try await withCheckedThrowingContinuation { (c: CheckedContinuation<JSON, Error>) in
             pending[id] = c
             do { try sendRaw(msg) } catch {

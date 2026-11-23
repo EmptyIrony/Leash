@@ -421,6 +421,8 @@ final class ChatStore {
     /// Text the bridge refused to send (conversation locked) or a queued message taken back; the composer puts it back.
     var unsentDraft: String?
     var unsentImages: [Data]?
+    /// What was typed but not sent when the chat was left (Back, a Bark tap, the Live Activity); restored on return.
+    @ObservationIgnored var savedDraft: String?
     /// Messages sent mid-turn that wait on the bridge for the turn to end (agents without steering, or "interrupt and send").
     var queued: [QueuedMessage] = []
     /// optimistic user bubble shown until the bridge echoes the user message

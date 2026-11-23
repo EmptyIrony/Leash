@@ -154,8 +154,16 @@ struct ChatView: View {
             .haptic(.warning, trigger: pendingHere.count) { old, new in new > old }               // agent needs you
             .haptic(.success, trigger: store.running) { was, now in was && !now && turnWasLong }  // long task done
             .haptic(.selection, trigger: images.count + files.count) { old, new in new > old }     // photo / file attached
-            .onAppear { model.visibleSessionId = store.sessionId }
-            .onDisappear { if model.visibleSessionId == store.sessionId { model.visibleSessionId = nil } }
+            .onAppear {
+                model.visibleSessionId = store.sessionId
+                if draft.isEmpty, let d = store.savedDraft { draft = d }
+                store.savedDraft = nil
+            }
+            .onDisappear {
+                if model.visibleSessionId == store.sessionId { model.visibleSessionId = nil }
+                let d = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                store.savedDraft = d.isEmpty ? nil : draft
+            }
     }
 
     /// Only celebrate turns that took a while (≥ 8 s) and ended normally.

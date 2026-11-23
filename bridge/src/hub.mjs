@@ -631,7 +631,9 @@ export class Hub extends EventEmitter {
       sessions: list.map(it => {
         const s = this.sessions.get(it.sessionId);
         const h = heldBy.get(it.sessionId);
-        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length } };
+        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length,
+          // how this bridge's last turn in it ended (the phone's Live Activity fills in a turn it missed)
+          stopReason: s?.running ? null : s?.lastStopReason ?? null, turnEndedAt: s?.running ? null : s?.turnEndedAt ?? null } };
       }),
     };
   }
