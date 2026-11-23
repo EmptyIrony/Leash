@@ -186,7 +186,7 @@ private struct DetailStack: View {
         VStack(alignment: .leading, spacing: 8) {
             StatusLine(state: state)
                 .id(statusID)
-                .transition(reduceMotion ? .opacity : .blurReplace)
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
             Actions(state: state, isStale: isStale)
                 .transition(.opacity)
             Footer(state: state, isStale: isStale)
