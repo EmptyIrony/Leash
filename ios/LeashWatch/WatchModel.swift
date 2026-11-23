@@ -84,7 +84,8 @@ final class WatchModel {
     }
 
     private func result(of message: [String: Any]) async -> ActionResult {
-        guard let r = await link.ask(message, timeout: 20) else { return .failed(nil) }
+        // the iPhone may first have to wake, reach the Mac and open the conversation (it stops itself at ~25 s)
+        guard let r = await link.ask(message, timeout: 45) else { return .failed(nil) }
         if r.ok { return .ok }
         return .failed(r.error.flatMap(WatchFailure.init(rawValue:)) ?? .failed)
     }

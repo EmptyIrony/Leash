@@ -38,6 +38,8 @@ final class LiveActivityController {
     private var confirmedAt = Date()
     private var pendingAlertKey: String?
     private var flushTask: Task<Void, Never>?
+    private var flushScheduled = false
+    private var forceNext = false
     private var heartbeat: Task<Void, Never>?
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveActivities") as? Bool ?? true }
@@ -65,6 +67,8 @@ final class LiveActivityController {
         guard Self.enabled else { return }
         let title = model.sessions.first(where: { $0.id == s.sessionId })?.displayTitle ?? s.title ?? String(localized: "Conversation")
         tracked[s.sessionId] = Tracked(sessionId: s.sessionId, agent: s.agent, title: title, startedAt: s.turnStartedAt ?? Date())
+        // the newest turn takes the focus unless the current one is waiting for you
+        if focusId.map({ pendingPhase($0) == nil }) ?? true { focusId = s.sessionId }
         note = nil
         setNeedsUpdate(immediate: true)
     }
@@ -97,12 +101,18 @@ final class LiveActivityController {
     }
 
     /// Something that may change the focused conversation's step line, title or pending requests.
-    func setNeedsUpdate(immediate: Bool = false) {
+    /// `immediate` for phase changes; otherwise coalesced to at most one update a second (a streaming answer
+    /// doesn't keep pushing it back). `force` sends even an unchanged state, to move the stale date.
+    func setNeedsUpdate(immediate: Bool = false, force: Bool = false) {
         guard activity != nil || !tracked.isEmpty else { return }
+        if force { forceNext = true }
+        if !immediate && flushScheduled { return }
         flushTask?.cancel()
+        flushScheduled = !immediate
         flushTask = Task { [weak self] in
             if !immediate { try? await Task.sleep(for: .seconds(1)) }
             guard !Task.isCancelled else { return }
+            self?.flushScheduled = false
             await self?.flush()
         }
     }
@@ -137,7 +147,7 @@ final class LiveActivityController {
     }
 
     /// Leaving the foreground: one last update so the stale clock starts from now.
-    func appBackgrounded() { setNeedsUpdate(immediate: true) }
+    func appBackgrounded() { setNeedsUpdate(immediate: true, force: true) }
 
     /// The Settings switch was turned off.
     func stopAll() {
@@ -153,7 +163,8 @@ final class LiveActivityController {
     /// Wait for a scheduled update to go out (intents end right after this).
     func flushNow() async {
         flushTask?.cancel()
-        await flush()
+        flushScheduled = false
+        await flush(final: true)
     }
 
     // MARK: building the state
@@ -231,10 +242,11 @@ final class LiveActivityController {
 
     // MARK: ActivityKit
 
-    private func flush() async {
+    /// `final`: the process may be suspended right after this (an intent): don't defer anything.
+    private func flush(final: Bool = false) async {
         guard Self.enabled else { return }
         // a turn that ended while we weren't connected: give the session list a moment to say how it ended
-        if !tracked.isEmpty, tracked.values.allSatisfy({ $0.endedAt != nil }),
+        if !final, !tracked.isEmpty, tracked.values.allSatisfy({ $0.endedAt != nil }),
            let missedAt = tracked.values.filter(\.missed).compactMap(\.endedAt).max() {
             let wait = 5 - Date().timeIntervalSince(missedAt)
             if wait > 0 {
@@ -274,6 +286,8 @@ final class LiveActivityController {
         if activity == nil {
             // ActivityKit only starts one from the foreground (or from a LiveActivityIntent)
             guard model.sceneActive, ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+            // an ended one may still sit on the Lock Screen: never show two
+            for old in Activity<LeashActivityAttributes>.activities { await old.end(nil, dismissalPolicy: .immediate) }
             do {
                 activity = try Activity.request(attributes: LeashActivityAttributes(), content: ActivityContent(state: state, staleDate: staleDate))
                 lastSent = state; lastSentAt = Date()
@@ -287,8 +301,9 @@ final class LiveActivityController {
         // skip identical updates unless the stale clock needs pushing out
         var same = state; same.updatedAt = lastSent?.updatedAt ?? state.updatedAt
         let alertKey = pendingAlertKey
-        if same == lastSent && alertKey == nil && Date().timeIntervalSince(lastSentAt) < 30 { return }
+        if same == lastSent && alertKey == nil && !forceNext && Date().timeIntervalSince(lastSentAt) < 30 { return }
         pendingAlertKey = nil
+        forceNext = false
 
         var alert: AlertConfiguration? = nil
         if let alertKey, state.phase == .approval || state.phase == .question {

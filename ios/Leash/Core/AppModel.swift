@@ -528,13 +528,16 @@ final class AppModel {
             } catch let e as BridgeError where e.code == BridgeError.changedElsewhere && !retried {
                 // the conversation moved on elsewhere since we loaded it: reload the transcript, then send on top of it
                 withAnimation(Motion.layout) { dropEcho(s, echoID) }
-                s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId)
+                s.running = false; running.remove(s.sessionId)   // the Live Activity keeps following it through the retry
                 await attach(s)
                 if s.attached && s.lockedBy == nil {
                     withAnimation(Motion.layout) { send(s, text: text, images: images, attachments: attachments, interrupt: interrupt, retried: true) }
-                } else if s.lockedBy != nil {
-                    s.unsentDraft = restore
-                    if !images.isEmpty { s.unsentImages = images }
+                } else {
+                    liveActivity.turnAborted(s.sessionId)
+                    if s.lockedBy != nil {
+                        s.unsentDraft = restore
+                        if !images.isEmpty { s.unsentImages = images }
+                    }
                 }
             } catch {
                 // still waiting on its echo: the bridge refused it before any turn started, so nothing was sent

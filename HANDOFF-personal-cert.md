@@ -115,7 +115,8 @@ link routing; draft restore.
 - Free team: 7-day expiry; App ID limits (10 new IDs per 7 days; this uses 3) and the three-app limit on a free team
   are Apple's rules I could not check here; the base ID may already be taken.
 - Watch needs the iPhone in Bluetooth / Wi-Fi range; replies and approvals take a few seconds (phone wakes, connects to
-  the Mac). Questions (forms) are answered on the iPhone.
+  the Mac). The watch waits up to 45 s; the phone gives up on a reply after about 25 s, so a retry never doubles a
+  message that was still on its way. Questions (forms) are answered on the iPhone.
 - If Xcode refuses a synchronized folder in two targets, set target membership of `SharedActivity` (Leash +
   LeashLiveActivity) and `SharedWatch` (Leash + LeashWatch) in the File inspector.
 - Out of scope, unchanged: the "send hangs with a table on screen" bug.

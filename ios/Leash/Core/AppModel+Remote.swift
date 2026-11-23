@@ -36,7 +36,10 @@ extension AppModel {
     func scenePhaseChanged(_ phase: ScenePhase) {
         sceneActive = phase == .active
         switch phase {
-        case .active: foreground()
+        case .active:
+            foreground()
+            // a turn started while in the background (a watch reply) can get its Live Activity now
+            liveActivity.setNeedsUpdate(immediate: true)
         case .background: liveActivity.appBackgrounded()
         default: break
         }
@@ -74,10 +77,10 @@ extension AppModel {
         let result = await body()
         backgroundJobs -= 1
         if backgroundJobs == 0 {
-            if !sceneActive {
+            if UIApplication.shared.applicationState == .background {
                 // let the last frames (and ActivityKit's update) go out first
                 try? await Task.sleep(for: .milliseconds(600))
-                if backgroundJobs == 0 && !sceneActive { link.disconnect() }
+                if backgroundJobs == 0 && UIApplication.shared.applicationState == .background { link.disconnect() }
             }
             if backgroundJobs == 0 && backgroundTask != .invalid {
                 UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -97,23 +100,19 @@ extension AppModel {
                 case .done: liveActivity.show(allow ? .allowed : .denied)
                 case .alreadyAnswered: liveActivity.show(.alreadyAnswered)
                 case .macUnreachable: liveActivity.show(.unreachable)
-                default: liveActivity.show(.unreachable)
+                default: liveActivity.show(.failed)
                 }
             case .refresh:
                 if await awaitConnection() {
-                    // `ready` reconciled running turns and pending requests; catch up on the focused conversation
-                    for s in runningTrackedStores() { await attach(s) }
+                    // `ready` reconciled running turns and pending requests (and re-attaches open chats); the list
+                    // says how a turn that ended unseen came out
+                    await refreshSessions()
                 } else {
                     liveActivity.show(.unreachable)
                 }
             }
             await liveActivity.flushNow()
         }
-    }
-
-    /// Stores we can catch up cheaply (they already hold the conversation; a cold store would download it all).
-    private func runningTrackedStores() -> [ChatStore] {
-        running.compactMap { existingStore($0) }.filter { $0.epoch != nil }
     }
 
     /// Answer a permission request and wait for the bridge to confirm it.
@@ -144,29 +143,53 @@ extension AppModel {
 
     // MARK: watch
 
-    /// A dictated reply from the watch: attach if needed, send, and report once the bridge has the message.
+    /// A dictated reply from the watch: attach if needed, send, and report once the bridge has taken this message
+    /// (echoed as the turn's first message, queued, or steered into the running turn). Bounded to about 25 s so the
+    /// watch (which waits 45 s) never gives up first and invites a double send.
     func replyFromWatch(sessionId: String, agent: String, text: String) async -> RemoteOutcome {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return .failed }
         guard await awaitConnection() else { return .macUnreachable }
         let s = store(for: sessionId)
         if !sessions.contains(where: { $0.id == sessionId }) { s.agent = agent }
-        if !s.attached || s.epoch == nil { await attach(s) }
+        if !s.attached || s.epoch == nil {
+            // opening a conversation the phone never loaded can take a while; don't outlast the watch
+            Task { await attach(s) }
+            let until = Date().addingTimeInterval(12)
+            try? await Task.sleep(for: .milliseconds(100))
+            while s.attaching && Date() < until { try? await Task.sleep(for: .milliseconds(150)) }
+            if s.attaching { return .failed }
+        }
         if s.lockedBy != nil { return .locked }
         guard s.attached else { return s.error == nil ? .macUnreachable : .failed }
-        let before = s.lastSeq
+
+        // what was already there must not count as this message's outcome
+        let draftBefore = s.unsentDraft
+        s.unsentDraft = nil
         s.error = nil
+        let queuedBefore = s.queued.count
+        let wasRunning = s.running
         send(s, text: text, images: [])
-        // the bridge echoes the message (or reports it queued / steered) right away; a refusal comes back as an error
+        let echoId = s.pendingEcho?.id
+        func restore() { s.unsentDraft = draftBefore }   // a refused watch reply never lands in the phone's composer
+
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
             try? await Task.sleep(for: .milliseconds(150))
-            if s.lastSeq > before || !s.queued.isEmpty { return .done }
-            if s.lockedBy != nil { return .locked }
-            if s.unsentDraft != nil || s.error != nil { break }
+            if s.lockedBy != nil { restore(); return .locked }
+            if s.unsentDraft != nil { restore(); return s.error == nil ? .changedElsewhere : .failed }
+            if s.queued.count > queuedBefore { restore(); return .done }
+            if !wasRunning, let echoId {
+                // idle: the optimistic bubble is adopted by the bridge's echo of this very message
+                if s.pendingEcho?.id != echoId && s.error == nil { restore(); return .done }
+            } else if wasRunning, s.error == nil, let last = s.entries.last, case .message(let m) = last, m.role == .user, m.text.contains(text) {
+                // mid-turn with steering: the bridge echoes it into the running turn
+                restore(); return .done
+            }
+            if s.error != nil && !s.running { restore(); return .failed }
         }
-        if s.unsentDraft != nil { s.unsentDraft = nil; return .changedElsewhere }
-        return s.lastSeq > before ? .done : (isConnected ? .failed : .macUnreachable)
+        restore()
+        return isConnected ? .failed : .macUnreachable
     }
 
     /// What the watch shows: requests waiting for you, running conversations, a few recent ones.

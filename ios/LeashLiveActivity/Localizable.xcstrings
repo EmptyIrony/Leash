@@ -210,6 +210,16 @@
           }
         }
       }
+    },
+    "That didn't work. Open Leash." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有成功，请打开拴绳。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

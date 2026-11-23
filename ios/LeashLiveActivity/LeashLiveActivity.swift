@@ -250,6 +250,8 @@ private struct NoteLine: View {
             Label("Already answered", systemImage: "checkmark.circle").foregroundStyle(.secondary).font(.subheadline.weight(.semibold))
         case .unreachable:
             Label("Couldn't reach your Mac", systemImage: "wifi.exclamationmark").foregroundStyle(LA.attention).font(.subheadline.weight(.semibold))
+        case .failed:
+            Label("That didn't work. Open Leash.", systemImage: "exclamationmark.circle").foregroundStyle(LA.attention).font(.subheadline.weight(.semibold))
         }
     }
 }

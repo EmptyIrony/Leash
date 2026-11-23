@@ -17,7 +17,7 @@ struct LeashActivityAttributes: ActivityAttributes {
         }
 
         /// What an action taken from the Live Activity came to; shown until the next update replaces it.
-        enum Note: String, Codable, Hashable { case allowed, denied, alreadyAnswered, unreachable }
+        enum Note: String, Codable, Hashable { case allowed, denied, alreadyAnswered, unreachable, failed }
 
         /// A permission request the Live Activity can answer (Allow once / Deny only).
         struct Approval: Codable, Hashable {
