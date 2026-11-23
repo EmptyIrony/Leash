@@ -246,7 +246,12 @@ struct ChatView: View {
                         turnStartedAt: store.turnStartedAt,
                         openFile: { fileToOpen = $0 })
         case .answer(let m):
-            AnswerView(item: m)
+            // the answer streaming at the end of a running turn reveals its new text as it arrives
+            let streaming: Bool = {
+                guard store.running, !store.loading, case .message(let last)? = store.entries.last else { return false }
+                return last === m
+            }()
+            AnswerView(item: m, live: streaming)
         case .stats(let s):
             StatsLine(stats: s)
         case .notice(let n):
@@ -836,9 +841,10 @@ struct ChatView: View {
 
 struct AnswerView: View {
     let item: MessageItem
+    var live = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            MarkdownView(text: item.text)
+            MarkdownView(text: item.text, live: live)
             if !item.images.isEmpty || !item.files.isEmpty { MessageAttachments(images: item.images, files: item.files) }
         }
             .frame(maxWidth: .infinity, alignment: .leading)

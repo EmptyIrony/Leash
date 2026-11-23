@@ -133,8 +133,35 @@ struct MarkdownView: View {
         return MarkdownImages.addMentions(blocks)
     }
 
-    /// Inline markdown with quiet inline code: smaller mono, tinted ink, faint background.
+    /// Inline markdown with quiet inline code: smaller mono, tinted ink, faint background. Memoized: a streaming
+    /// answer re-renders on every chunk (and its newest block on every reveal frame), tables measure every cell.
     static func inline(_ s: String, size: CGFloat = Theme.readingSize) -> AttributedString {
+        inlineEntry(s, size: size).attributed
+    }
+
+    private struct InlineKey: Hashable {
+        let text: String
+        let size: CGFloat
+    }
+
+    private struct InlineEntry {
+        let attributed: AttributedString
+        let units: Int   // characters as drawn (markdown markers removed): the reveal's unit of progress
+    }
+
+    private static var inlineCache: [InlineKey: InlineEntry] = [:]
+
+    private static func inlineEntry(_ s: String, size: CGFloat = Theme.readingSize) -> InlineEntry {
+        let key = InlineKey(text: s, size: size)
+        if let hit = inlineCache[key] { return hit }
+        let a = makeInline(s, size: size)
+        let entry = InlineEntry(attributed: a, units: a.characters.count)
+        if inlineCache.count >= 600 { inlineCache.removeAll(keepingCapacity: true) }
+        inlineCache[key] = entry
+        return entry
+    }
+
+    private static func makeInline(_ s: String, size: CGFloat) -> AttributedString {
         var a = (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
         var codeRanges: [Range<AttributedString.Index>] = []
         var linkRanges: [Range<AttributedString.Index>] = []
@@ -153,48 +180,202 @@ struct MarkdownView: View {
         return a
     }
 
+    /// A block placed on the message's reveal cursor: it starts where the blocks above it end.
+    struct Piece: Equatable {
+        let block: Block
+        let start: Double
+        let units: Double
+    }
+
+    /// Text and code count their drawn characters; tables, images, embeds and rules count as one short word.
+    static func units(_ b: Block) -> Double {
+        switch b {
+        case .heading(_, let t), .paragraph(let t), .quote(let t): return Double(inlineEntry(t).units)
+        case .bullet(let t, _), .numbered(_, let t, _): return Double(inlineEntry(t).units)
+        case .code(let c, _): return Double(c.count)
+        case .table, .rule, .embed, .image, .mentionedImages: return StreamReveal.blockUnits
+        }
+    }
+
+    static func pieces(_ blocks: [Block]) -> (pieces: [Piece], total: Double) {
+        var out: [Piece] = []
+        out.reserveCapacity(blocks.count)
+        var start: Double = 0
+        for b in blocks {
+            let u = units(b)
+            out.append(Piece(block: b, start: start, units: u))
+            start += u
+        }
+        return (out, start)
+    }
+
+    /// The answer streaming right now: what has arrived is laid out at once, and its newest characters fade in at
+    /// a steady pace instead of jumping in network-sized chunks. Off by default (history, thoughts, plans).
+    var live = false
+
     @Environment(\.embedAgent) private var agent
     @Environment(\.transcriptSession) private var session
     @State private var linkedFile: FileRef?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(MarkdownView.parse(text).enumerated()), id: \.offset) { _, b in
-                block(b)
-            }
-        }
-        .font(.system(size: Theme.readingSize))
-        .foregroundStyle(Theme.textPrimary)
-        .textSelection(.enabled)
-        // links to files on the agent's host ([report](out/report.pdf), file:///…) open in the file viewer
-        .environment(\.openURL, OpenURLAction { url in
-            guard let path = MarkdownImages.localPath(of: url) else { return .systemAction }
-            linkedFile = FileRef(path: path)
-            return .handled
-        })
-        .sheet(item: $linkedFile) { f in FileViewer(path: f.path, agent: agent, sessionId: session) }
+        // parsed once per text change; the reveal cursor lives below, so animating it never re-parses
+        let plan = MarkdownView.pieces(MarkdownView.parse(text))
+        MarkdownStream(pieces: plan.pieces, total: plan.total, live: live)
+            .font(.system(size: Theme.readingSize))
+            .foregroundStyle(Theme.textPrimary)
+            .textSelection(.enabled)
+            // links to files on the agent's host ([report](out/report.pdf), file:///…) open in the file viewer
+            .environment(\.openURL, OpenURLAction { url in
+                guard let path = MarkdownImages.localPath(of: url) else { return .systemAction }
+                linkedFile = FileRef(path: path)
+                return .handled
+            })
+            .sheet(item: $linkedFile) { f in FileViewer(path: f.path, agent: agent, sessionId: session) }
+    }
+}
+
+/// Drives the reveal cursor of one message: seeds it to what is on screen, then eases it to the end of each chunk.
+/// Static (every block settled) when the message isn't live, with Reduce Motion, and with VoiceOver.
+private struct MarkdownStream: View {
+    let pieces: [MarkdownView.Piece]
+    let total: Double
+    let live: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    /// Reveal progress through the whole message, in units (see `MarkdownView.units(_:)`); only read while `revealing`.
+    @State private var cursor: Double = 0
+    @State private var revealing = false
+
+    private var canReveal: Bool { live && !reduceMotion && !voiceOver }
+
+    var body: some View {
+        MarkdownReveal(pieces: pieces, cursor: cursor, full: !revealing)
+            // what is on screen when the view appears (history, replay, a lazy row scrolled back in) shows at once
+            .onAppear { if canReveal { seed(total) } }
+            .onChange(of: live) { _, now in if now && canReveal && !revealing { seed(total) } }
+            .onChange(of: reduceMotion || voiceOver) { _, off in if off && revealing { snap { revealing = false } } }
+            .onChange(of: total) { _, newTotal in advance(to: newTotal) }
     }
 
-    @ViewBuilder private func block(_ b: Block) -> some View {
-        switch b {
+    private func snap(_ change: () -> Void) {
+        var t = Transaction(animation: nil)
+        t.disablesAnimations = true
+        withTransaction(t, change)
+    }
+
+    /// Starts revealing from what is already shown (never seed and animate in one update: the animation would
+    /// start from the unseeded value).
+    private func seed(_ total: Double) {
+        snap {
+            cursor = total + StreamReveal.tail
+            revealing = true
+        }
+    }
+
+    /// A new chunk: ease the cursor to the end of everything received (plus the fading tail, so the last characters
+    /// settle fully at a pause), linearly, faster for bigger chunks.
+    private func advance(to total: Double) {
+        guard canReveal else {
+            if revealing { snap { revealing = false } }
+            return
+        }
+        guard revealing else { seed(total); return }
+        let target = total + StreamReveal.tail
+        let delta = target - cursor
+        guard delta > 0 else { return }   // never backwards: closing "**" shortens the count
+        if delta > StreamReveal.snapUnits {
+            snap { cursor = target }   // a catch-up burst: show it, don't type it out
+            return
+        }
+        withAnimation(.linear(duration: min(0.35, max(0.10, delta / 120)))) { cursor = target }
+    }
+}
+
+/// Constants for the streaming reveal, shared by the views and the renderer.
+enum StreamReveal {
+    /// Characters across which the newest text fades (and un-blurs) in.
+    static let tail: Double = 8
+    /// What a table, image, embed or rule counts as; it fades in as a whole across this many units.
+    static let blockUnits: Double = 12
+    /// Chunks bigger than this appear at once.
+    static let snapUnits: Double = 1500
+}
+
+/// The message's blocks, each shown as far as the cursor has reached. Animatable: SwiftUI interpolates `cursor`
+/// frame by frame, and blocks the cursor is not passing through compare equal and are skipped.
+private struct MarkdownReveal: View, Animatable {
+    let pieces: [MarkdownView.Piece]
+    var cursor: Double
+    let full: Bool
+
+    var animatableData: Double {
+        get { cursor }
+        set { cursor = newValue }
+    }
+
+    private func shown(_ p: MarkdownView.Piece) -> Double {
+        let end = p.units + StreamReveal.tail
+        if full { return end }
+        return min(max(cursor - p.start, 0), end)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(pieces.indices, id: \.self) { i in
+                MarkdownBlockView(block: pieces[i].block, units: pieces[i].units, shown: shown(pieces[i]))
+                    .equatable()
+            }
+        }
+    }
+}
+
+/// One markdown block. `shown` runs from 0 to `units + tail`; at the end the block is settled and draws exactly as
+/// a static message does (plain text, selectable).
+private struct MarkdownBlockView: View, Equatable {
+    let block: MarkdownView.Block
+    let units: Double
+    let shown: Double
+
+    private var settled: Bool { shown >= units + StreamReveal.tail }
+    /// List markers, quote bars and the code card arrive with their first characters.
+    private var chrome: Double { settled ? 1 : min(1, shown / StreamReveal.tail) }
+    /// Tables, images, embeds and rules fade in as a whole.
+    private var whole: Double { settled ? 1 : min(1, shown / StreamReveal.blockUnits) }
+
+    /// While revealing, the text draws through the renderer (selection would bypass it, and the block is still
+    /// changing anyway); once settled it is the plain, selectable text.
+    @ViewBuilder private func reveal(_ text: Text) -> some View {
+        if settled {
+            text
+        } else {
+            text
+                .textRenderer(RevealRenderer(shown: shown, total: units))
+                .textSelection(.disabled)
+        }
+    }
+
+    var body: some View {
+        switch block {
         case .heading(let l, let t):
-            Text(MarkdownView.inline(t)).font(.system(size: l == 1 ? 19 : (l == 2 ? 17 : 16), weight: .semibold)).padding(.top, 6)
+            reveal(Text(MarkdownView.inline(t)).font(.system(size: l == 1 ? 19 : (l == 2 ? 17 : 16), weight: .semibold))).padding(.top, 6)
         case .paragraph(let t):
-            Text(MarkdownView.inline(t)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+            reveal(Text(MarkdownView.inline(t))).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
         case .bullet(let t, let indent):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Circle().fill(Theme.textTertiary).frame(width: 4, height: 4).alignmentGuide(.firstTextBaseline) { d in d[.bottom] + 5 }
-                Text(MarkdownView.inline(t)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                Circle().fill(Theme.textTertiary).frame(width: 4, height: 4).opacity(chrome)
+                    .alignmentGuide(.firstTextBaseline) { d in d[.bottom] + 5 }
+                reveal(Text(MarkdownView.inline(t))).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
             }.padding(.leading, 4 + CGFloat(indent) * 16)
         case .numbered(let n, let t, let indent):
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(n + ".").foregroundStyle(Theme.textTertiary).monospacedDigit()
-                Text(MarkdownView.inline(t)).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
+                Text(n + ".").foregroundStyle(Theme.textTertiary).monospacedDigit().opacity(chrome)
+                reveal(Text(MarkdownView.inline(t))).lineSpacing(4).fixedSize(horizontal: false, vertical: true)
             }.padding(.leading, CGFloat(indent) * 16)
         case .quote(let t):
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 1).fill(Theme.accent.opacity(0.35)).frame(width: 2)
-                Text(MarkdownView.inline(t)).lineSpacing(4).foregroundStyle(Theme.textSecondary)
+                RoundedRectangle(cornerRadius: 1).fill(Theme.accent.opacity(0.35)).frame(width: 2).opacity(chrome)
+                reveal(Text(MarkdownView.inline(t))).lineSpacing(4).foregroundStyle(Theme.textSecondary)
             }
             .padding(.vertical, 2)
         case .code(let c, let lang):
@@ -206,22 +387,71 @@ struct MarkdownView: View {
                 }
                 .padding(.horizontal, 10).padding(.top, 6)
                 ScrollView(.horizontal, showsIndicators: false) {
-                    Text(c).font(.system(size: 13, design: .monospaced)).foregroundStyle(Theme.textPrimary).lineSpacing(2).fixedSize(horizontal: true, vertical: false).padding(10)
+                    reveal(Text(c).font(.system(size: 13, design: .monospaced))).foregroundStyle(Theme.textPrimary).lineSpacing(2).fixedSize(horizontal: true, vertical: false).padding(10)
                 }
             }
             .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .opacity(chrome)
         case .rule:
-            Rectangle().fill(Theme.hairline).frame(height: 1).padding(.vertical, 4)
+            Rectangle().fill(Theme.hairline).frame(height: 1).padding(.vertical, 4).opacity(whole)
         case .table(let header, let rows, let align):
-            MarkdownTable(header: header, rows: rows, align: align)
+            MarkdownTable(header: header, rows: rows, align: align).opacity(whole)
         case .embed(let src):
-            AgentEmbedView(src: src).padding(.vertical, 2)
+            AgentEmbedView(src: src).padding(.vertical, 2).opacity(whole)
         case .image(let src, let alt):
-            MarkdownImage(src: src, alt: alt).padding(.vertical, 2)
+            MarkdownImage(src: src, alt: alt).padding(.vertical, 2).opacity(whole)
         case .mentionedImages(let srcs):
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(srcs, id: \.self) { MarkdownImage(src: $0, quiet: true) }
+            }
+            .opacity(whole)
+        }
+    }
+}
+
+/// Draws a text up to the reveal cursor: glyphs well behind it as usual, the last `tail` of them fading in from a
+/// slight blur, the rest not at all (their space is already laid out, so nothing moves). Glyphs are mapped onto the
+/// block's character units proportionally, so ligatures, emoji and line breaks don't throw the pace off.
+/// Not animatable itself: `MarkdownReveal` interpolates the cursor and hands each frame its value.
+struct RevealRenderer: TextRenderer {
+    var shown: Double
+    var total: Double
+
+    var displayPadding: EdgeInsets { EdgeInsets(top: 2, leading: 2, bottom: 2, trailing: 2) }   // room for the blur
+
+    func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
+        let tail = StreamReveal.tail
+        if shown >= total + tail {
+            for line in layout { ctx.draw(line) }
+            return
+        }
+        var glyphs = 0
+        for line in layout {
+            for run in line { glyphs += run.count }
+        }
+        let scale: Double = glyphs > 0 ? total / Double(glyphs) : 1
+        var g = 0
+        for line in layout {
+            for run in line {
+                let first = g
+                g += run.count
+                if Double(first) * scale >= shown { continue }   // not reached yet
+                if Double(g) * scale <= shown - tail {            // fully in
+                    ctx.draw(run)
+                    continue
+                }
+                for (i, slice) in run.enumerated() {
+                    let alpha = min(1, max(0, (shown - Double(first + i) * scale) / tail))
+                    if alpha <= 0 { continue }
+                    var c = ctx
+                    c.opacity = alpha
+                    if alpha < 1 {
+                        let radius = slice.typographicBounds.rect.height / 14 * CGFloat(1 - alpha)
+                        c.addFilter(.blur(radius: radius))
+                    }
+                    c.draw(slice, options: .disablesSubpixelQuantization)
+                }
             }
         }
     }
