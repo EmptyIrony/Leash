@@ -87,13 +87,25 @@ default with encryption; a configured `bark.url` still wins; otherwise `leash://
 9. **Every 7 days** the free profile expires (apps stop launching): connect, open the project, Run **Leash** and
    **LeashWatch** again. Data stays; no re-pairing needed unless you delete the app.
 
-**Bridge changes need deploying**: they are only on this branch. To get them: merge `personal-cert` (or just
-`bridge/`) into the running checkout at ~/workspace/Leash, then restart the LaunchAgent as the last step
-(`launchctl kickstart -k gui/$(id -u)/dev.leash.bridge`; it cuts the remote sessions). Without them the app still
+**Bridge changes need deploying**: they are only on this branch. Do **not** merge the branch into main (main keeps the
+p12 signing). Take only the bridge diff into the running checkout, test, and restart last (it cuts the remote sessions):
+
+```zsh
+cd ~/workspace/Leash
+git diff d9131ee personal-cert -- bridge > /tmp/leash-bridge.patch
+git apply -3 /tmp/leash-bridge.patch          # 3-way, so later bridge work on main is kept
+(cd bridge && npm test) && git commit -am "bridge: Bark session links, bridge/noticed, list stopReason (from personal-cert)"
+launchctl kickstart -k gui/$(id -u)/dev.leash.bridge
+``` Without them the app still
 works: Bark taps just open the app, Bark may also push a request the Live Activity already alerted about, and a turn
 that ended unseen shows as "Turn ended".
 
 ## Verified vs unverified
+
+Compared with a public Xcode `objectVersion = 77` project that embeds a single-target watch app and widget extensions
+(the "Embed Watch Content" phase `$(CONTENTS_FOLDER_PATH)/Watch`, spec 16; extension phase spec 13; watch settings),
+which matches; it is not an Apple template, so treat it as supporting evidence only. The watch target also gets an
+explicit `Config/Watch-Info.plist` with `WKApplication = true` (merged with the generated one; harmless if redundant).
 
 Verified here: pbxproj integrity script (every object reference defined and reachable, braces balanced, each target has
 both build configurations, its three phases and product; the app depends on and embeds both products; proxies match);

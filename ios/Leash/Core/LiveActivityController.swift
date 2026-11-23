@@ -164,6 +164,8 @@ final class LiveActivityController {
     func flushNow() async {
         flushTask?.cancel()
         flushScheduled = false
+        // let one already in flight finish first, then send the final state ourselves
+        for _ in 0..<40 where flushing { try? await Task.sleep(for: .milliseconds(50)) }
         await flush(final: true)
     }
 
@@ -242,8 +244,27 @@ final class LiveActivityController {
 
     // MARK: ActivityKit
 
-    /// `final`: the process may be suspended right after this (an intent): don't defer anything.
+    private var flushing = false
+    private var flushAgain = false
+    private var finalAgain = false
+
+    /// One flush at a time: ending a leftover activity awaits, and two flushes both seeing "no activity" would start
+    /// two. A request that arrives meanwhile runs once more afterwards.
     private func flush(final: Bool = false) async {
+        if flushing { flushAgain = true; finalAgain = finalAgain || final; return }
+        flushing = true
+        var isFinal = final
+        repeat {
+            flushAgain = false
+            await flushOnce(final: isFinal)
+            isFinal = finalAgain
+            finalAgain = false
+        } while flushAgain
+        flushing = false
+    }
+
+    /// `final`: the process may be suspended right after this (an intent): don't defer anything.
+    private func flushOnce(final: Bool) async {
         guard Self.enabled else { return }
         // a turn that ended while we weren't connected: give the session list a moment to say how it ended
         if !final, !tracked.isEmpty, tracked.values.allSatisfy({ $0.endedAt != nil }),

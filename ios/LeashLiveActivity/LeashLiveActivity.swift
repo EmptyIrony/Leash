@@ -124,6 +124,7 @@ private struct PhaseSymbol: View {
         Image(systemName: LA.symbol(for: phase))
             .font(.body.weight(.semibold))
             .foregroundStyle(LA.color(for: phase))
+            .contentTransition(.symbolEffect(.replace))
     }
 }
 
@@ -164,6 +165,7 @@ private struct TrailingStatus: View {
             Image(systemName: LA.symbol(for: state.phase))
                 .font(font)
                 .foregroundStyle(LA.attention)
+                .transition(.opacity)
         case .done, .failed, .stopped, .ended:
             Text(verbatim: LA.duration(from: state.startedAt, to: state.endedAt ?? state.updatedAt))
                 .font(font.monospacedDigit())
@@ -173,17 +175,30 @@ private struct TrailingStatus: View {
 }
 
 /// The status line, the one row of actions, and the footer.
+/// Continuity (the app's Motion vocabulary): a new step line blurs in over the old one, the button row and footer
+/// fade in and out while the rest moves to its new place; Reduce Motion keeps only the cross-fade.
 private struct DetailStack: View {
     let state: LeashActivityAttributes.ContentState
     let isStale: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             StatusLine(state: state)
+                .id(statusID)
+                .transition(reduceMotion ? .opacity : .blurReplace)
             Actions(state: state, isStale: isStale)
+                .transition(.opacity)
             Footer(state: state, isStale: isStale)
+                .transition(.opacity)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34), value: statusID)
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34), value: isStale)
+    }
+
+    private var statusID: String {
+        "\(state.phase.rawValue)|\(state.note?.rawValue ?? "")|\(state.step ?? "")|\(state.approval?.key ?? "")"
     }
 }
 

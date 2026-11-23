@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 import WatchConnectivity
 import WatchKit
 
@@ -51,7 +52,8 @@ final class WatchModel {
             WKInterfaceDevice.current().play(.notification)
         }
         knownRequests = ids
-        snapshot = s
+        // rows move to their new places instead of jumping (a short cross-fade with Reduce Motion)
+        withAnimation(WKAccessibilityIsReduceMotionEnabled() ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34)) { snapshot = s }
         if let d = WatchMessage.encode(s) { UserDefaults.standard.set(d, forKey: Self.cacheKey) }
     }
 
