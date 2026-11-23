@@ -547,6 +547,12 @@ export class Hub extends EventEmitter {
       case 'bridge/restartAgent': return this.restartAgent();
       case 'bridge/shell': return this.shell(client, params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
+      case 'bridge/noticed': {
+        // a phone alerted about this request itself (Live Activity alert): Bark need not push it as well
+        const p = this.pending.get(params.key);
+        if (p) p.noticedAt = Date.now();
+        return { ok: !!p };
+      }
       case 'bridge/quota': {
         if (!this.quota) return { quota: null, error: 'quota disabled' };
         try { return { quota: await this.quota.refresh({ maxAgeMs: params.force ? 0 : 120000 }) }; }
