@@ -1,0 +1,8 @@
+node_modules/
+.probe/
+.shots/
+ios/build/
+ios/DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store

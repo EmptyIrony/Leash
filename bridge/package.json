@@ -1,0 +1,22 @@
+{
+  "name": "leash-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bridge between the Leash iOS app and ACP agents (`agy acp`, Claude Code)",
+  "bin": {
+    "leash-bridge": "src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "pair": "node src/index.mjs pair",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

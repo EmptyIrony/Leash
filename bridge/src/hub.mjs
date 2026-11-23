@@ -1,0 +1,937 @@
+// The hub owns the `agy acp` process, caches per-session event logs and fans
+// everything out to connected phone clients.
+import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { AcpProcess, RpcError } from './acp.mjs';
+
+export const BRIDGE_VERSION = '0.1.0';
+export const BRIDGE_PROTOCOL = 1;
+
+const CHUNK_KINDS = new Set(['agent_message_chunk', 'agent_thought_chunk', 'user_message_chunk']);
+const BLOCKED_METHODS = new Set(['initialize', 'authenticate', 'logout']);
+/** The same helper the Claude Code host runs over SSH; agents on the Mac run it locally (for "!" shell commands). */
+const LOCAL_HELPER = [process.execPath, fileURLToPath(new URL('../remote/helper.mjs', import.meta.url))];
+
+/** Phone attachments (base64 grows them by 4/3; the bridge accepts frames up to 48 MiB). */
+export const MAX_UPLOAD = 25 * 1024 * 1024;
+
+/** How claude-agent-acp writes a resource_link into the transcript: "[@name](file:///…)" (its formatUriAsLink). */
+const linkText = b => b.uri?.startsWith('file://') ? `[@${b.uri.slice(7).split('/').pop()}](${b.uri})` : String(b.uri ?? '');
+
+/** Claude Code's "!" transcript format escapes the tag bodies; the app unescapes them. */
+const escapeTag = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** "<bash-input>…</bash-input>" + "<bash-stdout>…</bash-stdout><bash-stderr>…</bash-stderr>", as Claude Code writes them. */
+export function shellTranscript(command, r) {
+  let err = r.stderr ?? '';
+  if (r.timedOut) err += (err && !err.endsWith('\n') ? '\n' : '') + 'Command timed out after 120 s';
+  if (r.truncated) err += (err && !err.endsWith('\n') ? '\n' : '') + '[output truncated]';
+  const code = r.exitCode == null ? (r.signal ? 128 : null) : r.exitCode;
+  return {
+    input: `<bash-input>${escapeTag(command)}</bash-input>`,
+    output: `<bash-stdout>${escapeTag(r.stdout)}</bash-stdout><bash-stderr>${escapeTag(err)}</bash-stderr>` + (code ? `<bash-exit-code>${code}</bash-exit-code>` : ''),
+  };
+}
+
+class SessionState {
+  constructor(sessionId, cwd) {
+    this.sessionId = sessionId;
+    this.cwd = cwd ?? null;
+    this.epoch = crypto.randomBytes(6).toString('hex');
+    this.events = [];          // [{seq, update}]
+    this.seq = 0;
+    this.loaded = false;       // known to the current agent process
+    this.loading = null;       // Promise while session/load is in flight
+    this.running = false;      // a session/prompt is in flight
+    this.lastStopReason = null;
+    this.configOptions = null;
+    this.modes = null;
+    this.title = null;
+    this.updatedAt = null;
+    this.synthUserText = '';   // text we echoed for the current turn (dedupe agent echoes)
+    this.autoApprove = false;  // "Turbo": bridge answers permission prompts with allow_once
+    this.queue = [];           // messages sent mid-turn, waiting for it to end: [{id, blocks, text, imageCount, clientId, at}]
+    this.flushAfterCancel = false; // "interrupt and send": the cancelled turn's end sends the queue
+    this.holdQueue = false;    // a plain Stop: the turn's end keeps the queue (however the agent reports that end)
+    this.turnStart = 0;        // ms, when the current turn began
+    this.turnFirstOutput = 0;  // ms, first agent output of the turn
+    this.subscribers = new Set();
+  }
+  resetForReload() {
+    this.epoch = crypto.randomBytes(6).toString('hex');
+    this.events = [];
+    this.seq = 0;
+  }
+}
+
+/** Merge chunk runs and fold tool_call_update into their tool_call so a fresh client gets a small snapshot. */
+export function compactEvents(events) {
+  const out = [];
+  const toolIndex = new Map();
+  for (const { seq, update } of events) {
+    const k = update?.sessionUpdate;
+    if (CHUNK_KINDS.has(k) && update.content?.type === 'text') {
+      const prev = out[out.length - 1];
+      const pu = prev?.update;
+      if (pu && pu.sessionUpdate === k && pu.content?.type === 'text' && (pu.messageId ?? null) === (update.messageId ?? null)) {
+        prev.update = { ...pu, content: { ...pu.content, text: pu.content.text + update.content.text } };
+        prev.seq = seq;
+        continue;
+      }
+      out.push({ seq, update: { ...update, content: { ...update.content } } });
+      continue;
+    }
+    if (k === 'tool_call_update' && toolIndex.has(update.toolCallId)) {
+      const target = out[toolIndex.get(update.toolCallId)];
+      const merged = { ...target.update };
+      for (const [key, v] of Object.entries(update)) {
+        if (key === 'sessionUpdate' || v === null || v === undefined) continue;
+        merged[key] = v;
+      }
+      target.update = merged;
+      target.seq = Math.max(target.seq, seq);
+      continue;
+    }
+    if (k === 'tool_call') toolIndex.set(update.toolCallId, out.length);
+    out.push({ seq, update });
+  }
+  return out;
+}
+
+/** agy sends tool calls as {name, args:{CommandLine, toolSummary, ...}}; map them onto ACP's title/rawInput. */
+export function normalizeUpdate(u) {
+  const k = u?.sessionUpdate;
+  if (k !== 'tool_call' && k !== 'tool_call_update') return u;
+  const toolName = u.name ?? u._meta?.claudeCode?.toolName;
+  if (toolName === 'REPL' && u.rawInput && typeof u.rawInput === 'object') {
+    const out = { ...u };
+    if (!out.title || out.title === 'REPL') out.title = u.rawInput.description || 'Run script';
+    if (!out.kind || out.kind === 'other') out.kind = 'execute';
+    return out;
+  }
+  const args = u.args && typeof u.args === 'object' ? u.args : null;
+  if (!args && u.title) return u;
+  const out = { ...u };
+  if (args && out.rawInput === undefined) out.rawInput = args;
+  if (!out.title) {
+    const t = args?.toolSummary || args?.Summary || args?.summary;
+    if (t || out.name) out.title = t || humanize(out.name);
+  }
+  if (!out.kind && out.name) out.kind = guessKind(out.name);
+  return out;
+}
+function describeHolder(h) {
+  const where = h.entrypoint === 'cli' ? 'Claude Code in a terminal' : h.entrypoint === 'claude-desktop' ? 'the Claude desktop app' : (h.entrypoint || 'another client');
+  return where + (h.pid ? ' (pid ' + h.pid + ')' : '');
+}
+function humanize(name) { return String(name).replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase()); }
+function guessKind(name) {
+  const n = String(name).toLowerCase();
+  if (/command|terminal|exec|shell|bash/.test(n)) return 'execute';
+  if (/write|edit|replace|patch|create_file/.test(n)) return 'edit';
+  if (/delete|remove/.test(n)) return 'delete';
+  if (/grep|search|find|glob/.test(n)) return 'search';
+  if (/read|view|open|list_dir|ls/.test(n)) return 'read';
+  if (/fetch|browse|url|web/.test(n)) return 'fetch';
+  return 'other';
+}
+
+export class Hub extends EventEmitter {
+  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000 }) {
+    super();
+    Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, idleCloseMs, locksMaxAgeMs });
+    // "Open elsewhere" lock: a function resolving {now, held, touched} (see remote/helper.mjs locks).
+    // Default: on for hubs with a remote helper (Claude Code); false turns it off.
+    this.locksFn = locks === false ? null : typeof locks === 'function' ? locks : (helper ? () => this.runHelper(['locks'], 10000) : null);
+    this.locksCache = null; this.locksInflight = null;
+    this.lockOwnWrites = false;      // lock source's "touched" also counts our own agent's writes (agy: shared DB)
+    this.lockedNotified = new Map(); // sessionId -> lockedBy, told to phones; cleared with session_unlocked
+    // Claude deletes its session file on a clean exit, so a desktop visit can leave no trace: watch loaded sessions.
+    if (this.locksFn && lockSweepMs > 0) { this.lockTimer = setInterval(() => this.sweepLocks().catch(() => {}), lockSweepMs); this.lockTimer.unref?.(); }
+    // Close sessions nobody is watching (each loaded Claude session is a live `claude` process).
+    if (idleCloseMs > 0) { this.idleTimer = setInterval(() => this.closeIdleSessions(), Math.min(60000, idleCloseMs)); this.idleTimer.unref?.(); }
+    this.log = (...a) => log(`[${id}]`, ...a);
+    this.clients = new Set();
+    this.sessions = new Map();
+    this.pending = new Map();      // key -> {key, rpcId, method, params, sessionId, createdAt}
+    this.nextKey = 1;
+    this.nextClientId = 1;
+    this.agent = null;
+    this.agentState = 'down';      // starting | ready | down
+    this.agentInfo = null;         // initialize result
+    this.agentError = null;
+    this.restartDelay = 1000;
+    this.restartTimer = null;
+    this.stopping = false;
+    this.knownCwds = new Map();    // sessionId -> cwd (from session/list)
+    this.stderrTail = [];
+    this.quota = null;           // QuotaPoller (optional)
+  }
+
+  attachQuota(poller) {
+    this.quota = poller;
+    poller.onUpdate = q => this.broadcast({ op: 'quota', quota: q });
+  }
+
+  // ---------------------------------------------------------------- agent lifecycle
+  async startAgent() {
+    if (this.stopping) return;
+    clearTimeout(this.restartTimer);
+    this.setAgentState('starting');
+    const agent = new AcpProcess({ command: this.agentCommand, args: this.agentArgs, cwd: this.agentCwd, env: this.agentEnv, log: this.log });
+    this.agent = agent;
+    agent.on('stderr', t => {
+      for (const line of String(t).split('\n')) if (line.trim()) { this.stderrTail.push(line); if (this.stderrTail.length > 50) this.stderrTail.shift(); }
+    });
+    agent.on('notification', (m, p) => this.#onAgentNotification(m, p));
+    agent.on('request', (id, m, p) => this.#onAgentRequest(id, m, p));
+    agent.on('exit', (code, signal, err) => this.#onAgentExit(agent, code, signal, err));
+    agent.start();
+    try {
+      const info = await agent.call('initialize', {
+        protocolVersion: 1,
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+          elicitation: { form: {} },
+        },
+        clientInfo: { name: 'leash-bridge', title: 'Leash', version: BRIDGE_VERSION },
+      }, { timeoutMs: 60000 });
+      if (this.agent !== agent) return;
+      this.agentInfo = info;
+      this.steeringBroken = false;
+      this.agentError = null;
+      this.restartDelay = 1000;
+      this.setAgentState('ready');
+      this.log('agent ready: ' + JSON.stringify(info?.agentInfo ?? {}));
+    } catch (e) {
+      if (this.agent !== agent) return;
+      this.agentError = e.message + (this.stderrTail.length ? ' | ' + this.stderrTail.slice(-3).join(' | ') : '');
+      this.log('agent initialize failed: ' + this.agentError);
+      agent.stop();
+    }
+  }
+
+  setAgentState(state) {
+    this.agentState = state;
+    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers });
+  }
+
+  /** Merge this agent's _meta (e.g. Claude Code settings) into session/new|load|resume params. */
+  withSessionMeta(params) {
+    if (!this.sessionMeta) return params;
+    const merge = (a, b) => {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) return b;
+      const out = { ...a };
+      for (const [k, v] of Object.entries(b ?? {})) out[k] = (v && typeof v === 'object' && !Array.isArray(v)) ? merge(a[k], v) : v;
+      return out;
+    };
+    return { ...params, _meta: merge(params._meta ?? {}, this.sessionMeta) };
+  }
+
+  /** Run the remote fs/quota helper (array command, e.g. ['ubuntu','node','/…/helper.mjs']); `input` goes to its stdin. */
+  runHelper(args, timeoutMs = 60000, helper = this.helper, input = null) {
+    return new Promise((resolve, reject) => {
+      const [cmd, ...pre] = helper;
+      const token = Buffer.from(JSON.stringify(args.map(String)), 'utf8').toString('base64url');
+      // run locally, the helper's $HOME is this hub's home (its sandbox)
+      const env = helper === LOCAL_HELPER ? { ...this.agentEnv, HOME: this.home } : this.agentEnv;
+      const child = spawn(cmd, [...pre, '--b64', token], { stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], env });
+      if (input != null) {
+        child.stdin.on('error', () => {});   // the helper may exit before reading it all (EPIPE): its JSON says why
+        child.stdin.end(input);
+      }
+      let out = '', err = '';
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new RpcError(-32098, 'helper timed out')); }, timeoutMs);
+      child.stdout.on('data', d => { out += d; });
+      child.stderr.on('data', d => { err += d; });
+      child.on('error', e => { clearTimeout(timer); reject(new RpcError(-32603, 'helper failed: ' + e.message)); });
+      child.on('close', () => {
+        clearTimeout(timer);
+        const start = out.indexOf('{');
+        let j; try { j = JSON.parse(out.slice(start)); } catch { return reject(new RpcError(-32603, 'helper returned no JSON' + (err ? ': ' + err.trim().slice(-200) : ''))); }
+        if (j.error) reject(new RpcError(j.error.code ?? -32603, j.error.message)); else resolve(j);
+      });
+    });
+  }
+
+  #onAgentExit(agent, code, signal, err) {
+    if (this.agent !== agent) return;
+    this.log(`agent exited code=${code} signal=${signal}${err ? ' err=' + err.message : ''}`);
+    if (!this.agentError) this.agentError = `agent exited (code ${code}${signal ? ', ' + signal : ''})` + (this.stderrTail.length ? ': ' + this.stderrTail.slice(-3).join(' | ') : '');
+    this.agent = null;
+    for (const p of [...this.pending.values()]) this.#resolvePending(p.key, { reason: 'agent_exited' });
+    for (const s of this.sessions.values()) {
+      s.loaded = false; s.loading = null;
+      if (s.running) { s.running = false; s.lastStopReason = 'agent_exited'; this.#broadcastTurn(s, { error: 'agent exited' }); }
+    }
+    this.setAgentState('down');
+    if (this.stopping) return;
+    const delay = this.restartDelay;
+    this.restartDelay = Math.min(this.restartDelay * 2, 30000);
+    this.restartTimer = setTimeout(() => this.startAgent(), delay);
+  }
+
+  async restartAgent() {
+    this.restartDelay = 1000;
+    if (this.agent) { const a = this.agent; a.stop(); }
+    else this.startAgent();
+    return { ok: true };
+  }
+
+  stop() { this.stopping = true; clearTimeout(this.restartTimer); clearInterval(this.idleTimer); clearInterval(this.lockTimer); this.agent?.stop(); }
+
+  async closeIdleSessions(now = Date.now()) {
+    if (!this.agent || this.agentState !== 'ready') return [];
+    if (!this.agentInfo?.agentCapabilities?.sessionCapabilities?.close) return [];
+    const closed = [];
+    for (const s of this.sessions.values()) {
+      if (!s.loaded || s.loading || s.running || s.subscribers.size > 0) continue;
+      if ([...this.pending.values()].some(p => p.sessionId === s.sessionId)) continue;
+      if (now - (s.lastActive ?? 0) < this.idleCloseMs) continue;
+      try { await this.agent.call('session/close', { sessionId: s.sessionId }, { timeoutMs: 15000 }); } catch {}
+      s.loaded = false;
+      closed.push(s.sessionId);
+      this.log('closed idle session ' + s.sessionId);
+    }
+    return closed;
+  }
+
+  /** Sessions another live client has open (cached briefly; null when off or the check failed = fail open). */
+  async foreignLocks({ maxAgeMs = this.locksMaxAgeMs } = {}) {
+    if (!this.locksFn) return null;
+    const c = this.locksCache;
+    if (c && Date.now() - c.at < maxAgeMs) return c.value;
+    if (!this.locksInflight) {
+      this.locksInflight = (async () => {
+        try { const v = await this.locksFn(); if (v?.ownWrites) this.lockOwnWrites = true; this.locksCache = { at: Date.now(), value: v }; return v; }
+        catch (e) { this.log('lock check failed, allowing: ' + e.message); return null; }
+        finally { this.locksInflight = null; }
+      })();
+    }
+    return this.locksInflight;
+  }
+
+  /**
+   * Refuse a session another client (Claude Code in a terminal / desktop app, the Antigravity app) is running a turn
+   * in, so two writers never race on one conversation. Our own copy is closed so the next attach reloads from disk.
+   * A copy that another client opened (and closed) since we loaded it is stale: dropped, and a prompt is refused
+   * with -32021 so the phone re-attaches first.
+   */
+  async checkLock(sessionId, { forPrompt = false } = {}) {
+    const lk = await this.foreignLocks();
+    if (!lk) return null;
+    const s = this.sessions.get(sessionId);
+    const holder = (lk.held ?? []).find(h => h.sessionId === sessionId && !this.#ownBusyEcho(h));
+    if (holder) {
+      // our own turn: keep watching it; a "busy" holder is then most likely that very turn (shared status DB)
+      if (s?.running && (!forPrompt || (holder.basis === 'busy' && lk.ownWrites))) return lk;
+      if (s?.loaded && !s.running) await this.releaseSession(s);
+      this.lockedNotified.set(sessionId, holder.entrypoint || 'other');
+      throw new RpcError(-32020, 'conversation is busy in ' + describeHolder(holder) + '; wait until it finishes', { locked: true, holders: [holder] });
+    }
+    const touchedAt = lk.touched?.[sessionId] ?? 0;
+    if (s?.loaded && !s.running && s.extBaseline != null && touchedAt > s.extBaseline) {
+      await this.releaseSession(s);
+      if (forPrompt) throw new RpcError(-32021, 'conversation changed on another device; reload it before sending', { stale: true });
+    }
+    return lk;
+  }
+
+  /** Release loaded sessions another client has open (or used since we loaded them) and tell the phones. */
+  async sweepLocks() {
+    const loaded = [...this.sessions.values()].filter(s => s.loaded && !s.running && !s.loading);
+    if (!loaded.length && !this.lockedNotified.size) return [];
+    const lk = await this.foreignLocks();
+    if (!lk) return [];
+    const heldBy = new Map((lk.held ?? []).filter(h => !this.#ownBusyEcho(h)).map(h => [h.sessionId, h]));
+    for (const sid of [...this.lockedNotified.keys()]) {
+      if (heldBy.has(sid)) continue;
+      this.lockedNotified.delete(sid);
+      this.broadcast({ op: 'session_unlocked', sessionId: sid });
+    }
+    const released = [];
+    for (const s of loaded) {
+      const h = heldBy.get(s.sessionId);
+      const changed = s.extBaseline != null && (lk.touched?.[s.sessionId] ?? 0) > s.extBaseline;
+      if (!h && !changed) continue;
+      await this.releaseSession(s);
+      if (h) { this.lockedNotified.set(s.sessionId, h.entrypoint || 'other'); this.broadcast({ op: 'session_locked', sessionId: s.sessionId, lockedBy: h.entrypoint || 'other' }); }
+      released.push(s.sessionId);
+    }
+    return released;
+  }
+
+  /** A "busy" holder for a session whose own turn just ended is the status DB catching up with us, not the desktop. */
+  #ownBusyEcho(h) {
+    const s = h.basis === 'busy' && this.lockOwnWrites ? this.sessions.get(h.sessionId) : null;
+    return !!s?.turnEndedAt && Date.now() - s.turnEndedAt < 5000;
+  }
+
+  async releaseSession(s) {
+    if (this.agent && this.agentInfo?.agentCapabilities?.sessionCapabilities?.close) {
+      try { await this.agent.call('session/close', { sessionId: s.sessionId }, { timeoutMs: 15000 }); } catch {}
+    }
+    s.loaded = false;
+    s.extBaseline = null;
+    s.releasedElsewhere = true;   // next prompt: -32021 (reload first) rather than "attach first"
+    this.log('released ' + s.sessionId + ' (open or changed elsewhere)');
+  }
+
+  requireAgent() {
+    if (!this.agent || this.agentState !== 'ready') throw new RpcError(-32001, 'agent not ready (' + this.agentState + ')' + (this.agentError ? ': ' + this.agentError : ''));
+    return this.agent;
+  }
+
+  // ---------------------------------------------------------------- clients
+  /** Standalone use (tests / single agent): own client registry + 'ready'. With a Router, use attachClient. */
+  addClient(send, meta = {}) {
+    const client = { id: this.nextClientId++, send, subs: new Set(), ...meta };
+    this.clients.add(client);
+    send({ op: 'ready', ...this.info() });
+    return client;
+  }
+
+  attachClient(client) { this.clients.add(client); }
+
+  removeClient(client) {
+    this.clients.delete(client);
+    for (const sid of client.subs) { const s = this.sessions.get(sid); if (s) { s.subscribers.delete(client); s.lastActive = Date.now(); } }
+  }
+
+  broadcast(msg) { const m = { ...msg, agentId: this.id }; for (const c of this.clients) c.send(m); }
+
+  agentSummary() {
+    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, quota: this.quota?.latest ?? null };
+  }
+
+  info() {
+    return {
+      bridge: { version: BRIDGE_VERSION, protocol: BRIDGE_PROTOCOL, hostname: os.hostname(), home: this.home, platform: process.platform },
+      agent: { state: this.agentState, error: this.agentError, info: this.agentInfo },
+      pending: [...this.pending.values()].map(p => this.pendingMsg(p)),
+      running: [...this.sessions.values()].filter(s => s.running).map(s => s.sessionId),
+      quota: this.quota?.latest ?? null,
+    };
+  }
+
+  // ---------------------------------------------------------------- agent -> bridge
+  #session(sessionId, cwd) {
+    let s = this.sessions.get(sessionId);
+    if (!s) { s = new SessionState(sessionId, cwd ?? this.knownCwds.get(sessionId)); this.sessions.set(sessionId, s); }
+    else if (cwd && !s.cwd) s.cwd = cwd;
+    return s;
+  }
+
+  #record(s, update) {
+    s.lastActive = Date.now();
+    const seq = ++s.seq;
+    s.events.push({ seq, update });
+    if (s.events.length > this.maxEvents) s.events.splice(0, s.events.length - this.maxEvents);
+    // During session/load the agent replays history; clients get it in the attach result instead.
+    if (s.loading) return;
+    const msg = { op: 'update', agentId: this.id, sessionId: s.sessionId, epoch: s.epoch, seq, update };
+    for (const c of s.subscribers) c.send(msg);
+  }
+
+  #onAgentNotification(method, params) {
+    if (method !== 'session/update' || !params?.sessionId) {
+      this.broadcast({ op: 'notification', method, params });
+      return;
+    }
+    const s = this.#session(params.sessionId);
+    const u = normalizeUpdate(params.update ?? {});
+    switch (u.sessionUpdate) {
+      case 'config_option_update': if (u.configOptions) s.configOptions = u.configOptions; break;
+      case 'current_mode_update': if (s.modes && u.currentModeId) s.modes = { ...s.modes, currentModeId: u.currentModeId }; break;
+      case 'session_info_update':
+        if (u.title !== undefined) s.title = u.title;
+        if (u.updatedAt) s.updatedAt = u.updatedAt;
+        this.broadcast({ op: 'session_info', sessionId: s.sessionId, title: s.title, updatedAt: s.updatedAt });
+        break;
+      case 'user_message_chunk':
+        // We already echoed the user's prompt ourselves; drop the agent's live echo of it.
+        if (s.running && u.content?.type === 'text' && s.synthUserText && s.synthUserText.includes(u.content.text)) return;
+        break;
+    }
+    if (s.running && !s.turnFirstOutput && ['agent_message_chunk', 'agent_thought_chunk', 'tool_call'].includes(u.sessionUpdate)) s.turnFirstOutput = Date.now();
+    this.#record(s, u);
+  }
+
+  #onAgentRequest(rpcId, method, params) {
+    if (method === 'session/request_permission' || method === 'elicitation/create') {
+      let sessionId = params?.sessionId ?? null;
+      if (!sessionId) {
+        // Request-scoped elicitation: attribute it to the running session if unambiguous, else decline.
+        const runningIds = [...this.sessions.values()].filter(s => s.running).map(s => s.sessionId);
+        if (runningIds.length === 1) sessionId = runningIds[0];
+        else {
+          try { this.agent?.respond(rpcId, method === 'elicitation/create' ? { action: 'decline' } : { outcome: { outcome: 'cancelled' } }); } catch {}
+          this.log(`declined ${method} with no session scope`);
+          return;
+        }
+      }
+      const sess = this.sessions.get(sessionId);
+      if (method === 'session/request_permission' && sess?.autoApprove) {
+        const opts = params?.options ?? [];
+        const pick = opts.find(o => o.kind === 'allow_once') || opts.find(o => String(o.kind).startsWith('allow'));
+        if (pick) {
+          try { this.agent?.respond(rpcId, { outcome: { outcome: 'selected', optionId: pick.optionId } }); } catch {}
+          this.#record(sess, { sessionUpdate: 'leash_auto_approved', toolCallId: params?.toolCall?.toolCallId ?? null, title: params?.toolCall?.title ?? null });
+          return;
+        }
+      }
+      const key = this.id + ':r' + (this.nextKey++);
+      const p = { key, rpcId, method, params, sessionId, createdAt: Date.now() };
+      this.pending.set(key, p);
+      this.broadcast(this.pendingMsg(p));
+      this.emit('attention', p);
+      return;
+    }
+    // fs/* and terminal/* are not advertised; anything else is unknown.
+    try { this.agent?.respondError(rpcId, { code: -32601, message: 'Method not supported by Leash bridge: ' + method }); } catch {}
+  }
+
+  pendingMsg(p) { return { op: 'request', agentId: this.id, key: p.key, method: p.method, sessionId: p.sessionId, params: p.params, createdAt: p.createdAt }; }
+
+  #resolvePending(key, info) {
+    const p = this.pending.get(key);
+    if (!p) return null;
+    this.pending.delete(key);
+    this.broadcast({ op: 'resolved', key, sessionId: p.sessionId, ...info });
+    return p;
+  }
+
+  /** A phone answered a permission / elicitation request. */
+  reply(client, key, result, error) {
+    const p = this.pending.get(key);
+    if (!p) throw new RpcError(-32002, 'request already resolved');
+    if (error) this.agent?.respondError(p.rpcId, error);
+    else this.agent?.respond(p.rpcId, result);
+    this.#resolvePending(key, { by: client?.id ?? null, result: result ?? null });
+    return { ok: true };
+  }
+
+  #cancelPendingFor(sessionId) {
+    for (const p of [...this.pending.values()]) {
+      if (p.sessionId !== sessionId) continue;
+      const result = p.method === 'session/request_permission' ? { outcome: { outcome: 'cancelled' } } : { action: 'cancel' };
+      try { this.agent?.respond(p.rpcId, result); } catch {}
+      this.#resolvePending(p.key, { result, reason: 'cancelled' });
+    }
+  }
+
+  #broadcastTurn(s, extra = {}) {
+    this.broadcast({ op: 'turn', sessionId: s.sessionId, running: s.running, stopReason: s.running ? null : s.lastStopReason, startedAt: s.running ? s.turnStart || null : null, ...extra });
+  }
+
+  // ---------------------------------------------------------------- phone -> bridge calls
+  async handleCall(client, method, params = {}) {
+    switch (method) {
+      case 'bridge/info': return this.info();
+      case 'bridge/attach': return this.attach(client, params);
+      case 'bridge/detach': {
+        const s = this.sessions.get(params.sessionId);
+        s?.subscribers.delete(client); client.subs.delete(params.sessionId);
+        if (s) s.lastActive = Date.now();
+        return { ok: true };
+      }
+      case 'bridge/browse': return this.browse(params.path);
+      case 'bridge/readFile': return this.readFile(params.path, params.maxBytes, params);
+      case 'bridge/upload': return this.upload(params);
+      case 'bridge/restartAgent': return this.restartAgent();
+      case 'bridge/shell': return this.shell(client, params);
+      case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
+      case 'bridge/quota': {
+        if (!this.quota) return { quota: null, error: 'quota disabled' };
+        try { return { quota: await this.quota.refresh({ maxAgeMs: params.force ? 0 : 120000 }) }; }
+        catch (e) { return { quota: this.quota.latest, error: e.message }; }
+      }
+      case 'bridge/setAutoApprove': {
+        const s = this.sessions.get(params.sessionId);
+        if (!s) throw new RpcError(-32004, 'unknown session');
+        s.autoApprove = !!params.enabled;
+        this.broadcast({ op: 'session_flags', sessionId: s.sessionId, autoApprove: s.autoApprove });
+        // approve anything already waiting
+        if (s.autoApprove) for (const p of [...this.pending.values()]) {
+          if (p.sessionId !== s.sessionId || p.method !== 'session/request_permission') continue;
+          const pick = (p.params?.options ?? []).find(o => o.kind === 'allow_once') || (p.params?.options ?? []).find(o => String(o.kind).startsWith('allow'));
+          if (pick) this.reply(null, p.key, { outcome: { outcome: 'selected', optionId: pick.optionId } });
+        }
+        return { ok: true, autoApprove: s.autoApprove };
+      }
+      case 'session/load': return this.attach(client, { ...params, sinceSeq: 0 });
+      case 'session/new': return this.newSession(client, params);
+      case 'session/list': return this.listSessions(params);
+      case 'session/prompt': return this.prompt(client, params);
+      case 'session/cancel': {
+        this.requireAgent();
+        const s = this.sessions.get(params.sessionId);
+        if (s?.running) { s.flushAfterCancel = false; s.holdQueue = true; }   // a plain Stop keeps the queue for the user to send, edit or drop
+        this.#cancelTurn(params.sessionId);
+        return { ok: true };
+      }
+      case 'bridge/unqueue': return this.unqueue(params);
+      case 'session/set_config_option': {
+        const r = await this.requireAgent().call(method, params);
+        const s = this.sessions.get(params.sessionId);
+        if (s && r?.configOptions) { s.configOptions = r.configOptions; this.#record(s, { sessionUpdate: 'config_option_update', configOptions: r.configOptions, _meta: { leash: { synthetic: true } } }); }
+        return r;
+      }
+      case 'session/set_mode': {
+        const r = await this.requireAgent().call(method, params);
+        const s = this.sessions.get(params.sessionId);
+        if (s) { if (s.modes) s.modes = { ...s.modes, currentModeId: params.modeId }; this.#record(s, { sessionUpdate: 'current_mode_update', currentModeId: params.modeId, _meta: { leash: { synthetic: true } } }); }
+        return r;
+      }
+      default:
+        if (BLOCKED_METHODS.has(method) || method.startsWith('bridge/')) throw new RpcError(-32601, 'method not allowed: ' + method);
+        return this.requireAgent().call(method, params);
+    }
+  }
+
+  async newSession(client, params) {
+    const agent = this.requireAgent();
+    const cwd = params.cwd || this.home;
+    const r = await agent.call('session/new', this.withSessionMeta({ mcpServers: [], ...params, cwd }));
+    const s = this.#session(r.sessionId, cwd);
+    s.loaded = true;
+    s.configOptions = r.configOptions ?? null;
+    s.modes = r.modes ?? null;
+    this.#subscribe(client, s);
+    // any lock snapshot taken before now is a valid baseline for "changed elsewhere since we had it"
+    if (this.locksFn) this.foreignLocks({ maxAgeMs: 60000 }).then(lk => { if (lk && s.extBaseline == null) s.extBaseline = lk.now; });
+    this.broadcast({ op: 'session_created', sessionId: s.sessionId, cwd });
+    return { ...r, epoch: s.epoch, lastSeq: s.seq };
+  }
+
+  async listSessions(params) {
+    const [r, lk] = await Promise.all([this.requireAgent().call('session/list', params), this.foreignLocks({ maxAgeMs: 10000 })]);
+    const heldBy = new Map((lk?.held ?? []).map(h => [h.sessionId, h]));
+    for (const it of r?.sessions ?? []) if (it.sessionId && it.cwd) this.knownCwds.set(it.sessionId, it.cwd);
+    let list = r?.sessions ?? [];
+    if (this.maxListed && list.length > this.maxListed) {
+      list = [...list].sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? ''))).slice(0, this.maxListed);
+    }
+    return {
+      ...r,
+      sessions: list.map(it => {
+        const s = this.sessions.get(it.sessionId);
+        const h = heldBy.get(it.sessionId);
+        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length } };
+      }),
+    };
+  }
+
+  #subscribe(client, s) { s.subscribers.add(client); client.subs.add(s.sessionId); }
+
+  async ensureLoaded(sessionId, cwd) {
+    const s = this.#session(sessionId, cwd);
+    if (s.loaded) return s;
+    if (s.loading) { await s.loading; return s; }
+    const agent = this.requireAgent();
+    const caps = this.agentInfo?.agentCapabilities ?? {};
+    const useCwd = cwd || s.cwd || this.knownCwds.get(sessionId) || this.home;
+    s.cwd = useCwd;
+    s.resetForReload();
+    s.loading = (async () => {
+      let r;
+      if (caps.loadSession) r = await agent.call('session/load', this.withSessionMeta({ sessionId, cwd: useCwd, mcpServers: [] }));
+      else if (caps.sessionCapabilities?.resume) r = await agent.call('session/resume', this.withSessionMeta({ sessionId, cwd: useCwd, mcpServers: [] }));
+      else throw new RpcError(-32003, 'agent cannot load or resume sessions');
+      if (this.agent !== agent) throw new RpcError(-32099, 'agent restarted during load');
+      s.loaded = true;
+      s.releasedElsewhere = false;
+      if (r?.configOptions) s.configOptions = r.configOptions;
+      if (r?.modes) s.modes = r.modes;
+      return r;
+    })();
+    try { await s.loading; } finally { s.loading = null; }
+    return s;
+  }
+
+  async attach(client, { sessionId, cwd, epoch, sinceSeq = 0 }) {
+    if (!sessionId) throw new RpcError(-32602, 'sessionId required');
+    const lk = await this.checkLock(sessionId);
+    const wasLoaded = !!this.sessions.get(sessionId)?.loaded;
+    const s = await this.ensureLoaded(sessionId, cwd);
+    // with ownWrites the load itself may bump "touched": take the baseline after it (local clock, small slack)
+    if (!wasLoaded) s.extBaseline = lk ? (lk.ownWrites ? Date.now() + 3000 : lk.now) : null;
+    const firstSeq = s.events.length ? s.events[0].seq : s.seq + 1;
+    let reset, events;
+    if (epoch && epoch === s.epoch && sinceSeq >= firstSeq - 1 && sinceSeq <= s.seq) {
+      reset = false;
+      events = s.events.filter(e => e.seq > sinceSeq);
+    } else {
+      reset = true;
+      events = compactEvents(s.events);
+    }
+    this.#subscribe(client, s);
+    s.lastActive = Date.now();
+    return {
+      sessionId, cwd: s.cwd, epoch: s.epoch, lastSeq: s.seq, reset, events,
+      running: s.running, lastStopReason: s.lastStopReason, turnStartedAt: s.running ? s.turnStart || null : null,
+      configOptions: s.configOptions, modes: s.modes, title: s.title, autoApprove: s.autoApprove, queue: this.queueSummary(s),
+      pending: [...this.pending.values()].filter(p => p.sessionId === sessionId).map(p => this.pendingMsg(p)),
+    };
+  }
+
+  /**
+   * A message from a phone. Idle: it starts a turn (after anything still queued). Mid-turn it is delivered by
+   * `steer` (Claude Code's `_session/steering`: injected into the running turn) or else queued on the bridge and
+   * sent, merged, when the turn ends. `interrupt: true` queues it and stops the turn, so it goes out right after.
+   */
+  async prompt(client, params) {
+    this.requireAgent();
+    await this.checkLock(params.sessionId, { forPrompt: true });
+    const s = this.sessions.get(params.sessionId);
+    if (s && !s.loaded && s.releasedElsewhere) throw new RpcError(-32021, 'conversation changed on another device; reload it before sending', { stale: true });
+    if (!s || !s.loaded) throw new RpcError(-32004, 'attach to the session before prompting');
+    const { interrupt = false, ...rest } = params;
+    const blocks = Array.isArray(rest.prompt) ? rest.prompt : [];
+    const item = blocks.length ? this.#queueItem(blocks, client) : null;
+    if (!s.running) {
+      const items = [...this.#takeQueue(s), ...(item ? [item] : [])];
+      if (!items.length) throw new RpcError(-32602, 'prompt required');
+      return this.#runTurn(s, items, rest);
+    }
+    if (interrupt) {
+      if (item) s.queue.push(item);
+      if (!s.queue.length) throw new RpcError(-32602, 'prompt required');
+      s.flushAfterCancel = true;
+      s.holdQueue = false;
+      this.#broadcastQueue(s);
+      this.#cancelTurn(s.sessionId);
+      return { queued: true, interrupting: true, id: item?.id ?? null };
+    }
+    if (!item) throw new RpcError(-32602, 'prompt required');
+    if (this.steers) {
+      this.#echo(s, [item]);
+      let r = null;
+      try {
+        r = await this.agent.call('_session/steering', { sessionId: s.sessionId, prompt: blocks, _meta: { steering: { idleBehavior: 'promptRequired' } } });
+      } catch (e) {
+        if (e.code === -32601) this.steeringBroken = true;
+        this.log('steering failed, sending as a prompt: ' + e.message);
+      }
+      if (r?.outcome === 'injected') return { steered: true };
+      // the turn ended meanwhile (or steering failed): a plain prompt; already on screen, so not echoed again
+      item.echoed = true;
+      return this.#runTurn(s, [item], rest);
+    }
+    s.queue.push(item);
+    this.#broadcastQueue(s);
+    return { queued: true, id: item.id };
+  }
+
+  /** Mid-turn messages are injected into the running turn when the agent supports ACP steering; otherwise queued. */
+  get steers() { return !!this.agentInfo?._meta?.steering?.supported && !this.steeringBroken; }
+
+  #queueItem(blocks, client) {
+    const text = blocks.filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const links = blocks.filter(b => b.type === 'resource_link');
+    return { id: this.id + ':q' + (this.nextKey++), blocks, text, imageCount: blocks.filter(b => b.type === 'image').length, fileCount: links.length,
+      echoText: [text, ...links.map(linkText)].filter(Boolean).join('\n'), clientId: client?.id ?? null, at: Date.now() };
+  }
+
+  #takeQueue(s) {
+    if (!s.queue.length) return [];
+    const items = s.queue; s.queue = [];
+    this.#broadcastQueue(s);
+    return items;
+  }
+
+  queueSummary(s) { return s.queue.map(({ id, text, imageCount, fileCount, clientId, at }) => ({ id, text, imageCount, fileCount, clientId, at })); }
+
+  #broadcastQueue(s) { this.broadcast({ op: 'queue', sessionId: s.sessionId, items: this.queueSummary(s) }); }
+
+  #cancelTurn(sessionId) {
+    this.#cancelPendingFor(sessionId);
+    this.agent?.notify('session/cancel', { sessionId });
+  }
+
+  /** Echo user messages into the log so every device (and reconnects) see them. */
+  #echo(s, items) {
+    for (const it of items) {
+      // the text also dedupes the agent's own echo of it (a steering fallback re-sends an echoed item)
+      if (it.echoText) s.synthUserText += (s.synthUserText ? '\n' : '') + it.echoText;
+      if (it.echoed) continue;
+      it.echoed = true;
+      for (const block of it.blocks) this.#record(s, { sessionUpdate: 'user_message_chunk', content: block, _meta: { leash: { synthetic: true, clientId: it.clientId } } });
+    }
+  }
+
+  /** Send `items` (merged into one prompt) as a turn; joins the running one when a prompt is already in flight. */
+  async #runTurn(s, items, params, { continued = false } = {}) {
+    const agent = this.requireAgent();
+    const wasRunning = s.running && !continued;
+    if (!wasRunning) s.synthUserText = '';
+    this.#echo(s, items);
+    let prompt = items.flatMap(it => it.blocks);
+    // "!" commands run since the last prompt reach the model with this one (already on screen, so not echoed again).
+    if (s.shellContext?.length) {
+      const ctx = s.shellContext;
+      s.shellContext = [];
+      s.synthUserText = ctx.join('\n') + (s.synthUserText ? '\n' + s.synthUserText : '');
+      prompt = [...ctx.map(text => ({ type: 'text', text })), ...prompt];
+    }
+    s.inflight = (s.inflight ?? 0) + 1;
+    s.running = true;
+    if (!wasRunning) { s.turnStart = Date.now(); s.turnFirstOutput = 0; s.lastStopReason = null; this.#broadcastTurn(s); }
+    try {
+      const r = await agent.call('session/prompt', { ...params, sessionId: s.sessionId, prompt });
+      s.lastStopReason = r?.stopReason ?? 'end_turn';
+      if (s.inflight <= 1) this.#recordTurnStats(s, r?.usage);
+      return r;
+    } catch (e) {
+      s.lastStopReason = 'error';
+      this.#record(s, { sessionUpdate: 'notice', severity: 'error', title: 'Prompt failed', description: e.message, _meta: { leash: { synthetic: true } } });
+      throw e;
+    } finally {
+      // Another prompt sent while running (a steering fallback) shares the same turn; only the last one finishing clears it.
+      s.inflight = (s.inflight ?? 1) - 1;
+      if (s.inflight <= 0) {
+        s.inflight = 0;
+        s.turnEndedAt = Date.now();
+        if (this.lockOwnWrites) s.extBaseline = Date.now() + 3000;   // our own turn just wrote the shared status DB
+        this.emit('turn_end', s);
+        // Queued messages go out right away (running stays true, no idle blip); a plain Stop or a failure keeps them.
+        const flush = s.queue.length && this.agent === agent && this.agentState === 'ready' && s.loaded
+          && s.lastStopReason !== 'error' && !s.holdQueue && (s.lastStopReason !== 'cancelled' || s.flushAfterCancel);
+        s.flushAfterCancel = false;
+        s.holdQueue = false;
+        if (flush) {
+          this.#runTurn(s, this.#takeQueue(s), { sessionId: s.sessionId }, { continued: true })
+            .catch(e => this.log('queued prompt failed: ' + e.message));
+        } else {
+          s.running = false;
+          s.synthUserText = '';
+          this.#broadcastTurn(s);
+        }
+      }
+    }
+  }
+
+  /** Take a queued message back (to edit it, or drop it): it is returned with its content. */
+  unqueue({ sessionId, id }) {
+    const s = this.sessions.get(sessionId);
+    const i = s ? s.queue.findIndex(q => q.id === id) : -1;
+    if (i < 0) throw new RpcError(-32024, 'message already sent');
+    const [it] = s.queue.splice(i, 1);
+    this.#broadcastQueue(s);
+    return { id: it.id, prompt: it.blocks };
+  }
+
+  /**
+   * "!" shell mode from the phone: run one command in the conversation's folder on the agent's host and log it in
+   * Claude Code's own transcript format. Like the CLI, the model sees it with the next prompt.
+   */
+  async shell(client, { sessionId, command }) {
+    const cmd = String(command ?? '').trim();
+    if (!cmd) throw new RpcError(-32602, 'command required');
+    const s = this.sessions.get(sessionId);
+    if (!s || !s.loaded) throw new RpcError(-32004, 'attach to the session before running commands');
+    if (s.running) throw new RpcError(-32022, 'the agent is working; run shell commands between turns');
+    if (s.shellRunning) throw new RpcError(-32023, 'a shell command is already running in this conversation');
+    const n = this.nextKey++;
+    const meta = { leash: { synthetic: true, shell: true, clientId: client?.id ?? null } };
+    const input = `<bash-input>${escapeTag(cmd)}</bash-input>`;
+    this.#record(s, { sessionUpdate: 'user_message_chunk', messageId: `leash-sh${n}-in`, content: { type: 'text', text: input }, _meta: meta });
+    s.shellRunning = true;
+    this.broadcast({ op: 'shell', sessionId: s.sessionId, running: true });
+    let r;
+    try { r = await this.runHelper(['exec', s.cwd || this.home, cmd], 140000, this.helper ?? LOCAL_HELPER); }
+    catch (e) { r = { stdout: '', stderr: e.message, exitCode: 1 }; }
+    finally { s.shellRunning = false; }
+    const t = shellTranscript(cmd, r);
+    this.#record(s, { sessionUpdate: 'user_message_chunk', messageId: `leash-sh${n}-out`, content: { type: 'text', text: t.output }, _meta: meta });
+    s.shellContext = [...(s.shellContext ?? []), t.input, t.output];
+    this.broadcast({ op: 'shell', sessionId: s.sessionId, running: false });
+    return { exitCode: r.exitCode ?? null, timedOut: !!r.timedOut, truncated: !!r.truncated };
+  }
+
+  #recordTurnStats(s, usage) {
+    const end = Date.now();
+    const out = (usage?.outputTokens ?? 0) + (usage?.thoughtTokens ?? 0);
+    const genMs = s.turnFirstOutput ? end - s.turnFirstOutput : 0;
+    const model = s.configOptions?.find(o => o.category === 'model' || o.id === 'model');
+    const effort = s.configOptions?.find(o => o.category === 'thought_level' || o.id === 'thought_level');
+    const name = (opt) => { if (!opt) return null; const v = opt.currentValue; const flat = (opt.options ?? []).flatMap(o => o.options ?? [o]); return flat.find(o => o.value === v)?.name ?? v; };
+    this.#record(s, {
+      sessionUpdate: 'leash_turn_stats',
+      usage: usage ?? null,
+      durationMs: s.turnStart ? end - s.turnStart : null,
+      ttftMs: s.turnFirstOutput && s.turnStart ? s.turnFirstOutput - s.turnStart : null,
+      tokensPerSecond: out && genMs > 250 ? Math.round((out / (genMs / 1000)) * 10) / 10 : null,
+      model: name(model), effort: name(effort),
+      stopReason: s.lastStopReason,
+    });
+  }
+
+  // ---------------------------------------------------------------- filesystem helpers (read-only, under $HOME)
+  #safePath(p, cwd = '') {
+    const expand = s => s.replace(/^~(?=$|\/)/, this.home);
+    const abs = p && cwd && !path.isAbsolute(expand(p)) ? path.resolve(expand(cwd), p) : path.resolve(p ? expand(p) : this.home);
+    const rel = path.relative(this.home, abs);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new RpcError(-32005, 'path outside home directory');
+    return abs;
+  }
+
+  /**
+   * A file attached on the phone: stored on the agent's host in ~/.leash/uploads/<sessionId>/ (helper.mjs upload), so
+   * the prompt can carry it as a `resource_link` the agent opens with its own tools — any type, any agent.
+   */
+  async upload({ sessionId, name, data }) {
+    if (typeof data !== 'string' || !data) throw new RpcError(-32602, 'data (base64) required');
+    const bytes = Buffer.byteLength(data, 'base64');
+    if (bytes > MAX_UPLOAD) throw new RpcError(-32007, `file too large (${(bytes / 1048576).toFixed(1)} MB; limit ${MAX_UPLOAD / 1048576} MB)`);
+    const r = await this.runHelper(['upload', sessionId || 'misc', String(name || 'file'), String(Buffer.from(data, 'base64').length)], 180000, this.helper ?? LOCAL_HELPER, data);
+    return { ...r, uri: 'file://' + r.path };
+  }
+
+  ownsSession(id) { return this.sessions.has(id) || this.knownCwds.has(id); }
+
+  async browse(p) {
+    if (this.helper) return this.runHelper(['browse', ...(p ? [p] : [])]);
+    const abs = this.#safePath(p);
+    const ents = await fs.readdir(abs, { withFileTypes: true });
+    const dirs = [], files = [];
+    for (const e of ents) {
+      if (e.name.startsWith('.')) continue;
+      if (e.isDirectory()) dirs.push(e.name); else if (e.isFile()) files.push(e.name);
+    }
+    dirs.sort((a, b) => a.localeCompare(b)); files.sort((a, b) => a.localeCompare(b));
+    let isGit = false;
+    try { await fs.access(path.join(abs, '.git')); isGit = true; } catch {}
+    return { path: abs, parent: abs === this.home ? null : path.dirname(abs), isGit, dirs, files: files.slice(0, 500) };
+  }
+
+  /** The folder a relative path in this conversation is taken from (markdown images and links like `out/a.png`). */
+  #cwdFor(sessionId) { return (sessionId && (this.sessions.get(sessionId)?.cwd || this.knownCwds.get(sessionId))) || ''; }
+
+  /**
+   * Read a file for the phone. Text mode (default) returns at most maxBytes of text; `mode: "base64"` returns the
+   * whole file as `data` (downloads, inline images, QuickLook) or fails with -32007 past the 32 MB cap.
+   */
+  async readFile(p, maxBytes = 512 * 1024, { mode = 'text', sessionId = null } = {}) {
+    const cwd = this.#cwdFor(sessionId);
+    if (mode === 'base64') return this.runHelper(['read', p, String(maxBytes ?? 0), 'base64', cwd], 120000, this.helper ?? LOCAL_HELPER);
+    if (this.helper) return this.runHelper(['read', p, String(maxBytes), 'text', cwd]);
+    const abs = this.#safePath(p, cwd);
+    const st = await fs.stat(abs);
+    if (!st.isFile()) throw new RpcError(-32006, 'not a file');
+    const fh = await fs.open(abs, 'r');
+    try {
+      const n = Math.min(st.size, Math.max(1, Math.min(maxBytes, 4 * 1024 * 1024)));
+      const buf = Buffer.alloc(n);
+      await fh.read(buf, 0, n, 0);
+      const binary = buf.subarray(0, 8000).includes(0);
+      return { path: abs, size: st.size, truncated: st.size > n, binary, text: binary ? null : buf.toString('utf8') };
+    } finally { await fh.close(); }
+  }
+}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Leash app icon (dark). A rope: hand loop, slack cord, free end bent into ">". Full-bleed; iOS applies the mask. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#151827"/><stop offset="1" stop-color="#07080D"/></linearGradient>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="253" x2="0" y2="771"><stop offset="0" stop-color="#B4B9FF"/><stop offset="1" stop-color="#8088FF"/></linearGradient>
+  </defs>
+  <rect id="background" width="1024" height="1024" fill="url(#bg)"/>
+  <g id="glyph" fill="none" stroke="url(#ink)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round">
+    <!-- hand loop -->
+    <circle cx="336" cy="631" r="104"/>
+    <!-- slack cord that ends as a terminal prompt chevron -->
+    <path d="M336 527 C486 527 526 731 616 641 L792 465 L616 289"/>
+  </g>
+</svg>
