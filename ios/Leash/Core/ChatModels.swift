@@ -548,10 +548,6 @@ final class ChatStore {
     var modelOption: ConfigOption? { configOptions.first { $0.category == "model" || $0.id == "model" } }
     var effortOption: ConfigOption? { configOptions.first { $0.category == "thought_level" || $0.id == "thought_level" } }
     var modeOption: ConfigOption? { configOptions.first { $0.category == "mode" || $0.id == "mode" } }
-    var otherOptions: [ConfigOption] {
-        configOptions.filter { o in ![modelOption?.id, effortOption?.id, modeOption?.id].contains(o.id) }
-    }
-
     /// Optimistically reflect a choice before the agent confirms it.
     func setLocalConfigValue(_ id: String, _ value: JSON) {
         configOptions = configOptions.map { o in o.id == id ? o.with(current: value) : o }

@@ -28,6 +28,10 @@ struct ChatView: View {
     @State private var showQuota = false
     @State private var showModelPicker = false
     @State private var showEffort = false
+    @State private var showFiles = false
+    /// "New Conversation Here" is waiting on the agent (session/new can take a while)
+    @State private var startingNew = false
+    @State private var newError: String?
     @AppStorage("turboConfirmed") private var turboConfirmed = false
     @AppStorage("bypassConfirmed") private var bypassConfirmed = false
     @FocusState private var composerFocused: Bool
@@ -122,6 +126,21 @@ struct ChatView: View {
         return base
             .toolbar { ToolbarItem(placement: .topBarTrailing) { moreMenu } }
             .sheet(item: fileSheet) { f in FileViewer(path: f.path, agent: store.agent, sessionId: store.sessionId) }
+            .sheet(isPresented: $showFiles) {
+                if let cwd = store.cwd { ProjectBrowser(root: cwd, agent: store.agent, sessionId: store.sessionId) }
+            }
+            .overlay {
+                if startingNew {
+                    HStack(spacing: 10) { ActivitySpinner(size: 18); Text("Starting…") }
+                        .padding(.horizontal, 18).padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
+                        .transition(.opacity.animation(Motion.quick))
+                }
+            }
+            .alert("Couldn't start a conversation", isPresented: Binding(get: { newError != nil }, set: { if !$0 { newError = nil } }),
+                   presenting: newError) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
             .sheet(isPresented: $showQuota) {
                 QuotaSheet()
                     .presentationDetents([.medium, .large])
@@ -447,7 +466,7 @@ struct ChatView: View {
         return .clear   // plain Liquid Glass, as the system's search field
     }
 
-    /// "+" menu (photos, files, side question, shell); in shell or side-question mode a button that leaves the mode.
+    /// "+" menu (photos, files, side question); in shell or side-question mode a button that leaves the mode.
     @ViewBuilder private var leadingButton: some View {
         if isBtw {
             Button { draft = String(draft.dropFirst(4)).trimmingCharacters(in: .whitespaces); Haptics.selection() } label: {
@@ -469,11 +488,10 @@ struct ChatView: View {
                     Button { showPhotoPicker = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                 }
                 Button { showFileImporter = true } label: { Label("Choose Files", systemImage: "folder") }
-                Divider()
                 if model.asksSideQuestions(store.agent) {
+                    Divider()
                     Button { draft = "/btw " + draft; composerFocused = true } label: { Label("Ask a side question", systemImage: "bubble.left.and.bubble.right") }
                 }
-                Button { draft = "!" + draft; composerFocused = true } label: { Label("Run shell command", systemImage: "terminal") }
             } label: {
                 Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(Theme.textSecondary).frame(width: 34, height: 34)
                     .contentTransition(.symbolEffect(.replace))
@@ -886,27 +904,42 @@ struct ChatView: View {
         }
     }
 
+    /// What acts on this conversation's folder; the context and quota live in the chips below.
     private var moreMenu: some View {
         Menu {
+            Button(action: startNewHere) { Label("New Conversation Here", systemImage: "square.and.pencil") }
+                .disabled(store.cwd == nil || startingNew || !model.isReady(store.agent))
+            Divider()
+            Button { showFiles = true } label: { Label("Browse Files", systemImage: "folder") }
+                .disabled(store.cwd == nil || !model.isConnected)
+            Button { draft = "!" + draft; composerFocused = true } label: { Label("Run Shell Command", systemImage: "terminal") }
+                .disabled(isShell || isBtw || !composerEnabled)
             if let cwd = store.cwd {
-                Button { UIPasteboard.general.string = cwd } label: { Label("Copy folder path", systemImage: "doc.on.doc") }
-            }
-            ForEach(store.otherOptions) { opt in
-                if opt.type == "boolean" {
-                    Button { model.setConfig(store, option: opt, value: .bool(!(opt.current.bool ?? false))) } label: {
-                        Label(opt.name, systemImage: opt.current.bool == true ? "checkmark.square" : "square")
-                    }
-                } else if !opt.choices.isEmpty {
-                    Picker(opt.name, selection: Binding(get: { opt.current.string ?? "" }, set: { model.setConfig(store, option: opt, value: .string($0)) })) {
-                        ForEach(opt.choices) { c in Text(c.name).tag(c.value) }
-                    }
-                }
-            }
-            if let u = store.usage, u.size > 0 {
-                Text("Context: \(compactNumber(u.used)) of \(compactNumber(u.size)) tokens")
+                Button { UIPasteboard.general.string = cwd; Haptics.selection() } label: { Label("Copy Folder Path", systemImage: "doc.on.doc") }
             }
         } label: {
             Image(systemName: "ellipsis")
+        }
+        .menuOrder(.fixed)
+    }
+
+    /// A fresh conversation in this folder, replacing this one on the stack (Back goes to the list).
+    private func startNewHere() {
+        guard let cwd = store.cwd, !startingNew else { return }
+        startingNew = true
+        let agent = store.agent, here = store.sessionId
+        Task {
+            do {
+                let id = try await model.newSession(cwd: cwd, agent: agent)
+                startingNew = false
+                Haptics.impact(.medium)
+                // only if the user is still here; a late answer must not pull them out of wherever they went
+                if model.visibleSessionId == here { openSession(id) }
+            } catch {
+                startingNew = false
+                newError = error.localizedDescription
+                Haptics.error()
+            }
         }
     }
 }
