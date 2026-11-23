@@ -31,17 +31,15 @@ export function normalizeQuota(status) {
   return { planTier: status.plan_tier ?? null, pools: list, fetchedAt: Date.now() };
 }
 
-/** Polls a function that returns normalized quota (e.g. the Claude host helper's "quota" command). */
+/**
+ * Quota from a function that returns it normalized (e.g. the Claude host helper's "quota" command). Fetched only
+ * when the phone asks (bridge/quota); nothing runs on a timer.
+ */
 export class FnQuotaPoller {
-  constructor({ fetch, intervalMs = 10 * 60 * 1000, log = () => {}, onUpdate = () => {} }) {
-    Object.assign(this, { fetch, intervalMs, log, onUpdate });
-    this.latest = null; this.error = null; this.inflight = null; this.timer = null;
+  constructor({ fetch, log = () => {}, onUpdate = () => {} }) {
+    Object.assign(this, { fetch, log, onUpdate });
+    this.latest = null; this.error = null; this.inflight = null;
   }
-  start(initialDelayMs = 8000) {
-    setTimeout(() => this.refresh().catch(() => {}), initialDelayMs).unref?.();
-    this.timer = setInterval(() => this.refresh().catch(() => {}), this.intervalMs); this.timer.unref?.();
-  }
-  stop() { clearInterval(this.timer); }
   refresh({ maxAgeMs = 0 } = {}) {
     if (this.latest && Date.now() - this.latest.fetchedAt < maxAgeMs) return Promise.resolve(this.latest);
     if (this.inflight) return this.inflight;
@@ -54,22 +52,15 @@ export class FnQuotaPoller {
   }
 }
 
+/** Antigravity quota via agy's statusLine. Run only when the phone asks (bridge/quota); nothing runs on a timer. */
 export class QuotaPoller {
-  constructor({ agentCommand, intervalMs = 10 * 60 * 1000, timeoutMs = 30000, workDir, log = () => {}, onUpdate = () => {}, usePty = true }) {
-    Object.assign(this, { agentCommand, intervalMs, timeoutMs, log, onUpdate, usePty });
+  constructor({ agentCommand, timeoutMs = 30000, workDir, log = () => {}, onUpdate = () => {}, usePty = true }) {
+    Object.assign(this, { agentCommand, timeoutMs, log, onUpdate, usePty });
     this.workDir = workDir ?? path.join(CONFIG_DIR, 'quota');
     this.latest = null;
     this.error = null;
     this.inflight = null;
-    this.timer = null;
   }
-
-  start(initialDelayMs = 5000) {
-    setTimeout(() => this.refresh().catch(() => {}), initialDelayMs).unref?.();
-    this.timer = setInterval(() => this.refresh().catch(() => {}), this.intervalMs);
-    this.timer.unref?.();
-  }
-  stop() { clearInterval(this.timer); }
 
   /** Refresh unless we have data younger than maxAgeMs. Concurrent callers share one run. */
   refresh({ maxAgeMs = 0 } = {}) {

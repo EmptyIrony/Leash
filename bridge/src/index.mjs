@@ -121,12 +121,11 @@ const hubs = agentDefs.map(a => {
     listPerCwd: a.listPerCwd ?? !!helper,
     idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, log });
   hub.on('attention', p => log(`[${a.id}] needs input: ${p.method} session=${p.sessionId}`));
-  // quota moves with every turn: refresh after a turn ends (at most every 2 min)
-  hub.on('turn_end', () => { hub.quota?.refresh({ maxAgeMs: 120000 }).catch(() => {}); });
+  // quota is read only when the phone asks for it (bridge/quota), never on a timer or after turns
   if (a.quota === 'statusline' && cfg.quota?.enabled !== false) {
-    hub.attachQuota(new QuotaPoller({ agentCommand: command, intervalMs: (cfg.quota?.intervalSec ?? 600) * 1000, log }));
+    hub.attachQuota(new QuotaPoller({ agentCommand: command, log }));
   } else if (a.quota === 'helper' && helper && cfg.quota?.enabled !== false) {
-    hub.attachQuota(new FnQuotaPoller({ fetch: () => hub.runHelper(['quota'], 60000), intervalMs: (cfg.quota?.intervalSec ?? 600) * 1000, log }));
+    hub.attachQuota(new FnQuotaPoller({ fetch: () => hub.runHelper(['quota'], 60000), log }));
   }
   return hub;
 });
@@ -163,9 +162,9 @@ await bindAll();
 if (server.servers.size === 0) { log('no listener could be started; exiting'); process.exit(1); }
 if (cfg.bind === 'auto') setInterval(bindAll, 30000).unref(); // pick up Tailscale coming up later
 
-for (const h of hubs) { h.startAgent(); h.quota?.start(); }
+for (const h of hubs) h.startAgent();
 if (process.stdout.isTTY) await printPairing();
 
-const shutdown = () => { log('shutting down'); router.stop(); for (const h of hubs) h.quota?.stop(); server.close(); setTimeout(() => process.exit(0), 500); };
+const shutdown = () => { log('shutting down'); router.stop(); server.close(); setTimeout(() => process.exit(0), 500); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

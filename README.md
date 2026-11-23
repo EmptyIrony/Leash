@@ -60,10 +60,11 @@ plaintext; "Decryption Failed" on the phone means the key in Bark does not match
 
 * **Conversations**: `agy acp --app-data-dir antigravity` — ACP over stdio, pointed at the desktop app's data dir so
   desktop conversations replay their full history (plain `agy acp` only replays CLI-made ones).
-* **Quota (5-hour / weekly)**: every 10 min (and when the app asks) the bridge starts a hidden `agy` TUI under `script`
-  with a session-only `--settings '{"statusLine":…}'`; agy pipes its status JSON (incl. `quota`) to a sink script,
-  the bridge keeps the quota part (never the email) and kills the TUI. No prompt is sent. Disable with
-  `"quota": {"enabled": false}` in `~/.leash/config.json` (`intervalSec` sets the period).
+* **Quota (5-hour / weekly)**: only when the app asks (`bridge/quota`: on connect, back in the foreground, opening a chat, the quota sheet's refresh;
+  answers younger than 2 min are reused) the bridge starts a hidden `agy` TUI under `script` with a session-only
+  `--settings '{"statusLine":…}'`; agy pipes its status JSON (incl. `quota`) to a sink script, the bridge keeps the
+  quota part (never the email) and kills the TUI. No prompt is sent, and nothing is fetched on a timer or after turns.
+  Disable with `"quota": {"enabled": false}` in `~/.leash/config.json`.
 * **Turbo**: bridge-side per-conversation auto-approval of permission prompts (+ agy's `auto` mode).
 * agy's tool calls use `name`/`args` instead of ACP's `title`/`rawInput`; the bridge normalizes them.
 * **Inline widgets (generative UI)**: agy writes an HTML file into `~/.gemini/antigravity/brain/<id>/` and puts
