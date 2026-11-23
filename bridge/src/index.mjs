@@ -117,6 +117,8 @@ const hubs = agentDefs.map(a => {
   const locks = a.lock === false ? false : isAgy ? agyLocks({ ownPids: () => [hub.agent?.child?.pid] }) : undefined;
   const hub = new Hub({ id: a.id, label: a.label ?? a.id, agentCommand: command, agentArgs: a.args ?? [], agentCwd: a.cwd || os.homedir(),
     home: a.home || os.homedir(), sessionMeta: a.sessionMeta ?? null, helper, maxListed: a.maxListed ?? 0,
+    // Claude Code (reached through a helper) drops photo-first sessions from an unscoped list; see Hub.listSessions
+    listPerCwd: a.listPerCwd ?? !!helper,
     idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, log });
   hub.on('attention', p => log(`[${a.id}] needs input: ${p.method} session=${p.sessionId}`));
   // quota moves with every turn: refresh after a turn ends (at most every 2 min)

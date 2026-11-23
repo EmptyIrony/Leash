@@ -142,9 +142,9 @@ function guessKind(name) {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000 }) {
+  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000 }) {
     super();
-    Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, idleCloseMs, locksMaxAgeMs });
+    Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, listPerCwd, idleCloseMs, locksMaxAgeMs });
     // "Open elsewhere" lock: a function resolving {now, held, touched} (see remote/helper.mjs locks).
     // Default: on for hubs with a remote helper (Claude Code); false turns it off.
     this.locksFn = locks === false ? null : typeof locks === 'function' ? locks : (helper ? () => this.runHelper(['locks'], 10000) : null);
@@ -611,10 +611,12 @@ export class Hub extends EventEmitter {
   }
 
   async listSessions(params) {
-    const [r, lk] = await Promise.all([this.requireAgent().call('session/list', params), this.foreignLocks({ maxAgeMs: 10000 })]);
+    const agent = this.requireAgent();
+    const [r, lk] = await Promise.all([agent.call('session/list', params), this.foreignLocks({ maxAgeMs: 10000 })]);
     const heldBy = new Map((lk?.held ?? []).map(h => [h.sessionId, h]));
-    for (const it of r?.sessions ?? []) if (it.sessionId && it.cwd) this.knownCwds.set(it.sessionId, it.cwd);
     let list = r?.sessions ?? [];
+    if (this.listPerCwd && params?.cwd == null && params?.cursor == null) list = await this.#withScopedLists(agent, list);
+    for (const it of list) if (it.sessionId && it.cwd) this.knownCwds.set(it.sessionId, it.cwd);
     if (this.maxListed && list.length > this.maxListed) {
       list = [...list].sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? ''))).slice(0, this.maxListed);
     }
@@ -626,6 +628,29 @@ export class Hub extends EventEmitter {
         return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length } };
       }),
     };
+  }
+
+  /**
+   * Claude Code's SDK looks for a session's cwd only in the first 64 KB of its transcript, so a session whose first
+   * prompt carries a photo (inline base64, ~600 KB) has none there and an unscoped list leaves it out; a list scoped
+   * to a directory falls back to that directory. Ask each directory we know of once and add what the full list missed.
+   */
+  async #withScopedLists(agent, list) {
+    try {
+      const seen = new Set(list.map(s => s.sessionId));
+      const cwds = new Set(list.map(s => s.cwd));
+      for (const c of this.knownCwds.values()) cwds.add(c);
+      for (const s of this.sessions.values()) cwds.add(s.cwd);
+      cwds.delete(null); cwds.delete(undefined); cwds.delete('');
+      const pages = await Promise.all([...cwds].map(cwd => agent.call('session/list', { cwd }).catch(() => null)));
+      const extra = [];
+      for (const p of pages) for (const it of p?.sessions ?? []) if (it.sessionId && !seen.has(it.sessionId)) { seen.add(it.sessionId); extra.push(it); }
+      if (extra.length) this.log(`session/list: ${extra.length} session(s) found only in a per-directory list`);
+      return extra.length ? [...list, ...extra] : list;
+    } catch (e) {
+      this.log('per-directory session/list failed: ' + e.message);
+      return list;
+    }
   }
 
   #subscribe(client, s) { s.subscribers.add(client); client.subs.add(s.sessionId); }

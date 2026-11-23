@@ -20,6 +20,7 @@ const busy = new Set();
 const steered = new Map(); // sessionId -> [text]
 
 // a pre-existing "desktop" conversation
+sessions.set('photo-1', { cwd: '/tmp/proj', title: 'Copy selection', cwdPastHead: true, updatedAt: '2026-11-23T01:00:00Z', history: [] });
 sessions.set('old-1', { cwd: '/tmp/proj', title: 'Old chat', history: [
   { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hello from the desktop' } },
   { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'Hi! ' } },
@@ -40,7 +41,10 @@ async function handle(m) {
       return r({ outcome: 'injected' });
     }
     case 'session/new': { const id = 's' + (++n); sessions.set(id, { cwd: p.cwd, history: [] }); return r({ sessionId: id, configOptions: configOptions() }); }
-    case 'session/list': return r({ sessions: [...sessions].map(([id, s]) => ({ sessionId: id, cwd: s.cwd, title: s.title ?? null, updatedAt: '2026-11-23T00:00:00Z' })) });
+    // like Claude Code's SDK: a session whose cwd sits past the head of its transcript (first prompt with a photo)
+    // is left out of an unscoped list, but a list scoped to its directory finds it
+    case 'session/list': return r({ sessions: [...sessions].filter(([, s]) => p.cwd == null ? !s.cwdPastHead : s.cwd === p.cwd)
+      .map(([id, s]) => ({ sessionId: id, cwd: s.cwd, title: s.title ?? null, updatedAt: s.updatedAt ?? '2026-11-23T00:00:00Z' })) });
     case 'session/load': {
       const s = sessions.get(p.sessionId); if (!s) return e(-32602, 'no such session');
       const hist = s.history.slice(); s.history = [];

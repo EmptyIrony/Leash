@@ -749,3 +749,23 @@ test('helper upload over an ssh-like transport: base64 on stdin, byte count chec
   assert.equal(Buffer.from(back.data, 'base64').length, data.length);
   h.stop();
 });
+
+test('listPerCwd adds sessions only a per-directory list finds (photo-first Claude sessions)', async () => {
+  for (const listPerCwd of [false, true]) {
+    const t = await setup({ listPerCwd });
+    const c = new Client(t.port);
+    try {
+      await c.opened;
+      const list = await c.call('session/list', {});
+      assert.ok(list.sessions.some(s => s.sessionId === 'old-1'));
+      assert.equal(list.sessions.some(s => s.sessionId === 'photo-1'), listPerCwd);
+      if (listPerCwd) {
+        assert.equal(list.sessions.filter(s => s.sessionId === 'old-1').length, 1, 'no duplicates');
+        assert.equal(list.sessions.find(s => s.sessionId === 'photo-1')._leash.agent, 'agy');
+        // a scoped request is passed through as is
+        const scoped = await c.call('session/list', { cwd: '/tmp/proj' });
+        assert.ok(scoped.sessions.some(s => s.sessionId === 'photo-1'));
+      }
+    } finally { c.close(); t.done(); }
+  }
+});
