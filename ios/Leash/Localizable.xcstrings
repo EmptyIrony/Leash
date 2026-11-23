@@ -1,6 +1,56 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Manual" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动"
+          }
+        }
+      }
+    },
+    "Don't ask" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不询问"
+          }
+        }
+      }
+    },
+    "Turn on Bypass permissions?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启跳过权限确认？"
+          }
+        }
+      }
+    },
+    "Bypass permissions — never ask" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过权限确认 — 从不询问"
+          }
+        }
+      }
+    },
+    "Claude Code will run every command and edit in this conversation without asking you first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个对话里 Claude Code 会直接执行所有命令和编辑，不再先问你。"
+          }
+        }
+      }
+    },
     " · %lld failed" : {
       "localizations" : {
         "zh-Hans" : {

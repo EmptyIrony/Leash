@@ -14,6 +14,10 @@ struct AgentInfo: Identifiable, Hashable {
     var imageInput: Bool
     /// Mid-turn messages are injected into the running turn (Claude Code); otherwise the bridge queues them.
     var steering = false
+    /// Antigravity's "Turbo": the bridge approves every permission prompt. Claude Code has its own modes for that.
+    var turbo = false
+    /// /btw side questions (Claude Code: a throwaway fork on its host).
+    var btw = false
     var isReady: Bool { state == "ready" }
 }
 
@@ -96,6 +100,8 @@ final class AppModel {
     func agent(_ id: String) -> AgentInfo? { agents.first { $0.id == id } }
     func isReady(_ agentId: String) -> Bool { isConnected && (agent(agentId)?.isReady ?? (agentId == "agy" && agentState == "ready")) }
     func steers(_ agentId: String) -> Bool { agent(agentId)?.steering ?? false }
+    func hasTurbo(_ agentId: String) -> Bool { agent(agentId)?.turbo ?? false }
+    func asksSideQuestions(_ agentId: String) -> Bool { agent(agentId)?.btw ?? false }
     func agentLabel(_ id: String) -> String { agent(id)?.label ?? (id == "claude" ? "Claude Code" : "Antigravity") }
 
     init() {
@@ -187,6 +193,8 @@ final class AppModel {
                     agents[i].imageInput = info["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false
                 }
                 agents[i].steering = m["steering"]?.bool ?? false
+                agents[i].turbo = m["turbo"]?.bool ?? false
+                agents[i].btw = m["btw"]?.bool ?? false
             }
             if m["agentId"]?.string == nil || m["agentId"]?.string == "agy" { applyAgent(m) }
             if agentState == "ready" {
@@ -265,7 +273,9 @@ final class AppModel {
                          home: a["home"]?.string,
                          name: info?["agentInfo"]?["title"]?.string ?? info?["agentInfo"]?["name"]?.string,
                          imageInput: info?["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false,
-                         steering: a["steering"]?.bool ?? false)
+                         steering: a["steering"]?.bool ?? false,
+                         turbo: a["turbo"]?.bool ?? false,
+                         btw: a["btw"]?.bool ?? false)
     }
 
     private func applyAgent(_ a: JSON?) {
@@ -608,9 +618,10 @@ final class AppModel {
         }
     }
 
-    /// Pick an agy mode, or "turbo": agy's auto mode plus bridge-side auto-approval of every permission prompt.
+    /// Pick one of the agent's own modes, or (Antigravity only) "turbo": agy's auto mode plus bridge-side
+    /// auto-approval of every permission prompt.
     func choose(mode: String, for s: ChatStore) {
-        let turbo = mode == "turbo"
+        let turbo = mode == "turbo" && hasTurbo(s.agent)
         if turbo != s.autoApprove {
             s.autoApprove = turbo
             Task { _ = try? await link.call("bridge/setAutoApprove", ["sessionId": .string(s.sessionId), "enabled": .bool(turbo), "agent": .string(s.agent)]) }
@@ -621,7 +632,7 @@ final class AppModel {
         } else if s.currentMode != target, s.modes.contains(where: { $0.id == target }) {
             setMode(s, mode: target)
         }
-        if turbo { Haptics.impact(.heavy) } else { Haptics.selection() }
+        if turbo || ModeNames.approvesAll(mode) { Haptics.impact(.heavy) } else { Haptics.selection() }
     }
 
     func setMode(_ s: ChatStore, mode: String) {

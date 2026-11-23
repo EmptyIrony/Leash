@@ -21,13 +21,15 @@ struct ChatView: View {
     @State private var lastAtEnd = true
     @State private var showPhotoPicker = false
     @State private var fileToOpen: String?
-    @State private var confirmTurbo = false
+    /// An approve-everything mode (agy's Turbo, Claude Code's Bypass permissions) waiting for its one-time confirmation.
+    @State private var confirmMode: String?
     @State private var sendTick = 0
     @State private var stopTick = 0
     @State private var showQuota = false
     @State private var showModelPicker = false
     @State private var showEffort = false
     @AppStorage("turboConfirmed") private var turboConfirmed = false
+    @AppStorage("bypassConfirmed") private var bypassConfirmed = false
     @FocusState private var composerFocused: Bool
     @Namespace private var glassNS
     @Namespace private var quotaNS
@@ -124,16 +126,32 @@ struct ChatView: View {
                     .navigationTransition(.zoom(sourceID: "quota", in: quotaNS))
             }
             .embedFullscreenHost()
-            .confirmationDialog("Turn on Turbo?", isPresented: $confirmTurbo, titleVisibility: .visible) {
-                Button("Turbo — approve everything", role: .destructive) { enableTurbo() }
-            } message: {
-                Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
+            .confirmationDialog(confirmMode == "bypassPermissions" ? Text("Turn on Bypass permissions?") : Text("Turn on Turbo?"),
+                                isPresented: Binding(get: { confirmMode != nil }, set: { if !$0 { confirmMode = nil } }),
+                                titleVisibility: .visible, presenting: confirmMode) { mode in
+                if mode == "bypassPermissions" {
+                    Button("Bypass permissions — never ask", role: .destructive) { enableApproveAll(mode) }
+                } else {
+                    Button("Turbo — approve everything", role: .destructive) { enableApproveAll(mode) }
+                }
+            } message: { mode in
+                if mode == "bypassPermissions" {
+                    Text("Claude Code will run every command and edit in this conversation without asking you first.")
+                } else {
+                    Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
+                }
             }
     }
 
-    private func enableTurbo() {
-        turboConfirmed = true
-        model.choose(mode: "turbo", for: store)
+    private func enableApproveAll(_ mode: String) {
+        if mode == "bypassPermissions" { bypassConfirmed = true } else { turboConfirmed = true }
+        confirmMode = nil
+        model.choose(mode: mode, for: store)
+    }
+
+    private func pickMode(_ v: String) {
+        let confirmed = v == "bypassPermissions" ? bypassConfirmed : turboConfirmed
+        if ModeNames.approvesAll(v) && !confirmed { confirmMode = v } else { model.choose(mode: v, for: store) }
     }
 
     private func lifecycle<V: View>(_ content: V) -> some View {
@@ -384,7 +402,10 @@ struct ChatView: View {
                     .textInputAutocapitalization(isShell ? .never : .sentences)
                     .keyboardType(isShell ? .asciiCapable : .default)
                     .focused($composerFocused)
-                    .padding(.vertical, 7)
+                    // one line is exactly as tall as the 34 pt buttons, so the row is centred; more lines grow upward
+                    // with the buttons staying on the last line (the HStack is bottom-aligned)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 34)
                     .disabled(!composerEnabled)
                     .onKeyPress(.return, phases: .down) { press in
                         if press.modifiers.contains(.command) { send(); return .handled }
@@ -751,17 +772,19 @@ struct ChatView: View {
 
     @ViewBuilder private var modeChip: some View {
         let modeChoices: [ConfigChoice] = store.modeOption?.choices ?? store.modes.map { ConfigChoice(value: $0.id, name: $0.name, description: nil, group: nil) }
-        let current = store.autoApprove ? "turbo" : (store.modeOption?.current.string ?? store.currentMode ?? "default")
-        let chipTint: Color = store.autoApprove ? Theme.turbo : (current == "plan" ? Theme.running : Theme.textPrimary)
-        let glass: Glass = store.autoApprove ? Glass.regular.tint(Theme.turbo.opacity(0.45)).interactive() : Glass.regular.interactive()
-        let chipText: String = ModeNames.name(current, fallback: modeChoices.first { $0.value == current }?.name ?? String(localized: "Mode"))
+        let agent = store.agent
+        let turbo = model.hasTurbo(agent)
+        let current = store.autoApprove && turbo ? "turbo" : (store.modeOption?.current.string ?? store.currentMode ?? "default")
+        let approveAll = ModeNames.approvesAll(current)
+        let chipTint: Color = approveAll ? Theme.turbo : (current == "plan" ? Theme.running : Theme.textPrimary)
+        let glass: Glass = approveAll ? Glass.regular.tint(Theme.turbo.opacity(0.45)).interactive() : Glass.regular.interactive()
+        let chipText: String = ModeNames.name(current, agent: agent, fallback: modeChoices.first { $0.value == current }?.name ?? String(localized: "Mode"))
         if !modeChoices.isEmpty {
             Menu {
-                Picker("Mode", selection: Binding(get: { current }, set: { v in
-                    if v == "turbo" && !turboConfirmed { confirmTurbo = true } else { model.choose(mode: v, for: store) }
-                })) {
-                    ForEach(modeChoices) { c in Label(ModeNames.name(c.value, fallback: c.name), systemImage: modeIcon(c.value)).tag(c.value) }
-                    Label("Turbo · approve all", systemImage: "bolt.fill").tag("turbo")
+                Picker("Mode", selection: Binding(get: { current }, set: { pickMode($0) })) {
+                    ForEach(modeChoices) { c in Label(ModeNames.name(c.value, agent: agent, fallback: c.name), systemImage: modeIcon(c.value)).tag(c.value) }
+                    // Antigravity only: Claude Code's own list already has Bypass permissions
+                    if turbo { Label("Turbo · approve all", systemImage: "bolt.fill").tag("turbo") }
                 }
             } label: {
                 ChipLabel(icon: modeIcon(current), text: chipText)
@@ -786,6 +809,7 @@ struct ChatView: View {
         switch v {
         case "accept-edits", "acceptEdits": return "pencil.line"
         case "bypassPermissions": return "exclamationmark.shield"
+        case "dontAsk": return "hand.raised.slash"
         case "auto": return "wand.and.sparkles"
         case "plan": return "list.bullet.clipboard"
         case "turbo": return "bolt.fill"
@@ -854,19 +878,34 @@ struct AnswerView: View {
     }
 }
 
-/// Localized names for agy's mode / effort ids (agy sends English names).
+/// Each CLI's own names for its permission modes, localized (both agents send English names).
 enum ModeNames {
-    static func name(_ id: String, fallback: String) -> String {
+    static func name(_ id: String, agent: String, fallback: String) -> String {
+        if agent == "claude" {
+            // Claude Code (claude-agent-acp): default = "Manual", the CLI's --permission-mode manual
+            switch id {
+            case "default": return String(localized: "Manual")
+            case "acceptEdits": return String(localized: "Accept edits")
+            case "plan": return String(localized: "Plan")
+            case "auto": return String(localized: "Auto")
+            case "dontAsk": return String(localized: "Don't ask")
+            case "bypassPermissions": return String(localized: "Bypass permissions")
+            default: return fallback
+            }
+        }
+        // Antigravity (agy acp), plus Leash's bridge-side "turbo"
         switch id {
         case "default": return String(localized: "Default")
-        case "accept-edits", "acceptEdits": return String(localized: "Accept edits")
-        case "bypassPermissions": return String(localized: "Bypass permissions")
+        case "accept-edits": return String(localized: "Accept edits")
         case "auto": return String(localized: "Auto")
         case "plan": return String(localized: "Plan")
         case "turbo": return String(localized: "Turbo")
         default: return fallback
         }
     }
+
+    /// Modes that run everything without asking: agy's Turbo, Claude Code's Bypass permissions.
+    static func approvesAll(_ id: String) -> Bool { id == "turbo" || id == "bypassPermissions" }
 }
 
 enum EffortNames {
