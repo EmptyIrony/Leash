@@ -842,7 +842,7 @@ struct AnswerView: View {
             if !item.images.isEmpty || !item.files.isEmpty { MessageAttachments(images: item.images, files: item.files) }
         }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .contextMenu { Button { UIPasteboard.general.string = item.text } label: { Label("Copy", systemImage: "doc.on.doc") } }
+            .messageMenu(item.text, markdown: true)
     }
 }
 

@@ -123,7 +123,7 @@ struct UserBubble: View {
                     .foregroundStyle(Theme.textPrimary)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Theme.accent.opacity(0.16), in: Self.bubble)
-                    .contextMenu { Button { UIPasteboard.general.string = t } label: { Label("Copy", systemImage: "doc.on.doc") } }
+                    .messageMenu(t)
             }
         case .shellInput(let cmd):
             HStack {
@@ -245,7 +245,7 @@ struct MessageView: View {
         case .agent:
             MarkdownView(text: item.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contextMenu { Button { UIPasteboard.general.string = item.text } label: { Label("Copy", systemImage: "doc.on.doc") } }
+                .messageMenu(item.text, markdown: true)
         case .thought:
             DisclosureGroup(isExpanded: $thoughtsOpen) {
                 Text(item.text).font(.footnote).foregroundStyle(.secondary).textSelection(.enabled)
