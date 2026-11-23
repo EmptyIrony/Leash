@@ -6,9 +6,59 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA000000000000000000010C /* LeashLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000101 /* LeashLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA000000000000000000020C /* LeashWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000201 /* LeashWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AA000000000000000000010A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000009 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000106;
+			remoteInfo = LeashLiveActivity;
+		};
+		AA000000000000000000020A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000009 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000206;
+			remoteInfo = LeashWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA000000000000000000010D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA000000000000000000010C /* LeashLiveActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA000000000000000000020D /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				AA000000000000000000020C /* LeashWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		AA0000000000000000000001 /* Leash.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Leash.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA000000000000000000010E /* LiveActivity-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "LiveActivity-Info.plist"; sourceTree = "<group>"; };
+		AA0000000000000000000101 /* LeashLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LeashLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000201 /* LeashWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LeashWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -17,10 +67,44 @@
 			path = Leash;
 			sourceTree = "<group>";
 		};
+		AA0000000000000000000102 /* LeashLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LeashLiveActivity;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000202 /* LeashWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = LeashWatch;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000301 /* SharedActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SharedActivity;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000302 /* SharedWatch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SharedWatch;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		AA0000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000104 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000204 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -34,6 +118,10 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000002 /* Leash */,
+				AA0000000000000000000301 /* SharedActivity */,
+				AA0000000000000000000302 /* SharedWatch */,
+				AA0000000000000000000102 /* LeashLiveActivity */,
+				AA0000000000000000000202 /* LeashWatch */,
 				AA0000000000000000000010 /* Config */,
 				AA0000000000000000000005 /* Products */,
 			);
@@ -43,6 +131,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000001 /* Leash.app */,
+				AA0000000000000000000101 /* LeashLiveActivity.appex */,
+				AA0000000000000000000201 /* LeashWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -51,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000011 /* Info.plist */,
+				AA000000000000000000010E /* LiveActivity-Info.plist */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -65,19 +156,71 @@
 				AA0000000000000000000007 /* Sources */,
 				AA0000000000000000000003 /* Frameworks */,
 				AA0000000000000000000008 /* Resources */,
+				AA000000000000000000010D /* Embed Foundation Extensions */,
+				AA000000000000000000020D /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AA000000000000000000010B /* PBXTargetDependency */,
+				AA000000000000000000020B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000002 /* Leash */,
+				AA0000000000000000000301 /* SharedActivity */,
+				AA0000000000000000000302 /* SharedWatch */,
 			);
 			name = Leash;
 			packageProductDependencies = (
 			);
 			productName = Leash;
 			productReference = AA0000000000000000000001 /* Leash.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AA0000000000000000000106 /* LeashLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000107 /* Build configuration list for PBXNativeTarget "LeashLiveActivity" */;
+			buildPhases = (
+				AA0000000000000000000103 /* Sources */,
+				AA0000000000000000000104 /* Frameworks */,
+				AA0000000000000000000105 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000102 /* LeashLiveActivity */,
+				AA0000000000000000000301 /* SharedActivity */,
+			);
+			name = LeashLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = LeashLiveActivity;
+			productReference = AA0000000000000000000101 /* LeashLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AA0000000000000000000206 /* LeashWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000207 /* Build configuration list for PBXNativeTarget "LeashWatch" */;
+			buildPhases = (
+				AA0000000000000000000203 /* Sources */,
+				AA0000000000000000000204 /* Frameworks */,
+				AA0000000000000000000205 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000202 /* LeashWatch */,
+				AA0000000000000000000302 /* SharedWatch */,
+			);
+			name = LeashWatch;
+			packageProductDependencies = (
+			);
+			productName = LeashWatch;
+			productReference = AA0000000000000000000201 /* LeashWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -91,6 +234,12 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					AA0000000000000000000006 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					AA0000000000000000000106 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					AA0000000000000000000206 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -111,12 +260,28 @@
 			projectRoot = "";
 			targets = (
 				AA0000000000000000000006 /* Leash */,
+				AA0000000000000000000106 /* LeashLiveActivity */,
+				AA0000000000000000000206 /* LeashWatch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		AA0000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000105 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000205 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -133,7 +298,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000103 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000203 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA000000000000000000010B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000106 /* LeashLiveActivity */;
+			targetProxy = AA000000000000000000010A /* PBXContainerItemProxy */;
+		};
+		AA000000000000000000020B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000206 /* LeashWatch */;
+			targetProxy = AA000000000000000000020A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		AA000000000000000000000C /* Debug */ = {
@@ -157,6 +349,7 @@
 				CLANG_WARN_INT_CONVERSION = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -175,12 +368,15 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LEASH_BUNDLE_ID = dev.leash.personal;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 0.2.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -205,6 +401,7 @@
 				CLANG_WARN_INT_CONVERSION = YES;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -217,11 +414,14 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LEASH_BUNDLE_ID = dev.leash.personal;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 0.2.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -230,11 +430,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 32BCF8AX3M;
+				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
@@ -252,11 +448,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "64e5c6e5-036a-437b-a0ec-d7cf42c30c90";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "dump-15754517-a5cc-48f4-bc6e-4a06b978319b";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -270,11 +463,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 32BCF8AX3M;
+				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
@@ -292,16 +481,115 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "64e5c6e5-036a-437b-a0ec-d7cf42c30c90";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "dump-15754517-a5cc-48f4-bc6e-4a06b978319b";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA0000000000000000000108 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/LiveActivity-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Leash;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID).LiveActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000109 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/LiveActivity-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Leash;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID).LiveActivity";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA0000000000000000000208 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Leash;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(LEASH_BUNDLE_ID)";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000209 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Leash;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = "$(LEASH_BUNDLE_ID)";
+				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(LEASH_BUNDLE_ID).watchkitapp";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
 			};
 			name = Release;
 		};
@@ -322,6 +610,24 @@
 			buildConfigurations = (
 				AA000000000000000000000E /* Debug */,
 				AA000000000000000000000F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000107 /* Build configuration list for PBXNativeTarget "LeashLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000108 /* Debug */,
+				AA0000000000000000000109 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000207 /* Build configuration list for PBXNativeTarget "LeashWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000208 /* Debug */,
+				AA0000000000000000000209 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
