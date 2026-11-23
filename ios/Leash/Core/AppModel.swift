@@ -376,10 +376,15 @@ final class AppModel {
             if let c = s.cwd { params["cwd"] = .string(c) }
             let r = try await link.call("bridge/attach", .object(params), timeout: 120)
             let events = r["events"]?.array ?? []
-            if r["reset"]?.bool == true {
-                s.reset(events: events)
-            } else {
-                for e in events { s.ingest(seq: e["seq"]?.int ?? 0, update: e["update"] ?? .null) }   // catch-up: not live
+            // a replay or catch-up lands in one frame: implicit animations (live step list, rows) stay out of it
+            var replay = Transaction()
+            replay.disablesAnimations = true
+            withTransaction(replay) {
+                if r["reset"]?.bool == true {
+                    s.reset(events: events)
+                } else {
+                    for e in events { s.ingest(seq: e["seq"]?.int ?? 0, update: e["update"] ?? .null) }   // catch-up: not live
+                }
             }
             s.epoch = r["epoch"]?.string
             s.lastSeq = r["lastSeq"]?.int ?? s.lastSeq

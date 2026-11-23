@@ -43,7 +43,7 @@ struct ActivityRow: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 1))
             .overlay(alignment: .topTrailing) {
                 if !checklist.isEmpty {
                     Button { withAnimation(Motion.disclose) { showChecklist.toggle() } } label: {
@@ -56,7 +56,7 @@ struct ActivityRow: View {
                         }
                         .padding(.vertical, 2)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                 }
             }
 
@@ -81,31 +81,66 @@ struct ActivityRow: View {
     @ViewBuilder private var leadingGlyph: some View {
         if blocked { Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention).font(.footnote).symbolEffect(.pulse, options: .repeating).transition(Motion.pop) }
         // one moving signal per row: the shimmering header (a spinner instead when Reduce Motion is on)
-        else if group.live {
-            if reduceMotion { ActivitySpinner(size: 14).transition(Motion.pop) }
-            else { Image(systemName: "sparkle").font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent).transition(Motion.pop) }
+        else if group.live && reduceMotion { ActivitySpinner(size: 14).transition(Motion.pop) }
+        // one Image for live and done, so the sparkle morphs into the end-state symbol in place
+        else {
+            Image(systemName: glyphName)
+                .font(glyphFont)
+                .foregroundStyle(glyphColor)
+                .contentTransition(glyphSwap)
+                .transition(Motion.pop)
         }
-        else if group.failedCount > 0 { Image(systemName: "exclamationmark.circle").foregroundStyle(Theme.attention).font(.footnote) }
-        else if group.stats?.stopReason == "cancelled" { Image(systemName: "stop.circle").foregroundStyle(Theme.textTertiary).font(.footnote) }
-        else { Image(systemName: "checkmark.circle").foregroundStyle(Theme.textTertiary).font(.footnote) }
     }
 
-    @ViewBuilder private var headerText: some View {
-        if group.live {
-            Group {
-                if let start = turnStartedAt {
-                    TimelineView(.periodic(from: .now, by: 1)) { tl in
-                        let secs = tl.date.timeIntervalSince(start).rounded()
-                        Text("Working · \(durationText(secs))").monospacedDigit()
-                            .contentTransition(.numericText(countsDown: false))
-                            .animation(Motion.quick, value: secs)
-                    }
-                } else {
-                    Text("Working")
-                }
+    private var glyphName: String {
+        if group.live { return "sparkle" }
+        if group.failedCount > 0 { return "exclamationmark.circle" }
+        if group.stats?.stopReason == "cancelled" { return "stop.circle" }
+        return "checkmark.circle"
+    }
+
+    private var glyphColor: Color {
+        if group.live { return Theme.accent }
+        return group.failedCount > 0 ? Theme.attention : Theme.textTertiary
+    }
+
+    private var glyphFont: Font { group.live ? .footnote.weight(.semibold) : .footnote }
+
+    private var glyphSwap: ContentTransition { reduceMotion ? .opacity : .symbolEffect(.replace) }
+
+    /// Working → done is one calm swap: the live line blurs away, then the summary resolves in a beat later.
+    private var doneTransition: AnyTransition {
+        .asymmetric(insertion: Motion.swap.animation(Motion.quick.delay(0.12)), removal: Motion.swap)
+    }
+
+    private var headerText: some View {
+        ZStack(alignment: .leading) {
+            if group.live {
+                workingText.transition(Motion.swap)
+            } else {
+                doneText.transition(doneTransition)
             }
-            .shimmer(!blocked)
-        } else if let ms = group.stats?.durationMs {
+        }
+    }
+
+    private var workingText: some View {
+        Group {
+            if let start = turnStartedAt {
+                TimelineView(.periodic(from: .now, by: 1)) { tl in
+                    let secs = tl.date.timeIntervalSince(start).rounded()
+                    Text("Working · \(durationText(secs))").monospacedDigit()
+                        .contentTransition(.numericText(countsDown: false))
+                        .animation(Motion.quick, value: secs)
+                }
+            } else {
+                Text("Working")
+            }
+        }
+        .shimmer(!blocked)
+    }
+
+    @ViewBuilder private var doneText: some View {
+        if let ms = group.stats?.durationMs {
             Text("Worked for \(durationText(Double(ms) / 1000))") + (group.failedCount > 0 ? Text(" · \(group.failedCount) failed") : Text(verbatim: ""))
         } else {
             if group.visibleTools.count == 1 { Text("1 step") } else { Text("\(group.visibleTools.count) steps") }
@@ -132,14 +167,17 @@ struct ActivityRow: View {
         HStack(alignment: .top, spacing: 0) {
             Rectangle().fill(Theme.hairline).frame(width: 1.5).padding(.leading, 9).padding(.vertical, 4)
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(head) { r in StepRow(row: r, store: store, openFile: openFile) }
+                ForEach(head) { r in StepRow(row: r, store: store, openFile: openFile).transition(Motion.reveal) }
                 if collapsed {
                     Button("Show \(all.count - 13) earlier steps") { withAnimation(Motion.disclose) { showAllSteps = true } }
                         .font(.footnote).padding(.vertical, 6).padding(.leading, 12)
-                    ForEach(tail) { r in StepRow(row: r, store: store, openFile: openFile) }
+                    ForEach(tail) { r in StepRow(row: r, store: store, openFile: openFile).transition(Motion.reveal) }
                 }
             }
         }
+        // only a live turn's new steps rise in (the rail grows with them); a finished turn never animates here, and
+        // the >30 head/tail split stays instant so crossing it doesn't fade every row out and back in
+        .animation(group.live && !collapsed ? Motion.layout : nil, value: all.count)
     }
 }
 
@@ -198,7 +236,8 @@ struct StepRow: View {
                 .frame(minHeight: 28)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            // an open step's title is a tall text block: opacity only then
+            .buttonStyle(.pressable(scale: open ? 1 : 0.98))
             if open { detail.padding(.leading, 24).padding(.bottom, 4).transition(Motion.reveal) }
         }
         .padding(.leading, 6)
@@ -252,7 +291,7 @@ struct StepRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(ts) { t in
                     let p = t.locations.first ?? t.commandPreview ?? t.title
-                    Button { openFile(p) } label: { Text(p).font(Theme.monoSmall).lineLimit(1).truncationMode(.head) }.buttonStyle(.plain)
+                    Button { openFile(p) } label: { Text(p).font(Theme.monoSmall).lineLimit(1).truncationMode(.head) }.buttonStyle(.pressable(scale: 1))
                         .foregroundStyle(Theme.accent)
                 }
             }
@@ -266,7 +305,7 @@ struct StepRow: View {
                 if t.content.isEmpty, let out = t.rawOutput, !out.pretty.isEmpty { CodeText(text: out.pretty, maxLines: 12) }
                 ForEach(t.locations.prefix(3), id: \.self) { loc in
                     Button { openFile(loc) } label: { Label(loc, systemImage: "doc").font(.caption2).lineLimit(1).truncationMode(.head) }
-                        .buttonStyle(.plain).foregroundStyle(Theme.accent)
+                        .buttonStyle(.pressable(scale: 1)).foregroundStyle(Theme.accent)
                 }
             }
         }
@@ -317,7 +356,7 @@ struct StatsLine: View {
             Button { withAnimation(Motion.disclose) { open.toggle() } } label: {
                 Text(summary).font(Theme.monoSmall).foregroundStyle(Theme.textTertiary).lineLimit(1)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 1))
             if open {
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
                     if let t = stats.ttftMs { GridRow { label("First token"); value(durationText(Double(t) / 1000)) } }
