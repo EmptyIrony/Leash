@@ -230,7 +230,7 @@ struct FileChip: View {
             .background(fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .contextMenu {
             Button { open = true } label: { Label("Open", systemImage: "eye") }
             Button { UIPasteboard.general.string = ref.path } label: { Label("Copy Path", systemImage: "doc.on.doc") }
@@ -268,7 +268,7 @@ struct ComposerFileChip: View {
                         .frame(width: 44, height: 44, alignment: .topTrailing)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .offset(x: 4, y: -4)
                 .accessibilityLabel(Text("Remove \(file.name)"))
             }

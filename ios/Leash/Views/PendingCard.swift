@@ -73,7 +73,7 @@ private struct ApprovalRequestBody: View {
                         Text("· View diff").foregroundStyle(Theme.accent).font(.footnote)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable(scale: 1))
             }
             // side by side when they fit, stacked (prominent first) at large text sizes
             ViewThatFits(in: .horizontal) {
@@ -358,7 +358,7 @@ private struct QuestionRequestBody: View {
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable(scale: 1))
                     .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 4)
                 }
@@ -371,13 +371,7 @@ private struct QuestionRequestBody: View {
     }
 
     private func options(_ q: ElicitationSpec.Field, _ choices: [ElicitationSpec.Choice]) -> some View {
-        VStack(spacing: 6) {
-            ForEach(choices) { c in
-                OptionRow(choice: c, multi: { if case .multi = q.kind { return true }; return false }(), selected: answers.isSelected(q, c)) {
-                    withAnimation(Motion.quick) { answers.toggle(q, c) }
-                }
-            }
-        }
+        OptionList(question: q, choices: choices, answers: answers)
     }
 
     @ViewBuilder private func actions(_ spec: ElicitationSpec) -> some View {
@@ -413,12 +407,66 @@ private struct QuestionRequestBody: View {
     }
 }
 
+/// A question's choices in the tray. Owns the namespace the single-choice highlight slides in: one per list, so the
+/// two copies `ViewThatFits` builds never share a matched-geometry id.
+private struct OptionList: View {
+    let question: ElicitationSpec.Field
+    let choices: [ElicitationSpec.Choice]
+    let answers: ElicitationAnswers
+    @Namespace private var selection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var multi: Bool {
+        if case .multi = question.kind { return true }
+        return false
+    }
+
+    /// Single choice slides one highlight between rows; multi-choice (and Reduce Motion) toggles each row's own.
+    private var slideNamespace: Namespace.ID? { multi || reduceMotion ? nil : selection }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(choices) { c in
+                OptionRow(choice: c, multi: multi, selected: answers.isSelected(question, c),
+                          highlightNamespace: slideNamespace, highlightID: "selection-\(question.id)") {
+                    withAnimation(Motion.quick) { answers.toggle(question, c) }
+                }
+            }
+        }
+    }
+}
+
 /// One choice: radio / checkbox symbol (selection never shown by colour alone), title, optional description.
 struct OptionRow: View {
     let choice: ElicitationSpec.Choice
     let multi: Bool
     let selected: Bool
+    /// When set, the selected background is one shape that moves between the rows sharing this namespace.
+    var highlightNamespace: Namespace.ID? = nil
+    var highlightID: String = "selection"
     let action: () -> Void
+
+    private var rowShape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+
+    /// The resting fill stays on every row, so the moving highlight never uncovers a gap.
+    private var rowFill: some View {
+        ZStack {
+            rowShape.fill(Theme.textPrimary.opacity(0.04))
+            selectionFill
+        }
+    }
+
+    @ViewBuilder private var selectionFill: some View {
+        if selected {
+            if let ns = highlightNamespace {
+                rowShape.fill(Theme.accent.opacity(0.12))
+                    .matchedGeometryEffect(id: highlightID, in: ns)
+            } else {
+                rowShape.fill(Theme.accent.opacity(0.12))
+                    .transition(.opacity)
+            }
+        }
+    }
 
     var body: some View {
         Button(action: action) {
@@ -435,10 +483,10 @@ struct OptionRow: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .frame(minHeight: 44)
-            .background(selected ? Theme.accent.opacity(0.12) : Theme.textPrimary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background { rowFill }
+            .contentShape(rowShape)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(scale: 0.98))
         .accessibilityAddTraits(selected ? .isSelected : [])
         .haptic(.selection, trigger: selected)
     }

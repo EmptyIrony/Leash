@@ -62,7 +62,7 @@ struct QueueTray: View {
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 0.98))
             .disabled(!enabled)
             .accessibilityHint("Moves it back to the message field to edit")
             Button { delete(q) } label: {
@@ -70,7 +70,7 @@ struct QueueTray: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
             .disabled(!enabled)
             .accessibilityLabel("Remove queued message")
         }

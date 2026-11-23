@@ -108,6 +108,8 @@ enum Motion {
     static var disclose: Animation { reduced ? .easeInOut(duration: 0.18) : .snappy(duration: 0.3) }
     /// Small state feedback: enabled ↔ disabled, a label or symbol changing.
     static var quick: Animation { reduced ? .easeInOut(duration: 0.15) : .smooth(duration: 0.22) }
+    /// Touch-down feedback on custom buttons: in fast, settles without a bounce.
+    static var press: Animation { reduced ? .easeOut(duration: 0.1) : .snappy(duration: 0.18) }
 
     /// Glass docked above the composer (approval / question trays): the glass itself materializes through
     /// `glassEffectTransition(.materialize)`; this is only for its contents.
@@ -124,6 +126,49 @@ enum Motion {
     static var sent: AnyTransition { reduced ? .opacity : .asymmetric(insertion: .offset(y: 24).combined(with: .opacity), removal: .opacity) }
     /// A secondary control sliding out from behind the control at its trailing side (stop next to send).
     static var trailingPop: AnyTransition { reduced ? .opacity : .scale(scale: 0.6, anchor: .trailing).combined(with: .opacity) }
+}
+
+// MARK: - Press feedback
+
+/// Touch-down feedback for custom (otherwise `.plain`) buttons, so they answer a press the way system buttons do:
+/// the label shrinks slightly and dims, then springs back on release. With Reduce Motion on, it only dims.
+/// The label is used as is: its own `contentShape` still decides the hit area, and the disabled look is left to the
+/// label (as with `.plain`).
+///
+/// - Compact controls (circles, chips, small icons): `.buttonStyle(.pressable)`.
+/// - Full-width rows: `.buttonStyle(.pressable(scale: 0.98))`.
+/// - Text links and disclosure headers, where scaling a block of text would wobble: `.pressable(scale: 1)` (dims only).
+/// - Not for Menus, `.glassEffect(.interactive())` controls (glass has its own press response) or List rows.
+struct PressableButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+
+    func makeBody(configuration: Configuration) -> some View {
+        PressableButtonLabel(label: configuration.label, pressed: configuration.isPressed, scale: scale)
+    }
+}
+
+/// Reads Reduce Motion from the environment (a nested view, so the value is current inside the style).
+private struct PressableButtonLabel: View {
+    let label: ButtonStyleConfiguration.Label
+    let pressed: Bool
+    let scale: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var currentScale: CGFloat { pressed && !reduceMotion ? scale : 1 }
+
+    var body: some View {
+        label
+            .scaleEffect(currentScale)
+            .opacity(pressed ? 0.85 : 1)
+            .animation(Motion.press, value: pressed)
+    }
+}
+
+extension ButtonStyle where Self == PressableButtonStyle {
+    /// Shrink-and-dim press feedback for a compact custom control.
+    static var pressable: PressableButtonStyle { .init() }
+    /// Press feedback with a custom shrink: 0.98 for full-width rows, 1 to only dim.
+    static func pressable(scale: CGFloat) -> PressableButtonStyle { .init(scale: scale) }
 }
 
 // MARK: - Activity

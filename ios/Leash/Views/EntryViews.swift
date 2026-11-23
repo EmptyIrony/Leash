@@ -179,7 +179,7 @@ struct ShellOutputView: View {
                 Button { UIPasteboard.general.string = [out, err].filter { !$0.isEmpty }.joined(separator: "\n"); Haptics.impact(.light, intensity: 0.6) } label: {
                     Image(systemName: "doc.on.doc").font(.caption)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .accessibilityLabel("Copy")
             }
             .font(.caption.weight(.medium))
@@ -202,7 +202,7 @@ struct ShellOutputView: View {
                     Button { withAnimation(Motion.disclose) { expanded.toggle() } } label: {
                         Text(expanded ? "Show less" : "Show all \(lines) lines").font(.caption.weight(.medium))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable(scale: 1))
                     .foregroundStyle(Theme.accent)
                 }
             }
@@ -309,7 +309,7 @@ struct ToolCard: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 1))
 
             if !open, let d = item.firstDiff {
                 DiffSummary(path: d.path, old: d.old, new: d.new)
@@ -393,7 +393,7 @@ struct PlanCard: View {
                     }
                     Image(systemName: "chevron.right").font(.caption2).rotationEffect(.degrees(open ? 90 : 0))
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain)
+            }.buttonStyle(.pressable(scale: 1))
             if open {
                 ForEach(item.entries) { e in
                     HStack(alignment: .top, spacing: 8) {

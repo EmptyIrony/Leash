@@ -88,7 +88,7 @@ struct DiffView: View {
             HStack(spacing: 6) {
                 Button { openFile?(path) } label: {
                     Text(path).font(.caption.monospaced()).lineLimit(1).truncationMode(.head)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.pressable(scale: 1))
                 Spacer()
                 Text("+\(s.add)").foregroundStyle(.green)
                 Text("-\(s.del)").foregroundStyle(.red)
