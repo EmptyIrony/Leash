@@ -553,6 +553,34 @@ final class AppModel {
         }
     }
 
+    /// At most this many side questions are open at once; closing one makes room.
+    static let maxSideQuestions = 3
+
+    /// /btw: ask about the conversation without adding to it, also mid-turn. The bridge answers only this phone.
+    func askSideQuestion(_ s: ChatStore, _ question: String) {
+        let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, s.sideQuestions.count < Self.maxSideQuestions else { return }
+        let item = SideQuestion(question: q)
+        s.sideQuestions.append(item)
+        Task {
+            do {
+                let r = try await link.call("bridge/btw", ["sessionId": .string(s.sessionId), "question": .string(q), "agent": .string(s.agent)], timeout: 190)
+                let text = (r["text"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                withAnimation(Motion.layout) {
+                    s.resolveSideQuestion(item.id, answer: text.isEmpty ? nil : text, error: text.isEmpty ? String(localized: "No answer came back.") : nil)
+                }
+                if text.isEmpty { Haptics.error() } else { Haptics.success() }
+            } catch {
+                withAnimation(Motion.layout) { s.resolveSideQuestion(item.id, answer: nil, error: error.localizedDescription) }
+                Haptics.error()
+            }
+        }
+    }
+
+    func closeSideQuestion(_ s: ChatStore, _ id: UUID) {
+        s.sideQuestions.removeAll { $0.id == id }
+    }
+
     /// The queue's "Interrupt and Send" (mid-turn) / "Send Now" (after a Stop): send what is queued right away.
     func sendQueued(_ s: ChatStore) {
         guard !s.queued.isEmpty, isReady(s.agent), s.attached else { return }

@@ -312,6 +312,16 @@ struct ChatView: View {
                     }
                     .transition(Motion.pop)
                 }
+                if let side = store.sideQuestions.first {
+                    SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
+                                     close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
+                        .environment(\.embedAgent, store.agent)
+                        .environment(\.transcriptSession, store.sessionId)
+                        .id(side.id)
+                        .glassEffectID("btw", in: glassNS)
+                        .glassEffectTransition(.materialize)
+                        .transition(Motion.tray)
+                }
                 if !store.queued.isEmpty {
                     QueueTray(items: store.queued, running: store.running, collapsed: trayVisible, enabled: composerEnabled,
                               edit: { model.unqueue(store, $0, edit: true); composerFocused = true },
@@ -332,6 +342,7 @@ struct ChatView: View {
             .animation(Motion.layout, value: questionRequests.first?.key)
             .animation(Motion.layout, value: pinned)
             .animation(Motion.layout, value: store.queued)
+            .animation(Motion.layout, value: store.sideQuestions.map(\.id))
         }
     }
 
@@ -357,10 +368,19 @@ struct ChatView: View {
 
     /// "!" at the start of the draft switches the composer to shell mode (like Claude Code's CLI).
     private var isShell: Bool { draft.hasPrefix("!") }
+    /// "/btw …" asks a side question (like Claude Code's /btw), for agents the bridge can fork (Claude Code).
+    private var isBtw: Bool {
+        guard model.asksSideQuestions(store.agent), draft.lowercased().hasPrefix("/btw") else { return false }
+        return draft.count == 4 || draft.dropFirst(4).first?.isWhitespace == true
+    }
+    private var btwQuestion: String { String(draft.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var sideQuestionsFull: Bool { store.sideQuestions.count >= AppModel.maxSideQuestions }
     private var shellCommand: String { String(draft.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var canSend: Bool {
         guard model.isReady(store.agent) && store.attached else { return false }
+        // not held back by a running turn: that is what side questions are for
+        if isBtw { return !btwQuestion.isEmpty && !sideQuestionsFull }
         if isShell { return !shellCommand.isEmpty && !store.running && !store.shellRunning }
         if uploading { return false }
         return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty || !files.isEmpty
@@ -370,7 +390,8 @@ struct ChatView: View {
     private var slab: some View {
         VStack(alignment: .leading, spacing: 8) {
             if isShell { shellStatus.transition(Motion.reveal) }
-            if (!images.isEmpty || !files.isEmpty) && !isShell {
+            if isBtw { btwStatus.transition(Motion.reveal) }
+            if (!images.isEmpty || !files.isEmpty) && !isShell && !isBtw {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Array(images.enumerated()), id: \.offset) { i, d in
@@ -416,10 +437,11 @@ struct ChatView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .frame(minHeight: 48)
-        .glassEffect(.regular.tint(isShell ? Theme.shell.opacity(0.16) : Theme.bgBase.opacity(0.55)), in: .rect(cornerRadius: 26))
+        .glassEffect(.regular.tint(slabTint), in: .rect(cornerRadius: 26))
         .glassEffectID("slab", in: glassNS)
         .opacity(composerEnabled ? 1 : 0.5)
         .animation(Motion.quick, value: isShell)
+        .animation(Motion.quick, value: isBtw)
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems, maxSelectionCount: 4, matching: .images)
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let r = PendingFile.load(result)
@@ -429,9 +451,22 @@ struct ChatView: View {
         }
     }
 
-    /// "+" menu (photos, shell); in shell mode a terminal button that leaves shell mode.
+    private var slabTint: Color {
+        if isShell { return Theme.shell.opacity(0.16) }
+        if isBtw { return Theme.accent.opacity(0.14) }
+        return Theme.bgBase.opacity(0.55)
+    }
+
+    /// "+" menu (photos, files, side question, shell); in shell or side-question mode a button that leaves the mode.
     @ViewBuilder private var leadingButton: some View {
-        if isShell {
+        if isBtw {
+            Button { draft = String(draft.dropFirst(4)).trimmingCharacters(in: .whitespaces); Haptics.selection() } label: {
+                Image(systemName: "bubble.left.and.bubble.right.fill").font(.body.weight(.semibold)).foregroundStyle(Theme.accent).frame(width: 34, height: 34)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leave side question")
+        } else if isShell {
             Button { draft.removeFirst(); Haptics.selection() } label: {
                 Image(systemName: "terminal.fill").font(.body.weight(.semibold)).foregroundStyle(Theme.shell).frame(width: 34, height: 34)
                     .contentTransition(.symbolEffect(.replace))
@@ -445,6 +480,9 @@ struct ChatView: View {
                 }
                 Button { showFileImporter = true } label: { Label("Choose Files", systemImage: "folder") }
                 Divider()
+                if model.asksSideQuestions(store.agent) {
+                    Button { draft = "/btw " + draft; composerFocused = true } label: { Label("Ask a side question", systemImage: "bubble.left.and.bubble.right") }
+                }
                 Button { draft = "!" + draft; composerFocused = true } label: { Label("Run shell command", systemImage: "terminal") }
             } label: {
                 Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(Theme.textSecondary).frame(width: 34, height: 34)
@@ -454,6 +492,18 @@ struct ChatView: View {
             .disabled(!composerEnabled)
             .accessibilityLabel("Add")
         }
+    }
+
+    /// What a side question is, or why another one can't be asked yet.
+    private var btwStatus: some View {
+        HStack(spacing: 6) {
+            Image(systemName: sideQuestionsFull ? "hourglass" : "bubble.left.and.bubble.right")
+            if sideQuestionsFull { Text("Close a side question to ask another") } else { Text("Side question · not added to the conversation") }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(sideQuestionsFull ? Theme.textSecondary : Theme.accent)
+        .lineLimit(1).truncationMode(.tail)
+        .padding(.horizontal, 8).padding(.top, 4)
     }
 
     /// Where the command runs, or why it can't run yet.
@@ -537,7 +587,7 @@ struct ChatView: View {
     /// same glyph, so the glyph morphs in place in both and only the live one shows (switching it doesn't animate).
     private var primaryControl: some View {
         let glyph = actionGlyph
-        let menuLive = store.running && hasDraft && !isShell
+        let menuLive = store.running && hasDraft && !isShell && !isBtw
         return ZStack {
             primaryButton(glyph).actionLayer(live: !menuLive)
             interruptMenu(glyph).actionLayer(live: menuLive)
@@ -552,7 +602,7 @@ struct ChatView: View {
         }
         .buttonStyle(.plain)
         .disabled(glyph.isDisabled)
-        .accessibilityLabel(glyph == .stop ? Text("Stop") : (isShell ? Text("Run") : Text("Send")))
+        .accessibilityLabel(glyph == .stop ? Text("Stop") : (isShell ? Text("Run") : (isBtw ? Text("Ask") : Text("Send"))))
     }
 
     // tap: steer or queue; touch and hold: stop the turn and send now. A shortcut, not the only way:
@@ -606,7 +656,7 @@ struct ChatView: View {
 
     /// Stop the running turn and send the draft (plus anything queued) right after it.
     private func interruptAndSend() {
-        guard canSend, !isShell else { return }
+        guard canSend, !isShell, !isBtw else { return }
         withAnimation(Motion.layout) {
             sendDraft(interrupt: store.running)
             pinned = true
@@ -628,6 +678,12 @@ struct ChatView: View {
     /// The draft clears, the message rises into the transcript and the scroll follows it in one motion.
     private func send() {
         guard canSend else { return }
+        if isBtw {
+            // answered beside the conversation: no steering, no queue, no scroll
+            withAnimation(Motion.layout) { model.askSideQuestion(store, btwQuestion); draft = "" }
+            sendTick += 1
+            return
+        }
         withAnimation(Motion.layout) {
             if isShell {
                 model.runShell(store, command: shellCommand)

@@ -392,6 +392,15 @@ struct QueuedMessage: Identifiable, Hashable {
     }
 }
 
+/// A /btw side question: answered from the conversation's context by a throwaway fork; never part of the transcript.
+struct SideQuestion: Identifiable, Equatable {
+    let id = UUID()
+    let question: String
+    var answer: String?
+    var error: String?
+    var pending: Bool { answer == nil && error == nil }
+}
+
 // MARK: - Per-session transcript store
 
 @Observable
@@ -423,6 +432,13 @@ final class ChatStore {
     var unsentImages: [Data]?
     /// Messages sent mid-turn that wait on the bridge for the turn to end (agents without steering, or "interrupt and send").
     var queued: [QueuedMessage] = []
+    /// /btw questions asked on this phone, oldest first; kept until closed (not synced to other devices).
+    var sideQuestions: [SideQuestion] = []
+    func resolveSideQuestion(_ id: UUID, answer: String?, error: String?) {
+        guard let i = sideQuestions.firstIndex(where: { $0.id == id }) else { return }
+        sideQuestions[i].answer = answer
+        sideQuestions[i].error = error
+    }
     /// optimistic user bubble shown until the bridge echoes the user message
     var pendingEcho: PendingEcho?
     /// bumps on every change so the chat view can auto-scroll
