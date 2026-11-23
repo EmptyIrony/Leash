@@ -107,7 +107,10 @@ Held = presence lock by a process outside our own `agy acp` tree **and** busy. R
 
 ## iPhone
 
-Open `ios/Leash.xcodeproj`, pick your signing team, run on the device, then Settings → *Scan pairing QR code*.
+Open `ios/Leash.xcodeproj`, pick your signing team for each target (Leash, LeashLiveActivity, LeashWatch; a free
+personal team works, profiles last 7 days), run on the device, then Settings → *Scan pairing QR code*. The bundle IDs
+derive from one build setting, `LEASH_BUNDLE_ID`. See `HANDOFF-personal-cert.md` for the Live Activity, Dynamic Island
+and Apple Watch app (the watch reaches the Mac through the iPhone app over WatchConnectivity).
 
 ## Bridge protocol (v1)
 
