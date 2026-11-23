@@ -1,0 +1,236 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Couldn't reach your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上你的 iPhone。"
+          }
+        }
+      }
+    },
+    "Your iPhone couldn't reach the Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 连不上 Mac。"
+          }
+        }
+      }
+    },
+    "Already answered." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已经回答过了。"
+          }
+        }
+      }
+    },
+    "This conversation is busy on your computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个对话正在电脑上运行。"
+          }
+        }
+      }
+    },
+    "The conversation changed elsewhere. Try again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话在别处有了变化，请再试一次。"
+          }
+        }
+      }
+    },
+    "That didn't work." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有成功。"
+          }
+        }
+      }
+    },
+    "Needs You" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要你处理"
+          }
+        }
+      }
+    },
+    "Working" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作中"
+          }
+        }
+      }
+    },
+    "Recent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近"
+          }
+        }
+      }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在载入…"
+          }
+        }
+      }
+    },
+    "Nothing running." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有正在运行的任务。"
+          }
+        }
+      }
+    },
+    "Leash" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拴绳"
+          }
+        }
+      }
+    },
+    "iPhone not reachable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连不上 iPhone"
+          }
+        }
+      }
+    },
+    "Pair Leash on your iPhone first" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在 iPhone 上配对拴绳"
+          }
+        }
+      }
+    },
+    "Mac not connected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未连接 Mac"
+          }
+        }
+      }
+    },
+    "Connecting to your Mac…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 Mac…"
+          }
+        }
+      }
+    },
+    "Needs you" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要你"
+          }
+        }
+      }
+    },
+    "No longer waiting" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已不再等待"
+          }
+        }
+      }
+    },
+    "Answer this on your iPhone." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPhone 上回答。"
+          }
+        }
+      }
+    },
+    "Busy on your computer." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在电脑上运行。"
+          }
+        }
+      }
+    },
+    "Reply to %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复 %@"
+          }
+        }
+      }
+    },
+    "Reply" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复"
+          }
+        }
+      }
+    },
+    "Not on your iPhone's list anymore." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone 的列表里已经没有它了。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

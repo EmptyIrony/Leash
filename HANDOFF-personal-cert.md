@@ -11,5 +11,5 @@ updated as each part lands.
     `SharedActivity/` (app + extension), `SharedWatch/` (app + watch). `Config/LiveActivity-Info.plist` holds NSExtension.
 - [x] Live Activity + Dynamic Island (written, not compiled): one activity for all turns started from this iPhone;
   Allow/Deny/Refresh buttons are LiveActivityIntents run in the app process; stale after 75 s without an update
-- [ ] Watch app
+- [x] Watch app (written, not compiled): relays through the iPhone app over WatchConnectivity
 - [x] Bark deep link (bridge, additive, tested) + app URL routing (`leash://session?id=…&agent=…`)
