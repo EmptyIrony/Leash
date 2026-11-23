@@ -65,7 +65,9 @@ plaintext; "Decryption Failed" on the phone means the key in Bark does not match
   `--settings '{"statusLine":…}'`; agy pipes its status JSON (incl. `quota`) to a sink script, the bridge keeps the
   quota part (never the email) and kills the TUI. No prompt is sent, and nothing is fetched on a timer or after turns.
   Disable with `"quota": {"enabled": false}` in `~/.leash/config.json`.
-* **Turbo**: bridge-side per-conversation auto-approval of permission prompts (+ agy's `auto` mode).
+* **Turbo** (Antigravity's name, so Antigravity only): bridge-side per-conversation auto-approval of permission prompts
+  (+ agy's `auto` mode). Claude Code shows its own modes under their own names instead (Manual, Accept edits, Plan, Auto,
+  Bypass permissions, as claude-agent-acp reports them); the bridge refuses `bridge/setAutoApprove` there.
 * agy's tool calls use `name`/`args` instead of ACP's `title`/`rawInput`; the bridge normalizes them.
 * **Inline widgets (generative UI)**: agy writes an HTML file into `~/.gemini/antigravity/brain/<id>/` and puts
   `<agent-embed src="file:///…/x.html"></agent-embed>` in its reply. The app reads it with `bridge/readFile` and runs it in a
@@ -112,7 +114,7 @@ Open `ios/Leash.xcodeproj`, pick your signing team, run on the device, then Sett
 JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
 
 * phone → bridge: `{op:"call", id, method, params}` (ACP methods like `session/new|list|prompt|cancel|set_config_option`,
-  plus `bridge/attach|detach|browse|readFile|restartAgent|shell|unqueue`), `{op:"reply", key, result}` to answer a permission/elicitation.
+  plus `bridge/attach|detach|browse|readFile|restartAgent|shell|btw|unqueue`), `{op:"reply", key, result}` to answer a permission/elicitation.
 * bridge → phone: `ready`, `result`, `update` (`session/update` with `epoch`+`seq`), `request`/`resolved`
   (permission & questions, broadcast to every device), `turn` (running/idle), `shell` (a "!" command running/done), `agent` (agy process state),
   `queue` (messages waiting for the running turn to end).
@@ -121,7 +123,7 @@ JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
   bridge (`{queued:true, id}`) and sent, merged into one prompt, the moment the turn ends — `running` stays true in between.
   `interrupt:true` queues it and cancels the turn, so it goes out right after (an empty `prompt` sends just the queue). A plain
   `session/cancel` keeps the queue; it goes out ahead of the next prompt, or `bridge/unqueue {sessionId, id}` takes one back
-  (returns its `prompt` blocks). `bridge/attach` returns the `queue`; agent summaries carry `steering`.
+  (returns its `prompt` blocks). `bridge/attach` returns the `queue`; agent summaries carry `steering`, `turbo` and `btw`.
 * `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot.
 * `bridge/readFile {path, sessionId?, mode?, maxBytes?}`: text (default, first 512 KB) or `mode: "base64"` (whole file as
   `data`, ≤ 32 MB, else `-32007`); a relative path is taken from the conversation's folder. Reads stay under `$HOME`.
@@ -138,6 +140,17 @@ JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
   line numbers, everything else in QuickLook; Share → *Save to Files* / AirDrop gets the whole file.
 * **Inline images**: `![alt](src)`, `<img src>` and image paths an answer lists (code spans, links, bare `/…` / `~/…`) render
   in the transcript — remote URLs directly, host paths through `bridge/readFile`; a listed path shows only if it loads.
+
+## /btw side questions (Claude Code)
+
+Typing `/btw <question>` (or + → *Ask a side question*) asks about the conversation without adding to it, also while a
+turn is running, like Claude Code's own `/btw`. `bridge/btw {sessionId, question}` runs `helper.mjs btw` on the host:
+`claude -p --resume <id> --fork-session --no-session-persistence --tools "" --strict-mcp-config --max-turns 1` in the
+conversation's folder, with the conversation's model and Code Mode settings. The fork reads the transcript as it is on disk,
+answers once with no tools and no MCP servers, and is never saved, so the conversation, its turn and its lock state are
+untouched; nothing is recorded or sent to other devices (only the asking phone gets `{text, durationMs, model}`). The
+answer shows in a card above the composer and is gone when dismissed. It is a separate request, so the conversation's
+context is read again without the main turn's prompt cache. agy has no throwaway fork, so Antigravity has no /btw.
 
 ## "!" shell mode
 

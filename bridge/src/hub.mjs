@@ -142,9 +142,13 @@ function guessKind(name) {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000 }) {
+  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000, turbo = undefined, btw = undefined }) {
     super();
     Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, listPerCwd, idleCloseMs, locksMaxAgeMs });
+    // "Turbo" (bridge-side approve-all) is Antigravity's name; Claude Code has its own modes for that (bypassPermissions).
+    this.turbo = turbo ?? !helper;
+    // /btw side questions need `claude -p --fork-session` on the host (helper.mjs btw); agy has no throwaway fork.
+    this.sideQuestions = btw ?? !!helper;
     // "Open elsewhere" lock: a function resolving {now, held, touched} (see remote/helper.mjs locks).
     // Default: on for hubs with a remote helper (Claude Code); false turns it off.
     this.locksFn = locks === false ? null : typeof locks === 'function' ? locks : (helper ? () => this.runHelper(['locks'], 10000) : null);
@@ -219,7 +223,7 @@ export class Hub extends EventEmitter {
 
   setAgentState(state) {
     this.agentState = state;
-    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers });
+    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions });
   }
 
   /** Merge this agent's _meta (e.g. Claude Code settings) into session/new|load|resume params. */
@@ -407,7 +411,7 @@ export class Hub extends EventEmitter {
   broadcast(msg) { const m = { ...msg, agentId: this.id }; for (const c of this.clients) c.send(m); }
 
   agentSummary() {
-    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, quota: this.quota?.latest ?? null };
+    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, quota: this.quota?.latest ?? null };
   }
 
   info() {
@@ -546,6 +550,7 @@ export class Hub extends EventEmitter {
       case 'bridge/upload': return this.upload(params);
       case 'bridge/restartAgent': return this.restartAgent();
       case 'bridge/shell': return this.shell(client, params);
+      case 'bridge/btw': return this.btw(params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
       case 'bridge/quota': {
         if (!this.quota) return { quota: null, error: 'quota disabled' };
@@ -555,6 +560,7 @@ export class Hub extends EventEmitter {
       case 'bridge/setAutoApprove': {
         const s = this.sessions.get(params.sessionId);
         if (!s) throw new RpcError(-32004, 'unknown session');
+        if (!this.turbo && params.enabled) throw new RpcError(-32601, this.label + ' has no Turbo; use its own permission modes');
         s.autoApprove = !!params.enabled;
         this.broadcast({ op: 'session_flags', sessionId: s.sessionId, autoApprove: s.autoApprove });
         // approve anything already waiting
@@ -878,6 +884,24 @@ export class Hub extends EventEmitter {
     s.shellContext = [...(s.shellContext ?? []), t.input, t.output];
     this.broadcast({ op: 'shell', sessionId: s.sessionId, running: false });
     return { exitCode: r.exitCode ?? null, timedOut: !!r.timedOut, truncated: !!r.truncated };
+  }
+
+  /**
+   * /btw: a side question about a conversation, answered from its context by a throwaway fork on the agent's host
+   * (helper.mjs btw). Allowed mid-turn; nothing is recorded in the session or sent to other devices, and the
+   * conversation itself is never touched, so its turn, queue and lock state stay as they are.
+   */
+  async btw({ sessionId, question }) {
+    if (!this.sideQuestions || !this.helper) throw new RpcError(-32601, this.label + ' has no side questions');
+    const q = String(question ?? '').trim();
+    if (!q) throw new RpcError(-32602, 'question required');
+    const s = this.sessions.get(sessionId);
+    const cwd = s?.cwd ?? this.knownCwds.get(sessionId) ?? null;
+    if (!s && !cwd) throw new RpcError(-32004, 'unknown session');
+    const model = s?.configOptions?.find(o => o.category === 'model' || o.id === 'model')?.currentValue ?? null;
+    const env = this.sessionMeta?.claudeCode?.options?.settings?.env ?? null;
+    const r = await this.runHelper(['btw'], 170000, this.helper, JSON.stringify({ sessionId, cwd, question: q, model, env }));
+    return { text: String(r.text ?? ''), durationMs: r.durationMs ?? null, model: r.model ?? null };
   }
 
   #recordTurnStats(s, usage) {

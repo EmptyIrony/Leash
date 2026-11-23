@@ -769,3 +769,56 @@ test('listPerCwd adds sessions only a per-directory list finds (photo-first Clau
     } finally { c.close(); t.done(); }
   }
 });
+
+test('btw: side question runs helper btw (throwaway fork, no tools) mid-turn and records nothing', async () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-claude-'));
+  const fake = path.join(bin, 'claude');
+  // stands in for the claude CLI: answers with what it was started with
+  fs.writeFileSync(fake, '#!' + process.execPath + '\n' +
+    "process.stdout.write(JSON.stringify({ type: 'result', result: JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), key: process.env.ANTHROPIC_API_KEY ?? null }), modelUsage: { 'claude-test': {} } }) + '\\n');\n", { mode: 0o755 });
+  const t = await setup({ id: 'claude', helper: [process.execPath, path.join(here, '..', 'remote', 'helper.mjs')], locks: false,
+    agentEnv: { ...process.env, CLAUDE_CODE_EXECUTABLE: fake, ANTHROPIC_API_KEY: 'sk-test' },
+    sessionMeta: { claudeCode: { options: { settings: { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } } } } } });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const ready = await c.wait(m => m.op === 'ready');
+    assert.equal(ready.agent?.btw ?? t.hub.agentSummary().btw, true);
+    assert.equal(t.hub.agentSummary().turbo, false);
+    const cwd = path.join(t.home, 'proj');
+    const ns = await c.call('session/new', { cwd });
+    const promptP = c.call('session/prompt', { sessionId: ns.sessionId, prompt: [{ type: 'text', text: 'please edit' }] });
+    const req = await c.wait(m => m.op === 'request' && m.method === 'session/request_permission');
+    const s = t.hub.sessions.get(ns.sessionId);
+    assert.equal(s.running, true);
+    const seq = s.seq, seen = c.msgs.length;
+    const r = await c.call('bridge/btw', { sessionId: ns.sessionId, question: '  /why so slow?  ' });
+    assert.equal(r.model, 'claude-test');
+    const got = JSON.parse(r.text);
+    assert.equal(got.cwd, fs.realpathSync(cwd));
+    assert.equal(got.key, null, 'no API key: the subscription login answers');
+    const a = got.argv;
+    assert.equal(a[0], '-p');
+    assert.ok(a[1].startsWith('<system-reminder>') && a[1].endsWith('/why so slow?'), 'a leading "/" is not read as a command');
+    const after = flag => a[a.indexOf(flag) + 1];
+    assert.equal(after('--resume'), ns.sessionId);
+    for (const f of ['--fork-session', '--no-session-persistence', '--strict-mcp-config']) assert.ok(a.includes(f), f);
+    assert.equal(after('--tools'), '');
+    assert.equal(after('--max-turns'), '1');
+    assert.deepEqual(JSON.parse(after('--settings')), { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } });
+    const model = s.configOptions.find(o => o.id === 'model').currentValue;
+    if (model !== 'default') assert.equal(after('--model'), model);
+    assert.equal(s.seq, seq, 'nothing recorded in the conversation');
+    assert.ok(!c.msgs.slice(seen).some(m => m.op === 'update' || m.op === 'turn'), 'nothing broadcast');
+    assert.equal(s.running, true, 'the turn is untouched');
+    await assert.rejects(c.call('bridge/btw', { sessionId: ns.sessionId, question: ' ' }), /question/);
+    await assert.rejects(c.call('bridge/setAutoApprove', { sessionId: ns.sessionId, enabled: true }), /Turbo/);
+    c.reply(req.key, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    assert.equal((await promptP).stopReason, 'end_turn');
+  } finally { c.close(); t.done(); fs.rmSync(bin, { recursive: true, force: true }); }
+  // agy (no helper): no side questions, Turbo available
+  const agy = new Hub({ agentCommand: 'x', log: () => {} });
+  assert.equal(agy.agentSummary().btw, false);
+  assert.equal(agy.agentSummary().turbo, true);
+  await assert.rejects(agy.btw({ sessionId: 's', question: 'q' }), /side questions/);
+});
