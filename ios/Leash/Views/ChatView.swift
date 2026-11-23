@@ -92,7 +92,9 @@ struct ChatView: View {
                 pinned = true
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { bottomControls }
+        // a bar, not just an inset: the system's soft scroll edge effect keeps text legible under the glass
+        // (no custom fade, so the glass refracts the transcript like the system's own bars)
+        .safeAreaBar(edge: .bottom, spacing: 0) { bottomControls }
     }
 
     private func jumpToBottom() {
@@ -113,7 +115,7 @@ struct ChatView: View {
     private func chrome<V: View>(_ content: V) -> some View {
         let base = content
             .background { SpaceBackground(stars: false) }
-            .safeAreaInset(edge: .top, spacing: 0) { otherSessionsBanner }
+            .safeAreaBar(edge: .top, spacing: 0) { otherSessionsBanner }
             .navigationTitle(store.title ?? String(localized: "Conversation"))
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
@@ -337,24 +339,12 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
             .padding(.top, 10)
-            .background(alignment: .bottom) { composerFade }
             .animation(Motion.layout, value: permissionRequests.first?.key)
             .animation(Motion.layout, value: questionRequests.first?.key)
             .animation(Motion.layout, value: pinned)
             .animation(Motion.layout, value: store.queued)
             .animation(Motion.layout, value: store.sideQuestions.map(\.id))
         }
-    }
-
-    /// Transcript fades out under the composer so glass never sits on top of readable text.
-    private var composerFade: some View {
-        LinearGradient(stops: [
-            .init(color: Theme.bgBase.opacity(0), location: 0),
-            .init(color: Theme.bgBase.opacity(0.85), location: 0.35),
-            .init(color: Theme.bgBase, location: 1),
-        ], startPoint: .top, endPoint: .bottom)
-        .ignoresSafeArea(edges: .bottom)
-        .allowsHitTesting(false)
     }
 
     static func lockText(_ by: String) -> String {
@@ -454,7 +444,7 @@ struct ChatView: View {
     private var slabTint: Color {
         if isShell { return Theme.shell.opacity(0.16) }
         if isBtw { return Theme.accent.opacity(0.14) }
-        return Theme.bgBase.opacity(0.55)
+        return .clear   // plain Liquid Glass, as the system's search field
     }
 
     /// "+" menu (photos, files, side question, shell); in shell or side-question mode a button that leaves the mode.
