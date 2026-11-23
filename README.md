@@ -33,6 +33,23 @@ Config lives in `~/.leash/config.json` (`port`, `token`, `bind`, `agent.command`
 `bind: "auto"` listens on 127.0.0.1 plus the Mac's Tailscale address(es); if Tailscale is not up it falls back to `0.0.0.0` (LAN, dev phase) and the pairing QR uses the Mac's LAN IP. Set `bind` to `"127.0.0.1,100.x.y.z"` to pin it.
 Log of the LaunchAgent: `~/Library/Logs/leash-bridge.log`.
 
+### Notifications (Bark)
+
+Leash has no APNs, so the bridge can alert the phone (and a paired Apple Watch) through the free
+[Bark](https://github.com/Finb/Bark) app when an agent asks for approval / a question, or a turn finishes / fails:
+
+```
+node src/index.mjs bark https://api.day.app/<key>/   # the URL Bark shows (or just <key>); sends a test push
+node src/index.mjs bark                              # test again;  `bark off` removes it
+```
+
+Restart the bridge afterwards. Pushes go out only while no Leash client is on screen (the app pings every 15 s;
+~25 s of silence counts as away; a request answered within that grace period is not pushed). A Stop you pressed
+yourself is not pushed. Tapping a notification opens Leash. Options in the `bark` block of `~/.leash/config.json`:
+`server` (self-hosted bark-server, default `https://api.day.app`), `when: "always"`, `attention` / `turnEnd: false`,
+`sound`, `lang: "en"`, and `detail: true` to include conversation and tool titles. These are off by default because
+the text passes through the Bark server; by default it only says which agent needs you and how long the turn took.
+
 ## How it talks to Antigravity (all official agy surfaces)
 
 * **Conversations**: `agy acp --app-data-dir antigravity` — ACP over stdio, pointed at the desktop app's data dir so

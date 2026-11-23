@@ -68,8 +68,27 @@ if (cmd === 'quota') {
   try { console.log(JSON.stringify(await p.refresh(), null, 2)); process.exit(0); }
   catch (e) { console.error('FAILED:', e.message, '\nfull TUI output:', p.workDir + '/tui.log'); process.exit(1); }
 }
+if (cmd === 'bark') {
+  // node src/index.mjs bark                       send a test notification with the current config
+  // node src/index.mjs bark <key|bark URL> [server] set the device key (the URL the Bark app shows works too), then test
+  // node src/index.mjs bark off                   turn notifications off
+  const { BarkNotifier, barkSettings, parseBarkArg } = await import('./notify.mjs');
+  const arg = process.argv[3];
+  if (arg === 'off') { delete cfg.bark; saveConfig(cfg); console.log('bark notifications off'); process.exit(0); }
+  if (arg) {
+    try { cfg.bark = { ...(cfg.bark && typeof cfg.bark === 'object' ? cfg.bark : {}), ...parseBarkArg(arg, process.argv[4]) }; }
+    catch (e) { console.error(e.message); process.exit(2); }
+    saveConfig(cfg);
+    console.log('bark key written to', CONFIG_PATH);
+  }
+  const bs = barkSettings(cfg.bark);
+  if (!bs) { console.error('no bark key configured: node src/index.mjs bark <key>'); process.exit(2); }
+  const ok = await new BarkNotifier({ settings: bs, log: m => console.error(m) }).test();
+  console.log(ok ? 'test notification sent' : 'test notification FAILED');
+  process.exit(ok ? 0 : 1);
+}
 if (cmd === 'remove-claude') { cfg.agents = cfg.agents.filter(a => a.id !== 'claude'); saveConfig(cfg); console.log('removed'); process.exit(0); }
-if (cmd !== 'serve') { console.error('usage: index.mjs [serve|pair|rotate|quota|add-claude [prefix…]|remove-claude]'); process.exit(2); }
+if (cmd !== 'serve') { console.error('usage: index.mjs [serve|pair|rotate|quota|bark [key|off]|add-claude [prefix…]|remove-claude]'); process.exit(2); }
 
 // env overrides (tests / single-agent debugging) replace the first agent's command
 const agentDefs = cfg.agents.map((a, i) => i === 0 && process.env.LEASH_AGENT_CMD
@@ -98,6 +117,17 @@ const hubs = agentDefs.map(a => {
 });
 const router = new Router({ hubs, log });
 const server = createServer({ hub: router, token: cfg.token, log });
+
+// Optional Bark notifications; a bad config or module error must never stop the bridge.
+try {
+  const { BarkNotifier, barkSettings } = await import('./notify.mjs');
+  const bs = barkSettings(cfg.bark);
+  if (bs) {
+    const notifier = new BarkNotifier({ settings: bs, clients: () => router.clients, log });
+    for (const h of hubs) notifier.watch(h);
+    log(`bark notifications on (${bs.always ? 'always' : 'while away'}${bs.detail ? ', with titles' : ''})`);
+  } else if (cfg.bark) log('bark: config has no device key; notifications off');
+} catch (e) { log('bark disabled: ' + e.message); }
 
 function bindHosts() {
   if (cfg.bind !== 'auto') return String(cfg.bind).split(',').map(s => s.trim()).filter(Boolean);

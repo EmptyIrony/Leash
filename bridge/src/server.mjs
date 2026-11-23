@@ -43,14 +43,19 @@ export function createServer({ hub, token, log = console.log }) {
     const send = msg => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
     const client = hub.addClient(send, { remote, name });
     log(`client #${client.id} connected from ${remote} (${name})`);
+    // last time the app itself spoke (its 15 s pings or a message): notify.mjs treats ~25 s of silence as "away"
+    client.lastSeen = Date.now();
+    const seen = () => { client.lastSeen = Date.now(); };
+    ws.on('ping', seen);
     let alive = true;
-    ws.on('pong', () => { alive = true; });
+    ws.on('pong', () => { alive = true; });   // not "seen": a just-backgrounded app still pongs
     const hb = setInterval(() => {
       if (!alive) { ws.terminate(); return; }
       alive = false; try { ws.ping(); } catch {}
     }, 25000);
 
     ws.on('message', async data => {
+      seen();
       let m;
       try { m = JSON.parse(String(data)); } catch { send({ op: 'error', message: 'invalid json' }); return; }
       if (m.op === 'ping') { send({ op: 'pong', t: m.t ?? null }); return; }
