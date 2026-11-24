@@ -111,7 +111,8 @@ both build configurations, its three phases and product; the app depends on and 
 every plist, asset Contents.json and .xcstrings parses; every new UI string has zh-Hans in its own target's catalog;
 `node --test` 58/58.
 
-Unverified (needs Xcode / device): all Swift compiles; the project opens with folders shared between targets; free-team
+Unverified (needs Xcode / device): all Swift compiles; Update in Background (silent audio really keeps Leash
+running, the island follows the turn to its end, Bark still arrives about 4 s later); the project opens with folders shared between targets; free-team
 signing of three IDs; Live Activity appearance in every presentation, `staleDate` behaviour, intent buttons waking the
 app (Allow asking to unlock), the alert; watch install and WatchConnectivity wake-up; TextFieldLink dictation; deep
 link routing; draft restore.

@@ -81,7 +81,7 @@ extension AppModel {
             if UIApplication.shared.applicationState == .background {
                 // let the last frames (and ActivityKit's update) go out first
                 try? await Task.sleep(for: .milliseconds(600))
-                if backgroundJobs == 0 && UIApplication.shared.applicationState == .background && !backgroundAudio.isOn {
+                if backgroundJobs == 0 && UIApplication.shared.applicationState == .background && !backgroundAudio.isPlaying {
                     link.disconnect()
                 }
             }
@@ -94,11 +94,13 @@ extension AppModel {
     }
 
     /// Keep running in the background while the Live Activity follows a turn (BackgroundAudio). When that stops
-    /// with Leash in the background, close the socket before iOS suspends us, as after a Live Activity button.
+    /// with Leash in the background, the final update has just gone out: let it land under a background task, then
+    /// close the socket before iOS suspends us, as after a Live Activity button.
     func keepRunning(_ on: Bool) {
-        guard on != backgroundAudio.isOn else { return }
+        let was = backgroundAudio.isOn
         backgroundAudio.set(on)
-        if !on && backgroundJobs == 0 && UIApplication.shared.applicationState == .background { link.disconnect() }
+        guard was && !on, backgroundJobs == 0, UIApplication.shared.applicationState == .background else { return }
+        Task { await backgroundWork {} }
     }
 
     // MARK: Live Activity buttons

@@ -26,12 +26,16 @@ final class BackgroundAudio {
         })
     }
 
+    /// Actually playing (an interruption without an end, or a start iOS refused, leaves `isOn` without sound).
+    var isPlaying: Bool { player?.isPlaying ?? false }
+
+    /// `on` also restarts playback that something stopped, so each Live Activity update gives it another try.
     func set(_ on: Bool) {
-        guard on != isOn else { return }
-        isOn = on
         if on {
-            play()
-        } else {
+            isOn = true
+            if !isPlaying { play() }
+        } else if isOn {
+            isOn = false
             player?.stop()
             player = nil
             try? AVAudioSession.sharedInstance().setActive(false)
