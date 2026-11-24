@@ -41,7 +41,7 @@ struct NewSessionView: View {
                     }
                 }
             }
-            .navigationTitle("New conversation")
+            .navigationTitle("New Conversation")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .overlay {

@@ -169,7 +169,7 @@ struct SessionListView: View {
         ContentUnavailableView {
             Label("No conversations", systemImage: "bubble.left.and.bubble.right")
         } actions: {
-            Button("New conversation") { showNew = true }
+            Button("New Conversation") { showNew = true }
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.agentReady)
         }
