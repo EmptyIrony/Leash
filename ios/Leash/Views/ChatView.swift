@@ -259,6 +259,8 @@ struct ChatView: View {
                 model.setDraft(draft, for: store.sessionId)
             }
             .onChange(of: scenePhase) { _, phase in if phase != .active { model.setDraft(draft, for: store.sessionId) } }
+            // sent (or cleared): a crash after that mustn't bring it back
+            .onChange(of: draft.isEmpty) { _, empty in if empty { model.setDraft("", for: store.sessionId) } }
     }
 
     /// Only celebrate turns that took a while (≥ 8 s) and ended normally.

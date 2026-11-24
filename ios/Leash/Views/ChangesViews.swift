@@ -128,6 +128,8 @@ struct ChangesSheet: View {
         } else {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, d in
                 DiffView(path: d.path, old: d.old, new: d.new, openFile: { fileToOpen = $0 })
+                    // its buttons take only their own taps, not the whole list row's
+                    .buttonStyle(.borderless)
                     .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
             }
         }
