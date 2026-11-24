@@ -520,6 +520,7 @@ final class AppModel {
             if s.running { running.insert(s.sessionId) } else { running.remove(s.sessionId) }
             s.setConfigOptions(r["configOptions"])
             s.setModes(r["modes"])
+            s.setCommands(r["availableCommands"])
             s.autoApprove = r["autoApprove"]?.bool ?? false
             s.queued = QueuedMessage.list(r["queue"])
             for p in r["pending"]?.array ?? [] { addPending(p, notify: false) }

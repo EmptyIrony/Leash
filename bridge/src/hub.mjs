@@ -453,6 +453,8 @@ export class Hub extends EventEmitter {
 
   #record(s, update) {
     s.lastActive = Date.now();
+    // the latest command list outlives the event log's trim (attach returns it)
+    if (update?.sessionUpdate === 'available_commands_update' && !subagentOf(update)) s.commands = update.availableCommands ?? [];
     const seq = ++s.seq;
     s.events.push({ seq, update });
     if (s.events.length > this.maxEvents) s.events.splice(0, s.events.length - this.maxEvents);
@@ -778,6 +780,7 @@ export class Hub extends EventEmitter {
       sessionId, cwd: s.cwd, epoch: s.epoch, lastSeq: s.seq, reset, events,
       running: s.running, lastStopReason: s.lastStopReason, turnStartedAt: s.running ? s.turnStart || null : null,
       configOptions: s.configOptions, modes: s.modes, title: s.title, autoApprove: s.autoApprove, queue: this.queueSummary(s),
+      availableCommands: s.commands ?? null,
       pending: [...this.pending.values()].filter(p => p.sessionId === sessionId).map(p => this.pendingMsg(p)),
     };
   }

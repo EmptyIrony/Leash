@@ -67,6 +67,7 @@ async function prompt(m, p, r) {
       if (!steered.has(sid)) steered.set(sid, []);
       sessions.get(sid).history.push({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text } });
       cancelled.delete(sid);
+      if (text.includes('commands')) update(sid, { sessionUpdate: 'available_commands_update', availableCommands: [{ name: 'review', description: 'Review a PR', input: { hint: 'pr-number' } }] });
       update(sid, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Thinking about it' } });
       for (const w of ['Sure', ', ', 'editing ', 'the file.']) { update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: w } }); await sleep(5); }
       if (text.includes('edit')) {

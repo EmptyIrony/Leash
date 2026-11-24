@@ -846,6 +846,18 @@ final class ChatStore {
         configOptions = arr.compactMap(ConfigOption.init)
     }
 
+    /// available_commands_update's list (also in bridge/attach's result, which outlives the event log's trim).
+    func setCommands(_ j: JSON?) {
+        guard let arr = j?.array else { return }
+        var seen = Set<String>()   // a name listed twice (project and user command) keeps its first
+        commands = arr.compactMap { c in
+            guard let raw = c["name"]?.string else { return nil }
+            let n = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+            guard !n.isEmpty, seen.insert(n).inserted else { return nil }
+            return AgentCommand(name: n, description: c["description"]?.string ?? "", hint: c["input"]?["hint"]?.string)
+        }
+    }
+
     func setModes(_ j: JSON?) {
         guard let j, !j.isNull else { return }
         modes = (j["availableModes"]?.array ?? []).compactMap { m in
@@ -974,13 +986,7 @@ final class ChatStore {
         case "session_info_update":
             if let t = u["title"]?.string { title = t }
         case "available_commands_update":
-            var seen = Set<String>()   // a name listed twice (project and user command) keeps its first
-            commands = (u["availableCommands"]?.array ?? []).compactMap { c in
-                guard let raw = c["name"]?.string else { return nil }
-                let n = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
-                guard !n.isEmpty, seen.insert(n).inserted else { return nil }
-                return AgentCommand(name: n, description: c["description"]?.string ?? "", hint: c["input"]?["hint"]?.string)
-            }
+            setCommands(u["availableCommands"])
         case "usage_update":
             if let used = u["used"]?.int, let size = u["size"]?.int { usage = (used, size) }
         case "leash_turn_stats":

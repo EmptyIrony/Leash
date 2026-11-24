@@ -160,6 +160,22 @@ test('config option change, browse and readFile sandboxed to home', async () => 
   } finally { c.close(); t.done(); }
 });
 
+test('attach returns the latest command list after the event log trimmed it', async () => {
+  const t = await setup({ maxEvents: 3 });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    await c.wait(m => m.op === 'ready');
+    const ns = await c.call('session/new', { cwd: t.home });
+    await c.call('bridge/attach', { sessionId: ns.sessionId });
+    await c.call('session/prompt', { sessionId: ns.sessionId, prompt: [{ type: 'text', text: 'commands please' }] });
+    const a = await c.call('bridge/attach', { sessionId: ns.sessionId });
+    assert.equal(a.reset, true);
+    assert.ok(!a.events.some(e => e.update.sessionUpdate === 'available_commands_update'), 'trimmed from the log');
+    assert.deepEqual(a.availableCommands, [{ name: 'review', description: 'Review a PR', input: { hint: 'pr-number' } }]);
+  } finally { c.close(); t.done(); }
+});
+
 test('agent crash: restarts and session can be re-attached', async () => {
   const t = await setup();
   const c = new Client(t.port);
