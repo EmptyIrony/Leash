@@ -56,22 +56,6 @@ enum LineDiff {
     }
 }
 
-struct DiffSummary: View {
-    let path: String
-    let old: String?
-    let new: String
-    var body: some View {
-        let s = LineDiff.stats(LineDiff.compute(old: old, new: new))
-        HStack(spacing: 6) {
-            Image(systemName: "doc.badge.ellipsis").font(.caption2)
-            Text((path as NSString).lastPathComponent).font(.caption.monospaced()).lineLimit(1)
-            Text("+\(s.add)").font(.caption.monospaced()).foregroundStyle(.green)
-            Text("-\(s.del)").font(.caption.monospaced()).foregroundStyle(.red)
-        }
-        .foregroundStyle(.secondary)
-    }
-}
-
 struct DiffView: View {
     let path: String
     let old: String?

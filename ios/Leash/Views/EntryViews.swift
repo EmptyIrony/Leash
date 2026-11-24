@@ -205,50 +205,6 @@ struct ShellOutputView: View {
     }
 }
 
-struct MessageView: View {
-    let item: MessageItem
-    @State private var thoughtsOpen = false
-
-    var body: some View {
-        switch item.role {
-        case .user:
-            HStack {
-                Spacer(minLength: 40)
-                VStack(alignment: .trailing, spacing: 6) {
-                    ForEach(Array(item.images.enumerated()), id: \.offset) { _, d in
-                        if let ui = UIImage(data: d) {
-                            Image(uiImage: ui).resizable().scaledToFit().frame(maxWidth: 220, maxHeight: 220).clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-                    }
-                    if !item.text.isEmpty {
-                        Text(item.text)
-                            .textSelection(.enabled)
-                            .padding(.horizontal, 14).padding(.vertical, 9)
-                            .background(Color.accentColor.opacity(0.18), in: RoundedRectangle(cornerRadius: 18))
-                    }
-                }
-            }
-        case .agent:
-            MarkdownView(text: item.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .messageMenu(item.text, markdown: true)
-        case .thought:
-            DisclosureGroup(isExpanded: $thoughtsOpen) {
-                Text(item.text).font(.footnote).foregroundStyle(.secondary).textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "brain").font(.caption)
-                    Text(thoughtsOpen ? "Thinking" : (item.text.split(separator: "\n").last.map(String.init) ?? "Thinking"))
-                        .font(.footnote).lineLimit(1)
-                }
-                .foregroundStyle(.secondary)
-            }
-            .tint(.secondary)
-        }
-    }
-}
-
 struct NoticeView: View {
     let item: NoticeItem
     var body: some View {
@@ -262,86 +218,6 @@ struct NoticeView: View {
 }
 
 // MARK: - Tool calls
-
-struct ToolCard: View {
-    let item: ToolItem
-    var openFile: (String) -> Void
-    @State private var open = false
-
-    private var icon: String {
-        switch item.kind {
-        case "read": return "doc.text"
-        case "edit": return "pencil"
-        case "delete": return "trash"
-        case "move": return "arrow.right.doc.on.clipboard"
-        case "search": return "magnifyingglass"
-        case "execute": return "terminal"
-        case "think": return "brain"
-        case "fetch": return "globe"
-        case "switch_mode": return "arrow.triangle.swap"
-        default: return "wrench.and.screwdriver"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button { withAnimation(Motion.disclose) { open.toggle() } } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: icon).frame(width: 18).foregroundStyle(.secondary)
-                    Text(item.title).font(.subheadline).lineLimit(open ? nil : 1).multilineTextAlignment(.leading)
-                    Spacer(minLength: 4)
-                    StatusBadge(status: item.status)
-                    Image(systemName: "chevron.right").font(.caption2).rotationEffect(.degrees(open ? 90 : 0)).foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.pressable(scale: 1))
-
-            if !open, let d = item.firstDiff {
-                DiffSummary(path: d.path, old: d.old, new: d.new)
-            }
-
-            if open {
-                if let cmd = item.commandPreview {
-                    Text(cmd).font(.caption.monospaced()).textSelection(.enabled)
-                        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
-                }
-                ForEach(item.content) { c in
-                    switch c {
-                    case .diff(let p, let o, let n): DiffView(path: p, old: o, new: n, openFile: openFile)
-                    case .text(let t): CodeText(text: t, maxLines: 40)
-                    case .terminal(let id): Text("Terminal \(id)").font(.caption).foregroundStyle(.secondary)
-                    case .image(let d): if let ui = UIImage(data: d) { Image(uiImage: ui).resizable().scaledToFit().frame(maxHeight: 240) }
-                    }
-                }
-                if item.content.isEmpty, let out = item.rawOutput, !out.pretty.isEmpty {
-                    CodeText(text: out.pretty, maxLines: 40)
-                }
-                ForEach(item.locations, id: \.self) { loc in
-                    Button { openFile(loc) } label: {
-                        Label(loc, systemImage: "doc").font(.caption).lineLimit(1).truncationMode(.head)
-                    }
-                }
-            }
-        }
-        .padding(10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct StatusBadge: View {
-    let status: String
-    var body: some View {
-        switch status {
-        case "completed": Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-        case "failed": Image(systemName: "xmark.circle.fill").foregroundStyle(.red).font(.caption)
-        case "in_progress": ActivitySpinner(size: 11)
-        case "pending": Image(systemName: "circle.dotted").foregroundStyle(.secondary).font(.caption)
-        default: EmptyView()
-        }
-    }
-}
 
 struct CodeText: View {
     let text: String

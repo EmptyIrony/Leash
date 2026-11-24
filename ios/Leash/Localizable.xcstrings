@@ -3004,16 +3004,6 @@
         }
       }
     },
-    "Terminal %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "终端 %@"
-          }
-        }
-      }
-    },
     "That QR code is not a Leash pairing code" : {
       "localizations" : {
         "zh-Hans" : {
