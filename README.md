@@ -46,8 +46,10 @@ node src/index.mjs bark                              # test again;  `bark off` r
 Restart the bridge afterwards. Pushes go out only while no Leash client is on screen (the app pings every 15 s;
 ~25 s of silence counts as away; a request answered within that grace period is not pushed). A Stop you pressed
 yourself is not pushed. Tapping a notification opens that conversation (`leash://session?id=…&agent=…`) when titles may be
-pushed (`detail`, on with encryption), otherwise just Leash; a `url` in the `bark` block overrides both. A request the phone
-already alerted about itself (a Live Activity alert, `bridge/noticed`) is not pushed again. Options in the `bark` block of `~/.leash/config.json`:
+pushed (`detail`, on with encryption), otherwise just Leash; a `url` in the `bark` block overrides both. While Leash runs in the
+background it posts its own notifications (requests with Allow / Deny, turn ends) and says `bridge/noticed`; the
+bridge then skips Bark, which waits 4 s for that whenever a Leash is connected from the background. So Bark covers a
+suspended or closed Leash, or one with notifications off. Options in the `bark` block of `~/.leash/config.json`:
 `server` (self-hosted bark-server, default `https://api.day.app`), `when: "always"`, `attention` / `turnEnd: false`,
 `sound`, `lang: "en"`, and `detail` (conversation and tool titles in the text).
 

@@ -139,10 +139,13 @@ final class LocalNotifier: NSObject {
 }
 
 extension LocalNotifier: UNUserNotificationCenterDelegate {
-    /// On screen the chat already shows it.
+    /// In use, the chat already shows it; with Control Center, Notification Center or the app switcher over Leash
+    /// (still "foreground" to iOS) it has to show, or nobody hears it: the bridge already skipped Bark.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([])
+        Task { @MainActor in
+            completionHandler(AppModel.shared.sceneActive ? [] : [.banner, .list, .sound])
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
