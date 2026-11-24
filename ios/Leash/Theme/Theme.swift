@@ -189,6 +189,8 @@ struct ActivitySpinner: View {
 }
 
 /// A soft highlight sweeping across text, like Apple Intelligence's "thinking" labels.
+/// The band is painted source-atop onto the content's own pixels: masking with a second copy of the content laid it
+/// out again, and a middle-truncated or mid-transition line came out different there, leaving ghost glyphs.
 struct Shimmer: ViewModifier {
     var active = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -206,9 +208,10 @@ struct Shimmer: ViewModifier {
                             .offset(x: -band + (g.size.width + band * 2) * t)
                     }
                 }
-                .mask(content)
+                .blendMode(.sourceAtop)
                 .allowsHitTesting(false)
             }
+            .compositingGroup()
         } else {
             content
         }
