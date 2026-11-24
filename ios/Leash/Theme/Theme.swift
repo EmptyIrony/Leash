@@ -1,11 +1,13 @@
 import SwiftUI
 import UIKit
 
-// "Orbit" design tokens: a dark instrument panel floating over deep space.
+// "Orbit" design tokens: a dark instrument panel floating over deep space. The values live in `LeashPalette`
+// (SharedDesign), shared with the watch and the Live Activity.
 extension Color {
-    init(light: UInt32, dark: UInt32, darkAlpha: CGFloat = 1, lightAlpha: CGFloat = 1) {
+    /// A dynamic colour: the role's light value in light mode, its dark value in dark mode.
+    init(palette p: PaletteColor) {
         self.init(uiColor: UIColor { t in
-            t.userInterfaceStyle == .dark ? UIColor(hex: dark, alpha: darkAlpha) : UIColor(hex: light, alpha: lightAlpha)
+            t.userInterfaceStyle == .dark ? UIColor(hex: p.dark, alpha: CGFloat(p.darkAlpha)) : UIColor(hex: p.light, alpha: CGFloat(p.lightAlpha))
         })
     }
 }
@@ -17,23 +19,23 @@ extension UIColor {
 }
 
 enum Theme {
-    static let bgBase = Color(light: 0xF4F5FA, dark: 0x07080D)
-    static let bgRaised = Color(light: 0xFFFFFF, dark: 0x12141C, darkAlpha: 0.85)
-    static let bgSunken = Color(light: 0xECEEF5, dark: 0x0C0D14)
-    static let hairline = Color(light: 0x0B1020, dark: 0xFFFFFF, darkAlpha: 0.08, lightAlpha: 0.08)
-    static let textPrimary = Color(light: 0x0B0D14, dark: 0xF2F3F8)
-    static let textSecondary = Color(light: 0x5A6072, dark: 0x9AA0B4)
-    static let textTertiary = Color(light: 0x8F95A6, dark: 0x646A7E)
-    static let accent = Color(light: 0x4B50E6, dark: 0x8088FF)
-    static let running = Color(light: 0x0A9CB8, dark: 0x4FD8EE)
-    static let attention = Color(light: 0xC96A00, dark: 0xFFB340)
-    static let success = Color(light: 0x1E9E5A, dark: 0x3DDC84)
-    static let danger = Color(light: 0xD43A3A, dark: 0xFF6B6B)
-    static let turbo = Color(light: 0xC0267E, dark: 0xFF5CA8)
-    static let codeInk = Color(light: 0x3D41A8, dark: 0xB9BDFF)
-    static let codeBg = Color(light: 0x4B50E6, dark: 0x8088FF, darkAlpha: 0.12, lightAlpha: 0.07)
+    static let bgBase = Color(palette: LeashPalette.bgBase)
+    static let bgRaised = Color(palette: LeashPalette.bgRaised)
+    static let bgSunken = Color(palette: LeashPalette.bgSunken)
+    static let hairline = Color(palette: LeashPalette.hairline)
+    static let textPrimary = Color(palette: LeashPalette.textPrimary)
+    static let textSecondary = Color(palette: LeashPalette.textSecondary)
+    static let textTertiary = Color(palette: LeashPalette.textTertiary)
+    static let accent = Color(palette: LeashPalette.accent)
+    static let running = Color(palette: LeashPalette.running)
+    static let attention = Color(palette: LeashPalette.attention)
+    static let success = Color(palette: LeashPalette.success)
+    static let danger = Color(palette: LeashPalette.danger)
+    static let turbo = Color(palette: LeashPalette.turbo)
+    static let codeInk = Color(palette: LeashPalette.codeInk)
+    static let codeBg = Color(palette: LeashPalette.codeBg)
     /// "!" shell mode (composer, command bubbles).
-    static let shell = Color(light: 0x0F7B6C, dark: 0x5EE6C8)
+    static let shell = Color(palette: LeashPalette.shell)
 
     /// Reading size for agent text (a notch below .body keeps long answers calm).
     static let readingSize: CGFloat = 16
@@ -60,7 +62,7 @@ struct SpaceBackground: View {
             Theme.bgBase.ignoresSafeArea()
         } else {
             ZStack {
-                LinearGradient(colors: [Theme.bgBase, scheme == .dark ? Color(uiColor: UIColor(hex: 0x0B0E1A)) : Color(uiColor: UIColor(hex: 0xE9ECF8))],
+                LinearGradient(colors: [Theme.bgBase, Color(uiColor: UIColor(hex: scheme == .dark ? LeashPalette.bgGradientEnd.dark : LeashPalette.bgGradientEnd.light))],
                                startPoint: .top, endPoint: .bottom)
                 RadialGradient(colors: [Theme.accent.opacity(0.10), .clear], center: .topTrailing, startRadius: 0, endRadius: 320)
                 if stars && scheme == .dark { Starfield() }

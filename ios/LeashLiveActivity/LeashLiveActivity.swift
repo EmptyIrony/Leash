@@ -55,6 +55,7 @@ struct LeashLiveActivity: Widget {
 }
 
 // MARK: - Palette (asset colors: light / dark; the Dynamic Island is always dark)
+// The LA* colour sets hold LeashPalette's running / attention / success / danger values (SharedDesign); keep them equal.
 
 enum LA {
     static let working = Color("LAWorking")

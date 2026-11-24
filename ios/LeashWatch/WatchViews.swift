@@ -1,11 +1,11 @@
 import SwiftUI
 
-// Leash's colours as they appear on the (always dark) watch.
+// Leash's colours as they appear on the (always dark) watch: the dark values of the shared palette.
 enum WatchTheme {
-    static let accent = Color(red: 0x80 / 255, green: 0x88 / 255, blue: 0xFF / 255)
-    static let working = Color(red: 0x4F / 255, green: 0xD8 / 255, blue: 0xEE / 255)
-    static let attention = Color(red: 0xFF / 255, green: 0xB3 / 255, blue: 0x40 / 255)
-    static let danger = Color(red: 0xFF / 255, green: 0x6B / 255, blue: 0x6B / 255)
+    static let accent = LeashPalette.accent.darkColor
+    static let working = LeashPalette.running.darkColor
+    static let attention = LeashPalette.attention.darkColor
+    static let danger = LeashPalette.danger.darkColor
 
     /// Elapsed time that keeps counting on its own.
     static func elapsed(since start: Date) -> Text {

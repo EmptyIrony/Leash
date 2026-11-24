@@ -88,6 +88,11 @@
 			path = SharedWatch;
 			sourceTree = "<group>";
 		};
+		AA0000000000000000000303 /* SharedDesign */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SharedDesign;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +126,7 @@
 				AA0000000000000000000002 /* Leash */,
 				AA0000000000000000000301 /* SharedActivity */,
 				AA0000000000000000000302 /* SharedWatch */,
+				AA0000000000000000000303 /* SharedDesign */,
 				AA0000000000000000000102 /* LeashLiveActivity */,
 				AA0000000000000000000202 /* LeashWatch */,
 				AA0000000000000000000010 /* Config */,
@@ -171,6 +177,7 @@
 				AA0000000000000000000002 /* Leash */,
 				AA0000000000000000000301 /* SharedActivity */,
 				AA0000000000000000000302 /* SharedWatch */,
+				AA0000000000000000000303 /* SharedDesign */,
 			);
 			name = Leash;
 			packageProductDependencies = (
@@ -194,6 +201,7 @@
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000102 /* LeashLiveActivity */,
 				AA0000000000000000000301 /* SharedActivity */,
+				AA0000000000000000000303 /* SharedDesign */,
 			);
 			name = LeashLiveActivity;
 			packageProductDependencies = (
@@ -217,6 +225,7 @@
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000202 /* LeashWatch */,
 				AA0000000000000000000302 /* SharedWatch */,
+				AA0000000000000000000303 /* SharedDesign */,
 			);
 			name = LeashWatch;
 			packageProductDependencies = (
