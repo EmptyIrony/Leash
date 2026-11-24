@@ -54,9 +54,7 @@ if (cmd === 'add-claude') {
   // node src/index.mjs add-claude ssh -T me@box        (a plain command prefix)
   const rest = process.argv.slice(3);
   const entry = rest[0] === '--fn' ? claudeAgentConfig({ shellFunction: rest[1] }) : claudeAgentConfig(rest.length ? { prefix: rest } : {});
-  // keep what was set by hand (btw, turbo, idleCloseMin, …); the generated fields win
-  const old = cfg.agents.find(a => a.id === 'claude');
-  cfg.agents = [...cfg.agents.filter(a => a.id !== 'claude'), { ...old, ...entry }];
+  cfg.agents = [...cfg.agents.filter(a => a.id !== 'claude'), entry];
   saveConfig(cfg);
   console.log('claude agent written to', CONFIG_PATH);
   console.log(JSON.stringify(entry, null, 2));
@@ -114,7 +112,6 @@ const hubs = agentDefs.map(a => {
   const command = resolveCommand(a.command);
   log(`leash-bridge ${BRIDGE_VERSION}; agent ${a.id}: ${command} ${(a.args ?? []).join(' ')}`);
   const helper = a.helper ? [resolveCommand(a.helper[0]), ...a.helper.slice(1)] : null;
-  const open = a.open ? [resolveCommand(a.open[0]), ...a.open.slice(1)] : null;
   // agy runs here on the Mac: lock conversations the Antigravity desktop app is busy with (see agylock.mjs)
   const isAgy = !helper && (a.lock === 'agy' || path.basename(command) === 'agy');
   const locks = a.lock === false ? false : isAgy ? agyLocks({ ownPids: () => [hub.agent?.child?.pid] }) : undefined;
@@ -122,7 +119,7 @@ const hubs = agentDefs.map(a => {
     home: a.home || os.homedir(), sessionMeta: a.sessionMeta ?? null, helper, maxListed: a.maxListed ?? 0,
     // Claude Code (reached through a helper) drops photo-first sessions from an unscoped list; see Hub.listSessions
     listPerCwd: a.listPerCwd ?? !!helper,
-    idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, turbo: a.turbo, btw: a.btw, open, log });
+    idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, turbo: a.turbo, btw: a.btw, log });
   hub.on('attention', p => log(`[${a.id}] needs input: ${p.method} session=${p.sessionId}`));
   // quota is read only when the phone asks for it (bridge/quota), never on a timer or after turns
   if (a.quota === 'statusline' && cfg.quota?.enabled !== false) {

@@ -88,8 +88,6 @@ Mac bridge ──zsh -c 'source ~/.zshrc; ubuntu …/bridge/remote/run-acp.sh'�
 
 * Host setup (once, on the Ubuntu box): `mkdir -p ~/.leash/claude-acp && cd ~/.leash/claude-acp && npm i @agentclientprotocol/claude-agent-acp`
 * Mac: `node src/index.mjs add-claude` (or `add-claude --fn <zsh-function>` / `add-claude ssh -T user@host`), then restart the bridge.
-  Rerunning it keeps hand-set fields. With a zsh function it also sets `open` (`<fn> --ghostty-window -t …`), which the
-  chat's ⋯ › Open on Computer uses to resume the conversation in a new terminal window on the Mac.
 * `bridge/remote/helper.mjs` runs on the host for folder browsing, file reads/uploads and quota (`claude -p /usage`: a local command, 0 tokens).
 * Sessions started in Claude Code's Code Mode are resumed by passing `settings.env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` through `_meta.claudeCode.options`.
 * The adapter uses your own Claude login on that machine (`ANTHROPIC_API_KEY` is unset in `run-acp.sh`).

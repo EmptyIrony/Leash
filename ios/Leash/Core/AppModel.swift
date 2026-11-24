@@ -18,8 +18,6 @@ struct AgentInfo: Identifiable, Hashable {
     var turbo = false
     /// /btw side questions (Claude Code: a throwaway fork on its host).
     var btw = false
-    /// The bridge can open a conversation in a terminal window on the computer (Claude Code).
-    var opensOnComputer = false
     var isReady: Bool { state == "ready" }
 }
 
@@ -137,7 +135,6 @@ final class AppModel {
     func steers(_ agentId: String) -> Bool { agent(agentId)?.steering ?? false }
     func hasTurbo(_ agentId: String) -> Bool { agent(agentId)?.turbo ?? false }
     func asksSideQuestions(_ agentId: String) -> Bool { agent(agentId)?.btw ?? false }
-    func opensOnComputer(_ agentId: String) -> Bool { agent(agentId)?.opensOnComputer ?? false }
     func agentLabel(_ id: String) -> String { agent(id)?.label ?? (id == "claude" ? "Claude Code" : "Antigravity") }
 
     init() {
@@ -235,7 +232,6 @@ final class AppModel {
                 agents[i].steering = m["steering"]?.bool ?? false
                 agents[i].turbo = m["turbo"]?.bool ?? false
                 agents[i].btw = m["btw"]?.bool ?? false
-                agents[i].opensOnComputer = m["openOnComputer"]?.bool ?? false
             }
             if m["agentId"]?.string == nil || m["agentId"]?.string == "agy" { applyAgent(m) }
             if agentState == "ready" {
@@ -324,8 +320,7 @@ final class AppModel {
                          imageInput: info?["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false,
                          steering: a["steering"]?.bool ?? false,
                          turbo: a["turbo"]?.bool ?? false,
-                         btw: a["btw"]?.bool ?? false,
-                         opensOnComputer: a["openOnComputer"]?.bool ?? false)
+                         btw: a["btw"]?.bool ?? false)
     }
 
     private func applyAgent(_ a: JSON?) {
@@ -666,12 +661,6 @@ final class AppModel {
                 Haptics.error()
             }
         }
-    }
-
-    /// Resumes the conversation in Claude Code in a new terminal window on the computer. The bridge drops its own
-    /// copy, so the next send here reloads whatever was said there first.
-    func openOnComputer(_ s: ChatStore) async throws {
-        _ = try await link.call("bridge/openOnComputer", ["sessionId": .string(s.sessionId), "agent": .string(s.agent)], timeout: 40)
     }
 
     func closeSideQuestion(_ s: ChatStore, _ id: UUID) {

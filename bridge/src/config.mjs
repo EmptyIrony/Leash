@@ -39,10 +39,7 @@ export function claudeAgentConfig({ prefix = null, shellFunction = 'ubuntu', rep
   // `zsh -ic` (interactive, so ~/.zshrc defines the function) is the form probe9 verified end to end.
   const transport = prefix
     ? { command: prefix[0], args: [...prefix.slice(1), run], helper: [...prefix, 'node', helperScript] }
-    : { command: 'zsh', args: ['-ic', shellFunction + ' ' + run], helper: ['zsh', '-ic', shellFunction + ' node ' + helperScript + ' "$@"', 'leash-helper'],
-        // "Open on Computer": a new Ghostty window on this Mac (the ubuntu script's --ghostty-window), ssh with a tty (-t);
-        // the bridge appends the remote command as one argument
-        open: ['zsh', '-ic', shellFunction + ' --ghostty-window -t "$@"', 'leash-open'] };
+    : { command: 'zsh', args: ['-ic', shellFunction + ' ' + run], helper: ['zsh', '-ic', shellFunction + ' node ' + helperScript + ' "$@"', 'leash-helper'] };
   return {
     id: 'claude',
     label: 'Claude Code',
