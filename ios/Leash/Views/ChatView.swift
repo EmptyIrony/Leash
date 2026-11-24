@@ -296,6 +296,8 @@ struct ChatView: View {
                         blocked: g.live && !permissionRequests.isEmpty,
                         turnStartedAt: store.turnStartedAt,
                         openFile: { fileToOpen = $0 })
+        case .segment(let s):
+            SegmentRow(segment: s, store: store, openFile: { fileToOpen = $0 })
         case .answer(let m):
             // the answer streaming at the end of a running turn reveals its new text as it arrives
             let streaming: Bool = {

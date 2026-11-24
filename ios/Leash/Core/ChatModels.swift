@@ -229,6 +229,7 @@ struct ActivityGroup: Identifiable {
     var steps: [ChatEntry] = []          // thoughts, tools, interim agent notes (.message with role .agent)
     var stats: TurnStats?
     var live = false
+    var answerFollows = false            // a message streams right after this (live) group
     var planEntries: [PlanEntry] = []
 
     var tools: [ToolItem] { steps.compactMap { if case .tool(let t) = $0 { return t }; return nil } }
@@ -293,9 +294,29 @@ struct ActivityGroup: Identifiable {
     }
 }
 
+/// A live turn's run of tools and thoughts between two of the agent's messages ("Explored 3 files, ran 2 commands").
+struct StepSegment: Identifiable {
+    let id: UUID
+    let steps: [ChatEntry]
+    var liveLine: String?                // the current action, on the run still going
+
+    var summary: String { ActivityGroup(id: id, steps: steps).summary }
+}
+
+extension UUID {
+    /// A second stable id from an entry's own, for a row built around it (a group, a segment), so the two never
+    /// collide in one ForEach.
+    func derived(_ salt: UInt8) -> UUID {
+        var u = uuid
+        u.15 ^= salt
+        return UUID(uuid: u)
+    }
+}
+
 enum DisplayItem: Identifiable {
     case user(MessageItem)
     case activity(ActivityGroup)
+    case segment(StepSegment)
     case answer(MessageItem)
     case stats(TurnStats)
     case notice(NoticeItem)
@@ -304,6 +325,7 @@ enum DisplayItem: Identifiable {
         switch self {
         case .user(let m), .answer(let m): return m.id
         case .activity(let g): return g.id
+        case .segment(let s): return s.id
         case .stats(let s): return s.id
         case .notice(let n): return n.id
         case .planDoc(let p): return p.id
@@ -466,13 +488,17 @@ final class ChatStore {
 
         func demoteAnswer() {
             if let a = answer {
-                if group == nil { group = ActivityGroup(id: a.id) }
+                if group == nil { group = ActivityGroup(id: a.id.derived(1)) }   // the message keeps its own id
                 group!.steps.append(.message(a))
                 answer = nil
             }
         }
         func flush(stats: TurnStats? = nil) {
-            if var g = group { g.stats = stats ?? g.stats; out.append(.activity(g)) }
+            if var g = group {
+                g.stats = stats ?? g.stats
+                g.answerFollows = answer != nil
+                if g.live && !expandedGroups.contains(g.id) { out.append(contentsOf: liveTimeline(g)) } else { out.append(.activity(g)) }
+            }
             if let a = answer { out.append(.answer(a)) }
             group = nil; answer = nil
         }
@@ -518,6 +544,28 @@ final class ChatStore {
         // the optimistic bubble is drawn as the transcript's last user row, so the echo can adopt it in place
         if let p = pendingEcho { out.append(.user(p.item)) }
         return out
+    }
+
+    /// A live turn reads as it happens: the header, then the agent's messages in full with each run of tools between
+    /// them folded to one line. A message keeps its id from streaming at the end to sitting above the next run, so
+    /// it stays in place; once the turn ends it all folds back into the header, leaving the final answer.
+    private func liveTimeline(_ g: ActivityGroup) -> [DisplayItem] {
+        var items: [DisplayItem] = [.activity(g)]
+        var run: [ChatEntry] = []
+        func flushRun(last: Bool) {
+            guard let first = run.first else { return }
+            let active = last && !g.answerFollows
+            // a run with nothing to list (only the steps tool) shows only while it is the current one
+            if active || !StepRowModel.build(run).isEmpty {
+                items.append(.segment(StepSegment(id: first.id.derived(2), steps: run, liveLine: active ? g.liveAction : nil)))
+            }
+            run = []
+        }
+        for s in g.steps {
+            if case .message(let m) = s, m.role == .agent { flushRun(last: false); items.append(.answer(m)) } else { run.append(s) }
+        }
+        flushRun(last: true)
+        return items
     }
 
     func reset(events: [JSON]) {

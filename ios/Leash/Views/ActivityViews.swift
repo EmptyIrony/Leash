@@ -9,9 +9,13 @@ struct ActivityRow: View {
     var turnStartedAt: Date?
     var openFile: (String) -> Void
     @State private var showChecklist = false
-    @State private var showAllSteps = false
 
     private var expanded: Bool { store.expandedGroups.contains(group.id) }
+    /// A live turn not opened in full lays its messages and runs out below the header (ChatStore.liveTimeline), with
+    /// the current action on its last run; the header keeps a sub-line only for an approval wait or before any step.
+    private var showsSubLine: Bool {
+        !group.live || expanded || blocked || (group.steps.isEmpty && !group.answerFollows)
+    }
 
     var body: some View {
         let checklist = group.checklist
@@ -33,11 +37,14 @@ struct ActivityRow: View {
                                 .foregroundStyle(Theme.textTertiary)
                                 .rotationEffect(.degrees(expanded ? 180 : 0))
                         }
-                        subLine
-                            .font(.footnote)
-                            .foregroundStyle(blocked ? Theme.attention : (group.live ? Theme.textSecondary : Theme.textTertiary))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        if showsSubLine {
+                            subLine
+                                .font(.footnote)
+                                .foregroundStyle(blocked ? Theme.attention : (group.live ? Theme.textSecondary : Theme.textTertiary))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .transition(Motion.swap)
+                        }
                     }
                     Spacer(minLength: 6)
                 }
@@ -66,7 +73,7 @@ struct ActivityRow: View {
             }
 
             if expanded {
-                stepList
+                StepList(rows: StepRowModel.build(group.steps), live: group.live, store: store, openFile: openFile)
                     .padding(.leading, 8)
                     .transition(Motion.reveal)
             }
@@ -74,6 +81,7 @@ struct ActivityRow: View {
         .padding(.vertical, 2)
         .animation(Motion.quick, value: group.live)
         .animation(Motion.quick, value: blocked)
+        .animation(Motion.quick, value: showsSubLine)
         .animation(Motion.quick, value: checklist.filter { $0.status == "completed" }.count)
         .haptic(.increase, trigger: checklist.filter { $0.status == "completed" }.count) { old, new in group.live && new > old }
     }
@@ -165,11 +173,72 @@ struct ActivityRow: View {
         }
         .animation(Motion.quick, value: line)
     }
+}
 
-    // MARK: expanded list
-    private var rows: [StepRowModel] { StepRowModel.build(group.steps) }
+/// One run of tools in a live turn: "Explored 3 files, ran 2 commands ⌄", or the current action while it is the last
+/// run. No glyph of its own (the header carries the turn's status); it opens in place to its steps.
+struct SegmentRow: View {
+    let segment: StepSegment
+    let store: ChatStore
+    var openFile: (String) -> Void
 
-    @ViewBuilder private var stepList: some View {
+    private var open: Bool { store.expandedGroups.contains(segment.id) }
+
+    var body: some View {
+        let rows = StepRowModel.build(segment.steps)
+        let active = segment.liveLine != nil
+        let line = segment.liveLine ?? segment.summary
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.disclose) {
+                    if open { store.expandedGroups.remove(segment.id) } else { store.expandedGroups.insert(segment.id) }
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    // the active line cross-fades as the agent moves to its next action
+                    ZStack(alignment: .leading) {
+                        Text(line).id(line).transition(Motion.swap)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(active ? Theme.textSecondary : Theme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .shimmer(active)
+                    if !rows.isEmpty {
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                            .rotationEffect(.degrees(open ? 180 : 0))
+                    }
+                    Spacer(minLength: 6)
+                }
+                .padding(.leading, 26)   // under the header's title, past its glyph column
+                .frame(minHeight: 22)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable(scale: 1))
+            .disabled(rows.isEmpty)
+
+            if open && !rows.isEmpty {
+                StepList(rows: rows, live: active, store: store, openFile: openFile)
+                    .padding(.leading, 8)
+                    .transition(Motion.reveal)
+            }
+        }
+        .animation(Motion.quick, value: line)
+        .animation(Motion.quick, value: active)
+    }
+}
+
+/// The rail of steps under an opened turn or run; a long list shows its first and last steps until asked for all.
+struct StepList: View {
+    let rows: [StepRowModel]
+    var live = false
+    let store: ChatStore
+    var openFile: (String) -> Void
+    @State private var showAllSteps = false
+
+    var body: some View {
         let all = rows
         let collapsed = all.count > 30 && !showAllSteps
         let head = collapsed ? Array(all.prefix(3)) : all
@@ -187,7 +256,7 @@ struct ActivityRow: View {
         }
         // only a live turn's new steps rise in (the rail grows with them); a finished turn never animates here, and
         // the >30 head/tail split stays instant so crossing it doesn't fade every row out and back in
-        .animation(group.live && !collapsed ? Motion.layout : nil, value: all.count)
+        .animation(live && !collapsed ? Motion.layout : nil, value: all.count)
     }
 }
 
