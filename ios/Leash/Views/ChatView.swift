@@ -96,9 +96,30 @@ struct ChatView: View {
                 pinned = true
             }
         }
+        // floats over the transcript rather than sitting in the bar: in the bar it would raise the bottom inset
+        // as it appears, moving the end out of reach of `atEnd` and keeping itself on screen at the bottom
+        .overlay(alignment: .bottomTrailing) { jumpButton }
         // a bar, not just an inset: the system's soft scroll edge effect keeps text legible under the glass
         // (no custom fade, so the glass refracts the transcript like the system's own bars)
         .safeAreaBar(edge: .bottom, spacing: 0) { bottomControls }
+    }
+
+    /// Shown while not following the newest output; laid out inside the safe area, so it rides just above the bar.
+    private var jumpButton: some View {
+        ZStack {
+            if !pinned {
+                Button(action: jumpToBottom) {
+                    Image(systemName: "arrow.down").font(.callout.weight(.semibold)).frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Scroll to bottom")
+                .transition(Motion.pop)
+            }
+        }
+        .padding(.trailing, 12)
+        .padding(.bottom, 8)
+        .animation(Motion.layout, value: pinned)
     }
 
     private func jumpToBottom() {
@@ -332,20 +353,6 @@ struct ChatView: View {
                         .glassEffectTransition(.materialize)
                         .transition(Motion.tray)
                 }
-                if !pinned {
-                    HStack {
-                        Spacer()
-                        Button(action: jumpToBottom) {
-                            Image(systemName: "arrow.down").font(.callout.weight(.semibold)).frame(width: 36, height: 36)
-                        }
-                        .buttonStyle(.plain)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .glassEffectID("scroll", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .accessibilityLabel("Scroll to bottom")
-                    }
-                    .transition(Motion.pop)
-                }
                 if let side = store.sideQuestions.first {
                     SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
                                      close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
@@ -373,7 +380,6 @@ struct ChatView: View {
             .padding(.top, 10)
             .animation(Motion.layout, value: permissionRequests.first?.key)
             .animation(Motion.layout, value: questionRequests.first?.key)
-            .animation(Motion.layout, value: pinned)
             .animation(Motion.layout, value: store.queued)
             .animation(Motion.layout, value: store.sideQuestions.map(\.id))
         }
