@@ -89,7 +89,9 @@ struct ChatView: View {
             if phase == .idle { pinned = lastAtEnd }
         }
         .onScrollGeometryChange(for: ScrollMetrics.self) { g in
-            let visibleEnd = g.contentOffset.y + g.containerSize.height - g.contentInsets.bottom
+            // contentOffset is UIKit's (−top inset when at the top) and containerSize already leaves out both insets
+            // (measured on device: at the bottom, offset 1040 + top 116 + container 620 = content 1776)
+            let visibleEnd = g.contentOffset.y + g.contentInsets.top + g.containerSize.height
             return ScrollMetrics(contentHeight: g.contentSize.height, bottomInset: g.contentInsets.bottom,
                                  atEnd: visibleEnd >= g.contentSize.height - 32)
         } action: { old, new in
