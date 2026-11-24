@@ -123,6 +123,8 @@ final class AppModel {
     @ObservationIgnored private(set) var liveActivity: LiveActivityController!
     @ObservationIgnored var backgroundJobs = 0
     @ObservationIgnored var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    /// keeps the app running in the background while the Live Activity follows a turn
+    @ObservationIgnored let backgroundAudio = BackgroundAudio()
     let link = BridgeConnection()
     @ObservationIgnored private var nextCursor: String?
 

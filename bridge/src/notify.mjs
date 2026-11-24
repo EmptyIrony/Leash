@@ -7,6 +7,8 @@ import crypto from 'node:crypto';
 
 // The app sends a WebSocket ping every 15 s while it runs; a client silent for this long is suspended or gone.
 export const AWAY_MS = 25000;
+// A Leash connected from the background answers within this long if its Live Activity alerted about a request.
+export const BACKGROUND_GRACE_MS = 4000;
 
 const TEXT = {
   zh: {
@@ -85,12 +87,13 @@ function duration(ms, t) {
 }
 
 export class BarkNotifier {
-  constructor({ settings, clients = () => [], fetch = globalThis.fetch, log = () => {}, awayMs = AWAY_MS, timeoutMs = 10000 }) {
+  constructor({ settings, clients = () => [], fetch = globalThis.fetch, log = () => {}, awayMs = AWAY_MS, graceMs = BACKGROUND_GRACE_MS, timeoutMs = 10000 }) {
     this.s = settings;
     this.clients = clients;
     this.fetch = fetch;
     this.log = log;
     this.awayMs = awayMs;
+    this.graceMs = graceMs;
     this.timeoutMs = timeoutMs;
   }
 
@@ -100,23 +103,32 @@ export class BarkNotifier {
     if (this.s.turnEnd) hub.on('turn_end', s => { try { this.#turnEnd(hub, s); } catch (e) { this.log('bark: ' + e.message); } });
   }
 
-  /** Latest time any connected client was heard from (0 when none). */
+  /** Latest time a connected client on screen was heard from (0 when none). */
   #lastSeen() {
     let t = 0;
-    for (const c of this.clients() ?? []) t = Math.max(t, c.lastSeen ?? 0);
+    for (const c of this.clients() ?? []) if (!c.background) t = Math.max(t, c.lastSeen ?? 0);
     return t;
+  }
+
+  /** A Leash still connected from the background (kept running for its Live Activity). */
+  #inBackground() {
+    for (const c of this.clients() ?? []) if (c.background) return true;
+    return false;
   }
 
   /**
    * Run send() now if nobody is watching; if a client looks live, wait one ping period and send only if it went
-   * quiet (the app was backgrounded right before the event). still() can veto a late send.
+   * quiet (the app was backgrounded right before the event). A Leash running in the background gets a short grace
+   * instead: its Live Activity may alert about a request itself (bridge/noticed). still() can veto a late send.
    */
   #whenAway(send, still = () => true) {
     const t = Date.now();
-    if (this.s.always || this.#lastSeen() < t - this.awayMs) { send(); return; }
+    if (this.s.always) { send(); return; }
+    const onScreen = this.#lastSeen() >= t - this.awayMs;
+    if (!onScreen && !this.#inBackground()) { send(); return; }
     const timer = setTimeout(() => {
       try { if (this.#lastSeen() <= t && still()) send(); } catch (e) { this.log('bark: ' + e.message); }
-    }, this.awayMs);
+    }, onScreen ? this.awayMs : this.graceMs);
     timer.unref?.();
   }
 

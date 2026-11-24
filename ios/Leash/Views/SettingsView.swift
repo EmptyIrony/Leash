@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var pasteError: String?
     @AppStorage("haptics") private var haptics = true
     @AppStorage("liveActivities") private var liveActivities = true
+    @AppStorage("backgroundUpdates") private var backgroundUpdates = true
 
     var body: some View {
         NavigationStack {
@@ -68,13 +69,15 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Live Activity", isOn: $liveActivities)
+                    Toggle("Update in Background", isOn: $backgroundUpdates).disabled(!liveActivities)
                     LabeledContent("Apple Watch") {
                         Text(WatchRelay.shared.watchAppInstalled ? "Leash installed" : "Not installed")
                     }
                 } header: { Text("Lock Screen & Watch") } footer: {
-                    Text("A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. It updates while Leash is running and says when it may be out of date. The watch app reaches your Mac through this iPhone.")
+                    Text("A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. With Update in Background on, Leash keeps running until the turn ends (it plays silence, which uses some battery); otherwise it updates only while Leash is open and says when it may be out of date. The watch app reaches your Mac through this iPhone.")
                 }
                 .onChange(of: liveActivities) { _, on in if !on { model.liveActivity.stopAll() } }
+                .onChange(of: backgroundUpdates) { model.liveActivity.syncKeepAlive() }
 
                 Section("Status") {
                     LabeledContent("Connection") { ConnectionPill() }

@@ -6,8 +6,9 @@ import SwiftUI
 /// this iPhone. It follows several conversations at once and focuses the most urgent: one waiting for approval wins,
 /// otherwise the most recently started. The focus changes only when a phase changes, never on step updates.
 ///
-/// No push (free team): updates happen only while the app runs. Every update sets `staleDate` 75 s ahead, so a frozen
-/// activity says it is old instead of pretending; a heartbeat keeps it fresh while the app is alive and connected.
+/// No push (free team): updates happen only while the app runs. With "Update in Background" on, silent audio keeps
+/// it running while the activity follows a turn (BackgroundAudio). Every update sets `staleDate` 75 s ahead, so a
+/// frozen activity says it is old instead of pretending; a heartbeat keeps it fresh while the app is alive and connected.
 @MainActor
 final class LiveActivityController {
     typealias LAState = LeashActivityAttributes.ContentState
@@ -43,6 +44,7 @@ final class LiveActivityController {
     private var heartbeat: Task<Void, Never>?
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveActivities") as? Bool ?? true }
+    static var updatesInBackground: Bool { UserDefaults.standard.object(forKey: "backgroundUpdates") as? Bool ?? true }
 
     init(model: AppModel) {
         self.model = model
@@ -157,7 +159,14 @@ final class LiveActivityController {
         let a = activity
         activity = nil
         lastSent = nil
+        syncKeepAlive()
         Task { await a?.end(nil, dismissalPolicy: .immediate) }
+    }
+
+    /// Keep Leash running while an activity on screen follows a turn; let it go once the final state is out.
+    func syncKeepAlive() {
+        let showing = activity.map { $0.activityState == .active || $0.activityState == .stale } ?? false
+        model.keepRunning(Self.enabled && Self.updatesInBackground && showing && !tracked.isEmpty)
     }
 
     /// Wait for a scheduled update to go out (intents end right after this).
@@ -261,6 +270,7 @@ final class LiveActivityController {
             finalAgain = false
         } while flushAgain
         flushing = false
+        syncKeepAlive()
     }
 
     /// `final`: the process may be suspended right after this (an intent): don't defer anything.

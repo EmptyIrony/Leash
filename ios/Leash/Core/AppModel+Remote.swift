@@ -35,6 +35,7 @@ extension AppModel {
 
     func scenePhaseChanged(_ phase: ScenePhase) {
         sceneActive = phase == .active
+        link.visible = phase != .background
         switch phase {
         case .active:
             foreground()
@@ -62,7 +63,7 @@ extension AppModel {
     }
 
     /// Run work the system woke us for. A background task (the system's finish-what-you-started allowance, not a
-    /// keep-alive) covers it; afterwards, if no scene is on screen, the socket is closed.
+    /// keep-alive) covers it; afterwards, if no scene is on screen and nothing keeps us running, the socket is closed.
     func backgroundWork<T>(_ body: () async -> T) async -> T {
         backgroundJobs += 1
         if backgroundTask == .invalid {
@@ -80,7 +81,9 @@ extension AppModel {
             if UIApplication.shared.applicationState == .background {
                 // let the last frames (and ActivityKit's update) go out first
                 try? await Task.sleep(for: .milliseconds(600))
-                if backgroundJobs == 0 && UIApplication.shared.applicationState == .background { link.disconnect() }
+                if backgroundJobs == 0 && UIApplication.shared.applicationState == .background && !backgroundAudio.isOn {
+                    link.disconnect()
+                }
             }
             if backgroundJobs == 0 && backgroundTask != .invalid {
                 UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -88,6 +91,14 @@ extension AppModel {
             }
         }
         return result
+    }
+
+    /// Keep running in the background while the Live Activity follows a turn (BackgroundAudio). When that stops
+    /// with Leash in the background, close the socket before iOS suspends us, as after a Live Activity button.
+    func keepRunning(_ on: Bool) {
+        guard on != backgroundAudio.isOn else { return }
+        backgroundAudio.set(on)
+        if !on && backgroundJobs == 0 && UIApplication.shared.applicationState == .background { link.disconnect() }
     }
 
     // MARK: Live Activity buttons

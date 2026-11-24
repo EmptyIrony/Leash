@@ -1,7 +1,7 @@
 # Leash personal-cert edition: handoff
 
-Branch `personal-cert` in the worktree `/Users/jerryzhou/workspace/Leash-personal` (main is untouched). Signed with
-your **free personal Apple team** (7-day profiles, no push). Everything Swift here is **written, not compiled**: build
+Built on branch `personal-cert` (worktree `/Users/jerryzhou/workspace/Leash-personal`) and **merged into main on
+2026-11-24**: main is now this edition, the p12 build is gone. Signed with your **free personal Apple team** (7-day profiles, no push). Everything Swift here is **written, not compiled**: build
 in Xcode and paste the errors.
 
 ## What was built
@@ -68,9 +68,10 @@ default with encryption; a configured `bark.url` still wins; otherwise `leash://
 
 ## Mac steps, in order
 
-1. `cd ~/workspace/Leash-personal` and open `ios/Leash.xcodeproj` (this worktree, not ~/workspace/Leash).
+1. `cd ~/workspace/Leash` and open `ios/Leash.xcodeproj` (main; the `Leash-personal` worktree is no longer needed).
 2. Xcode > Settings > Accounts: your Apple ID is there (Personal Team).
-3. Select the project > each target **Leash**, **LeashLiveActivity**, **LeashWatch** > Signing & Capabilities: tick
+3. Your Personal Team is committed in all three targets (`DEVELOPMENT_TEAM`, taken from the worktree). If Xcode
+   still asks: each target **Leash**, **LeashLiveActivity**, **LeashWatch** > Signing & Capabilities: tick
    "Automatically manage signing", Team = your Personal Team. (Or set `DEVELOPMENT_TEAM` once at project level.)
    No capabilities need adding. If "bundle identifier is not available", change `LEASH_BUNDLE_ID` in the project's
    build settings and retry.
@@ -87,18 +88,16 @@ default with encryption; a configured `bark.url` still wins; otherwise `leash://
 9. **Every 7 days** the free profile expires (apps stop launching): connect, open the project, Run **Leash** and
    **LeashWatch** again. Data stays; no re-pairing needed unless you delete the app.
 
-**Bridge changes need deploying**: they are only on this branch. Do **not** merge the branch into main (main keeps the
-p12 signing). Take only the bridge diff into the running checkout, test, and restart last (it cuts the remote sessions):
+**Bridge**: its changes are on main, which is the checkout the Mac's bridge runs from, so they take effect at the
+next restart. Test first and restart last (it cuts the remote sessions):
 
 ```zsh
-cd ~/workspace/Leash
-git diff d9131ee personal-cert -- bridge > /tmp/leash-bridge.patch
-git apply -3 /tmp/leash-bridge.patch          # 3-way, so later bridge work on main is kept
-(cd bridge && npm test) && git commit -am "bridge: Bark session links, bridge/noticed, list stopReason (from personal-cert)"
-launchctl kickstart -k gui/$(id -u)/dev.leash.bridge
-``` Without them the app still
-works: Bark taps just open the app, Bark may also push a request the Live Activity already alerted about, and a turn
-that ended unseen shows as "Turn ended".
+cd ~/workspace/Leash/bridge && npm test && launchctl kickstart -k gui/$(id -u)/dev.leash.bridge
+```
+
+Until then Bark taps just open the app, Bark may also push a request the Live Activity already alerted about, a turn
+that ended unseen shows as "Turn ended", and while "Update in Background" keeps Leash running the old bridge thinks
+it is on screen and holds Bark pushes back.
 
 ## Verified vs unverified
 
@@ -121,6 +120,12 @@ link routing; draft restore.
 
 - No push: while Leash is suspended the Live Activity cannot change. The timer keeps counting, it turns "stale" after
   75 s, and Bark tells you when something happens; Refresh or opening the app catches up.
+- Update in Background (Settings, default on): while the activity follows a turn Leash plays a looping silent sound
+  (`UIBackgroundModes` audio, mixes with other audio, not Now Playing) so it stays running and connected; it stops
+  and closes the socket once the final state is out. It tells the bridge it is in the background
+  (`{op: "presence", visible}`), so Bark still pushes: a turn end after 4 s, a request after 4 s unless the Live
+  Activity alerted about it (`bridge/noticed`). A call interrupts it (it resumes afterwards, best effort); starting it
+  from the background (a watch reply) may be refused by iOS. Costs some battery.
 - An activity can only *start* while Leash is on screen (ActivityKit), so a turn started from the watch has no
   Live Activity until you open the phone app.
 - The step line exists only while that chat is open in Leash (the bridge sends step updates to attached clients).

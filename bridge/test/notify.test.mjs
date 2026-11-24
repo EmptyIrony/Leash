@@ -14,6 +14,7 @@ import { createServer } from '../src/server.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const AWAY = 60;
+const GRACE = 20;
 
 function fakeHub() {
   const h = new EventEmitter();
@@ -25,7 +26,7 @@ function fakeHub() {
 function rig({ bark = {}, clients = [], fetchImpl } = {}) {
   const sent = [], logs = [];
   const fetch = fetchImpl ?? (async (url, init) => { sent.push({ endpoint: url, ...JSON.parse(init.body) }); return { ok: true, status: 200 }; });
-  const n = new BarkNotifier({ settings: barkSettings({ key: 'SECRETKEY', ...bark }), clients: () => clients, fetch, log: m => logs.push(m), awayMs: AWAY });
+  const n = new BarkNotifier({ settings: barkSettings({ key: 'SECRETKEY', ...bark }), clients: () => clients, fetch, log: m => logs.push(m), awayMs: AWAY, graceMs: GRACE });
   const hub = fakeHub();
   n.watch(hub);
   return { n, hub, sent, logs, clients };
@@ -97,6 +98,28 @@ test('phone on screen: no push while it keeps pinging; push once it goes quiet',
   assert.equal(r.sent.length, 0);
   await sleep(AWAY + 30);
   assert.equal(r.sent.length, 1);
+});
+
+test('a Leash kept running in the background: pushed after a short grace, unless its Live Activity alerted', async () => {
+  const bg = { lastSeen: 0, background: true };
+  const r = rig({ clients: [bg] });
+  ask(r.hub, 'claude:r1');
+  await sleep(5);
+  assert.equal(r.sent.length, 0, 'waits for bridge/noticed');
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 1);
+  const p2 = ask(r.hub, 'claude:r2');
+  p2.noticedAt = Date.now();
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 1, 'the phone alerted itself');
+  endTurn(r.hub);
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 2, 'turn end still reaches Bark');
+  // a stale lastSeen on a background client never counts as on screen
+  bg.lastSeen = Date.now();
+  endTurn(r.hub);
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 3);
 });
 
 test('a request answered during the grace period is not pushed', async () => {
@@ -220,6 +243,31 @@ test('server stamps client.lastSeen on WebSocket pings', async () => {
     ws.ping();
     await sleep(30);
     assert.ok(c.lastSeen > before);
+  } finally { ws.close(); hub.stop(); server.close(); }
+});
+
+test('presence: a backgrounded app stops counting as on screen, coming back counts again', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-presence-'));
+  const hub = new Hub({ agentCommand: process.execPath, agentArgs: [path.join(here, 'mock-agent.mjs')], log: () => {}, home });
+  const server = createServer({ hub, token: 'tok', log: () => {} });
+  const srv = await server.listen('127.0.0.1', 0);
+  const ws = new WebSocket(`ws://127.0.0.1:${srv.address().port}/ws`, { headers: { authorization: 'Bearer tok' } });
+  try {
+    await new Promise((res, rej) => { ws.once('open', res); ws.once('error', rej); });
+    await sleep(20);
+    const [c] = [...hub.clients];
+    ws.send(JSON.stringify({ op: 'presence', visible: false }));
+    await sleep(30);
+    assert.equal(c.background, true);
+    assert.equal(c.lastSeen, 0);
+    ws.ping();
+    ws.send(JSON.stringify({ op: 'ping', t: 1 }));
+    await sleep(30);
+    assert.equal(c.lastSeen, 0, 'pings and messages from the background do not count');
+    ws.send(JSON.stringify({ op: 'presence', visible: true }));
+    await sleep(30);
+    assert.equal(c.background, false);
+    assert.ok(c.lastSeen > 0);
   } finally { ws.close(); hub.stop(); server.close(); }
 });
 

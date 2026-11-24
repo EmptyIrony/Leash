@@ -29,6 +29,9 @@ final class BridgeConnection: NSObject {
     var onState: (@MainActor (State) -> Void)?
 
     private(set) var state: State = .idle { didSet { if state != oldValue { onState?(state) } } }
+    /// Leash is on screen. The bridge holds Bark pushes back only for a client on screen, so it has to hear when a
+    /// Leash kept running in the background (BackgroundAudio) is not.
+    var visible = false { didSet { if visible != oldValue { sendPresence() } } }
     private var task: URLSessionWebSocketTask?
     private lazy var urlSession = URLSession(configuration: {
         let c = URLSessionConfiguration.default
@@ -157,6 +160,7 @@ final class BridgeConnection: NSObject {
             state = .connected
             retryDelay = 1
             startPings()
+            sendPresence()
         }
         if op == "result", let id = m["id"]?.int, let c = pending.removeValue(forKey: id) {
             if let e = m["error"], !e.isNull {
@@ -190,6 +194,11 @@ final class BridgeConnection: NSObject {
                 }
             }
         }
+    }
+
+    private func sendPresence() {
+        guard state == .connected else { return }
+        try? sendRaw(["op": "presence", "visible": .bool(visible)])
     }
 
     private func sendRaw(_ obj: JSON) throws {

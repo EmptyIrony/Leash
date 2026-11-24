@@ -43,9 +43,11 @@ export function createServer({ hub, token, log = console.log }) {
     const send = msg => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
     const client = hub.addClient(send, { remote, name });
     log(`client #${client.id} connected from ${remote} (${name})`);
-    // last time the app itself spoke (its 15 s pings or a message): notify.mjs treats ~25 s of silence as "away"
+    // last time the app itself spoke while on screen (its 15 s pings or a message): notify.mjs treats ~25 s of silence
+    // as "away". A Leash kept running in the background says so ({op: 'presence', visible: false}) and stops counting.
     client.lastSeen = Date.now();
-    const seen = () => { client.lastSeen = Date.now(); };
+    client.background = false;
+    const seen = () => { if (!client.background) client.lastSeen = Date.now(); };
     ws.on('ping', seen);
     let alive = true;
     ws.on('pong', () => { alive = true; });   // not "seen": a just-backgrounded app still pongs
@@ -55,9 +57,14 @@ export function createServer({ hub, token, log = console.log }) {
     }, 25000);
 
     ws.on('message', async data => {
-      seen();
       let m;
-      try { m = JSON.parse(String(data)); } catch { send({ op: 'error', message: 'invalid json' }); return; }
+      try { m = JSON.parse(String(data)); } catch { seen(); send({ op: 'error', message: 'invalid json' }); return; }
+      if (m.op === 'presence') {
+        client.background = m.visible === false;
+        client.lastSeen = client.background ? 0 : Date.now();
+        return;
+      }
+      seen();
       if (m.op === 'ping') { send({ op: 'pong', t: m.t ?? null }); return; }
       if (m.op === 'reply') {
         try { hub.reply(client, m.key, m.result, m.error); send({ op: 'result', id: m.id ?? null, result: { ok: true } }); }
