@@ -32,6 +32,9 @@ struct ChatView: View {
     /// "New Conversation Here" is waiting on the agent (session/new can take a while)
     @State private var startingNew = false
     @State private var newError: String?
+    /// "Show on Computer" is waiting on the bridge / failed.
+    @State private var showingInCli = false
+    @State private var cliError: String?
     @AppStorage("turboConfirmed") private var turboConfirmed = false
     @AppStorage("bypassConfirmed") private var bypassConfirmed = false
     @FocusState private var composerFocused: Bool
@@ -181,6 +184,9 @@ struct ChatView: View {
             .alert("Couldn't start a conversation", isPresented: showNewError, presenting: newError) { _ in
                 Button("OK", role: .cancel) {}
             } message: { Text($0) }
+            .alert("Couldn't show it on the computer", isPresented: showCliError, presenting: cliError) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
     }
 
     @ViewBuilder private var startingCapsule: some View {
@@ -194,6 +200,10 @@ struct ChatView: View {
 
     private var showNewError: Binding<Bool> {
         Binding(get: { newError != nil }, set: { if !$0 { newError = nil } })
+    }
+
+    private var showCliError: Binding<Bool> {
+        Binding(get: { cliError != nil }, set: { if !$0 { cliError = nil } })
     }
 
     private func enableApproveAll(_ mode: String) {
@@ -212,6 +222,8 @@ struct ChatView: View {
             .task { await model.attach(store) }
             .task { await model.refreshQuota() }
             .task(id: store.pendingEcho?.id) { await watchSending() }
+            // on open and after each turn: a first turn here is what creates the transcript
+            .task(id: store.running) { if !store.running { await model.refreshCliListing(store) } }
             .onChange(of: pickerItems) { _, items in loadPicked(items) }
             .onChange(of: store.unsentDraft) { _, t in
                 // a queued message taken back goes in front of whatever is being typed
@@ -944,11 +956,12 @@ struct ChatView: View {
             if let cwd = store.cwd {
                 Button { UIPasteboard.general.string = cwd; Haptics.selection() } label: { Label("Copy Folder Path", systemImage: "doc.on.doc") }
             }
-            if store.agent == "claude" {
-                Button { UIPasteboard.general.string = resumeCommand; Haptics.selection() } label: {
-                    Label("Continue on Computer", systemImage: "desktopcomputer")
-                    Text("Copies a terminal command")
+            if model.hasCliList(store.agent) {
+                Button(action: showInCli) {
+                    Label("Show on Computer", systemImage: "desktopcomputer")
+                    Text(store.listedInCli == true ? "Already in Claude Code's /resume" : "Adds it to Claude Code's /resume")
                 }
+                .disabled(store.listedInCli == true || showingInCli || !model.isConnected)
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -956,12 +969,15 @@ struct ChatView: View {
         .menuOrder(.fixed)
     }
 
-    /// Picks this conversation up in the Claude Code terminal. Its /resume list leaves out conversations started through
-    /// the Agent SDK (Leash's), so they open only by ID, from their own folder.
-    private var resumeCommand: String {
-        let resume = "claude --resume \(store.sessionId)"
-        guard let cwd = store.cwd else { return resume }
-        return "cd '\(cwd.replacingOccurrences(of: "'", with: "'\\''"))' && \(resume)"
+    /// Claude Code on the computer leaves conversations started here out of /resume until the bridge relabels them.
+    private func showInCli() {
+        guard !showingInCli else { return }
+        showingInCli = true
+        Task {
+            do { try await model.showInCli(store); Haptics.success() }
+            catch { cliError = error.localizedDescription; Haptics.error() }
+            showingInCli = false
+        }
     }
 
     /// A fresh conversation in this folder, replacing this one on the stack (Back goes to the list).

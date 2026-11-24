@@ -565,6 +565,8 @@ final class ChatStore {
     var queued: [QueuedMessage] = []
     /// /btw questions asked on this phone, oldest first; kept until closed (not synced to other devices).
     var sideQuestions: [SideQuestion] = []
+    /// Claude Code's /resume list on the computer shows this conversation (nil: not known yet).
+    var listedInCli: Bool?
     func resolveSideQuestion(_ id: UUID, answer: String?, error: String?) {
         guard let i = sideQuestions.firstIndex(where: { $0.id == id }) else { return }
         sideQuestions[i].answer = answer

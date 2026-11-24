@@ -18,6 +18,8 @@ struct AgentInfo: Identifiable, Hashable {
     var turbo = false
     /// /btw side questions (Claude Code: a throwaway fork on its host).
     var btw = false
+    /// Conversations can be put in Claude Code's own /resume list on its host.
+    var cliList = false
     var isReady: Bool { state == "ready" }
 }
 
@@ -135,6 +137,7 @@ final class AppModel {
     func steers(_ agentId: String) -> Bool { agent(agentId)?.steering ?? false }
     func hasTurbo(_ agentId: String) -> Bool { agent(agentId)?.turbo ?? false }
     func asksSideQuestions(_ agentId: String) -> Bool { agent(agentId)?.btw ?? false }
+    func hasCliList(_ agentId: String) -> Bool { agent(agentId)?.cliList ?? false }
     func agentLabel(_ id: String) -> String { agent(id)?.label ?? (id == "claude" ? "Claude Code" : "Antigravity") }
 
     init() {
@@ -232,6 +235,7 @@ final class AppModel {
                 agents[i].steering = m["steering"]?.bool ?? false
                 agents[i].turbo = m["turbo"]?.bool ?? false
                 agents[i].btw = m["btw"]?.bool ?? false
+                agents[i].cliList = m["cliList"]?.bool ?? false
             }
             if m["agentId"]?.string == nil || m["agentId"]?.string == "agy" { applyAgent(m) }
             if agentState == "ready" {
@@ -320,7 +324,8 @@ final class AppModel {
                          imageInput: info?["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false,
                          steering: a["steering"]?.bool ?? false,
                          turbo: a["turbo"]?.bool ?? false,
-                         btw: a["btw"]?.bool ?? false)
+                         btw: a["btw"]?.bool ?? false,
+                         cliList: a["cliList"]?.bool ?? false)
     }
 
     private func applyAgent(_ a: JSON?) {
@@ -641,6 +646,20 @@ final class AppModel {
 
     /// At most this many side questions are open at once; closing one makes room.
     static let maxSideQuestions = 3
+
+    /// Whether Claude Code's /resume list on the computer shows this conversation (it leaves out ones started here).
+    func refreshCliListing(_ s: ChatStore) async {
+        guard hasCliList(s.agent), isConnected else { return }
+        if let r = try? await link.call("bridge/cliVisibility", ["sessionId": .string(s.sessionId), "agent": .string(s.agent)], timeout: 25) {
+            s.listedInCli = r["visible"]?.bool
+        }
+    }
+
+    /// The bridge relabels the conversation on the agent's host so Claude Code's /resume lists it.
+    func showInCli(_ s: ChatStore) async throws {
+        _ = try await link.call("bridge/showInCli", ["sessionId": .string(s.sessionId), "agent": .string(s.agent)], timeout: 25)
+        s.listedInCli = true
+    }
 
     /// /btw: ask about the conversation without adding to it, also mid-turn. The bridge answers only this phone.
     func askSideQuestion(_ s: ChatStore, _ question: String) {
