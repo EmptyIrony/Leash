@@ -72,6 +72,10 @@ struct SubagentView: View {
             .sheet(item: fileSheet) { f in FileViewer(path: f.path, agent: store.agent, sessionId: store.sessionId) }
             .environment(\.embedAgent, store.agent)
             .environment(\.transcriptSession, store.sessionId)
+            // live updates keep coming while the chat underneath is hidden (also when opened from a tray)
+            .onAppear { model.watch(store) }
+            .onDisappear { model.unwatch(store) }
+            .task { if !store.attached { await model.attach(store) } }
     }
 
     @ViewBuilder private var content: some View {

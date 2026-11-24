@@ -438,6 +438,29 @@ final class AppModel {
         }
     }
 
+    /// Views showing a conversation: its chat, and a subagent's transcript pushed on top of it (which hides the chat).
+    @ObservationIgnored private var watchers: [String: Int] = [:]
+
+    /// A view showing `s` appeared: it stays attached (live updates) and counts as on screen while any such view is.
+    func watch(_ s: ChatStore) {
+        watchers[s.sessionId, default: 0] += 1
+        visibleSessionId = s.sessionId
+    }
+
+    /// The last view of `s` going away detaches it. A push from the chat to a subagent (or back) disappears one view
+    /// as the other appears, in either order: the short wait lets the next one claim the conversation first.
+    func unwatch(_ s: ChatStore) {
+        let n = max(0, (watchers[s.sessionId] ?? 1) - 1)
+        watchers[s.sessionId] = n
+        guard n == 0 else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard (watchers[s.sessionId] ?? 0) == 0 else { return }
+            if visibleSessionId == s.sessionId { visibleSessionId = nil }
+            detach(s)
+        }
+    }
+
     func detach(_ s: ChatStore) {
         // keep the store cached (cheap) but stop live updates for sessions we left
         s.attached = false

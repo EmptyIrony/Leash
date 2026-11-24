@@ -191,7 +191,6 @@ struct ChatView: View {
             .task { await model.attach(store) }
             .task { await model.refreshQuota() }
             .task(id: store.pendingEcho?.id) { await watchSending() }
-            .onDisappear { model.detach(store) }
             .onChange(of: pickerItems) { _, items in loadPicked(items) }
             .onChange(of: store.unsentDraft) { _, t in
                 // a queued message taken back goes in front of whatever is being typed
@@ -206,8 +205,9 @@ struct ChatView: View {
             .haptic(.warning, trigger: pendingHere.count) { old, new in new > old }               // agent needs you
             .haptic(.success, trigger: store.running) { was, now in was && !now && turnWasLong }  // long task done
             .haptic(.selection, trigger: images.count + files.count) { old, new in new > old }     // photo / file attached
-            .onAppear { model.visibleSessionId = store.sessionId }
-            .onDisappear { if model.visibleSessionId == store.sessionId { model.visibleSessionId = nil } }
+            // a pushed subagent transcript keeps the conversation attached and on screen (AppModel.watch)
+            .onAppear { model.watch(store) }
+            .onDisappear { model.unwatch(store) }
     }
 
     /// Only celebrate turns that took a while (≥ 8 s) and ended normally.

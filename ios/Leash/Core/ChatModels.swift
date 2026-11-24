@@ -214,8 +214,8 @@ final class SubagentItem: Identifiable {
     var title: String?
     /// The subagent_update `description`: claude-agent-acp puts the agent type there ("Explore", "claude", …).
     var agentType: String?
-    /// running | idle | requires_action | unknown
-    var state = "running"
+    /// running | idle | requires_action | unknown (a session is idle until reported otherwise; unknown until any report)
+    var state = "unknown"
     var stopReason: String?
     var model: String?
     /// The child's own transcript: the parent's prompt (as a .user message), thoughts, tools, notes, its reply, nested subagents.
@@ -288,10 +288,8 @@ final class SubagentItem: Identifiable {
         guard let blocks = u["content"]?.array else { return }
         let text = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
         if let m = prompt(mid) { m.text = text; return }
-        let m = MessageItem(role: .user, text: text, messageId: mid)
-        // the prompt leads the transcript even if some of the child's output came first
-        if let i = entries.firstIndex(where: { if case .message(let x) = $0 { return x.role != .user }; return true }) { entries.insert(.message(m), at: i) }
-        else { entries.append(.message(m)) }
+        // in order: the parent can message the same child again later
+        entries.append(.message(MessageItem(role: .user, text: text, messageId: mid)))
     }
 
     func applySessionMessageChunk(_ u: JSON) {
