@@ -164,6 +164,7 @@ struct SessionListView: View {
         let (title, isGeneral) = model.folderTitle(group.folder, agent: group.agent)
         let open = isExpanded(group.id)
         let runningCount = group.items.filter(\.running).count
+        let unreadCount = group.items.filter { model.isUnread($0) }.count
         let ids = Set(grouped.map(\.id))
         return HStack(spacing: 6) {
             if multiAgent && filter == "all" { AgentIcon(agent: group.agent, size: 13) }
@@ -172,6 +173,11 @@ struct SessionListView: View {
             Spacer(minLength: 8)
             if !open {
                 if runningCount > 0 { ActivitySpinner(size: 12) }
+                if unreadCount > 0 {
+                    Circle().fill(Theme.accent).frame(width: 7, height: 7)
+                        .accessibilityLabel(Text("\(unreadCount) unread"))
+                        .transition(Motion.pop)
+                }
                 Text(group.items.count, format: .number)
                     .font(.subheadline).monospacedDigit()
                     .foregroundStyle(Theme.textTertiary)
@@ -190,8 +196,12 @@ struct SessionListView: View {
     }
 
     private func row(_ s: SessionSummary) -> some View {
-        NavigationLink(value: s.id) { SessionRow(session: s, showAgent: multiAgent && filter == "all", draft: model.drafts[s.id]) }
-            .listRowBackground(Theme.bgRaised)
+        let unread = model.isUnread(s)
+        return NavigationLink(value: s.id) {
+            SessionRow(session: s, showAgent: multiAgent && filter == "all", draft: model.drafts[s.id], unread: unread)
+        }
+        .listRowBackground(Theme.bgRaised)
+        .readStateActions(s.id, unread: unread)
     }
 
     private var downAgents: [AgentInfo] {
@@ -232,6 +242,35 @@ struct SessionListView: View {
     }
 }
 
+extension View {
+    /// Mail's leading swipe (full swipe toggles) and the same action in the context menu.
+    func readStateActions(_ sessionId: String, unread: Bool) -> some View {
+        modifier(ReadStateActions(sessionId: sessionId, unread: unread))
+    }
+}
+
+private struct ReadStateActions: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let sessionId: String
+    let unread: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                button.tint(Theme.accent)
+            }
+            .contextMenu { button }
+    }
+
+    private var button: some View {
+        Button {
+            withAnimation(Motion.quick) { model.setUnread(sessionId, !unread) }
+        } label: {
+            if unread { Label("Mark as Read", systemImage: "envelope.open.fill") } else { Label("Mark as Unread", systemImage: "envelope.badge.fill") }
+        }
+    }
+}
+
 /// Push target for a folder's "Show All".
 struct FolderRoute: Hashable {
     let agent: String
@@ -260,8 +299,10 @@ struct FolderSessionsView: View {
     var body: some View {
         List {
             ForEach(shown) { s in
-                NavigationLink(value: s.id) { SessionRow(session: s, draft: model.drafts[s.id]) }
+                let unread = model.isUnread(s)
+                NavigationLink(value: s.id) { SessionRow(session: s, draft: model.drafts[s.id], unread: unread) }
                     .listRowBackground(Theme.bgRaised)
+                    .readStateActions(s.id, unread: unread)
             }
         }
         .listStyle(.insetGrouped)
@@ -286,22 +327,34 @@ struct SessionRow: View {
     var showAgent = false
     /// Text left unsent in the composer (AppModel.drafts).
     var draft: String?
+    /// A turn ended here since it was last opened (AppModel.isUnread).
+    var unread = false
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(2)
-                HStack(spacing: 5) {
-                    if showAgent { AgentIcon(agent: session.agent, size: 11) }
-                    if let draft { draftLine(draft) }
-                    if let d = session.updatedAt {
-                        Text(d, format: .relative(presentation: .named))
-                            .foregroundStyle(Theme.textSecondary)
-                            .fixedSize()
-                            .layoutPriority(1)
+            // Mail's unread dot, in a gutter every row keeps so titles never shift; it sits on the title's first line
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Circle().fill(Theme.accent)
+                    .frame(width: 9, height: 9)
+                    .scaleEffect(unread ? 1 : 0.4)
+                    .opacity(unread ? 1 : 0)
+                    .accessibilityLabel(Text("Unread"))
+                    .accessibilityHidden(!unread)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(2)
+                    HStack(spacing: 5) {
+                        if showAgent { AgentIcon(agent: session.agent, size: 11) }
+                        if let draft { draftLine(draft) }
+                        if let d = session.updatedAt {
+                            Text(d, format: .relative(presentation: .named))
+                                .foregroundStyle(Theme.textSecondary)
+                                .fixedSize()
+                                .layoutPriority(1)
+                        }
                     }
+                    .font(.footnote)
                 }
-                .font(.footnote)
             }
+            .animation(Motion.quick, value: unread)
             Spacer(minLength: 4)
             ZStack { statusGlyph }
                 .animation(Motion.quick, value: status)

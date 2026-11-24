@@ -93,6 +93,12 @@ final class AppModel {
     /// What was typed but not sent in each conversation, by session id, kept across launches (ChatView saves it when
     /// the chat goes away or the app leaves the foreground); the list shows it under the title.
     private(set) var drafts: [String: String] = [:] { didSet { UserDefaults.standard.set(drafts, forKey: "drafts") } }
+    /// When each conversation was last on screen, and the ones marked unread by hand (both persisted): a turn that
+    /// ended after the visit gets the list's unread dot.
+    private(set) var lastSeen: [String: Date] = [:] { didSet { UserDefaults.standard.set(lastSeen, forKey: "lastSeen") } }
+    private(set) var markedUnread: Set<String> = [] { didSet { UserDefaults.standard.set(Array(markedUnread), forKey: "markedUnread") } }
+    /// Turns that ended before the first launch with unread dots don't count (no old conversation starts out unread).
+    @ObservationIgnored private var unreadSince = Date()
 
     // live state
     var connection: BridgeConnection.State = .idle
@@ -152,6 +158,9 @@ final class AppModel {
         token = Keychain.get("token") ?? ""
         macName = d.string(forKey: "macName") ?? ""
         drafts = d.dictionary(forKey: "drafts") as? [String: String] ?? [:]
+        lastSeen = d.dictionary(forKey: "lastSeen") as? [String: Date] ?? [:]
+        markedUnread = Set(d.stringArray(forKey: "markedUnread") ?? [])
+        if let since = d.object(forKey: "unreadSince") as? Date { unreadSince = since } else { d.set(unreadSince, forKey: "unreadSince") }
         link.onState = { [weak self] s in
             guard let self else { return }
             if case .failed = s, self.connection != s { Haptics.error() }   // e.g. token rejected
@@ -281,9 +290,14 @@ final class AppModel {
                 s.running = isRunning
                 if !isRunning { s.lastStopReason = m["stopReason"]?.string }
             }
-            if let i = sessions.firstIndex(where: { $0.id == sid }), sessions[i].running != isRunning {
-                withAnimation(Motion.layout) { sessions[i].running = isRunning }
+            if let i = sessions.firstIndex(where: { $0.id == sid }) {
+                var row = sessions[i]
+                row.running = isRunning
+                // as session/list would say it: the unread dot appears without waiting for the next refresh
+                if wasRunning && !isRunning { row.turnEndedAt = Date(); row.lastStopReason = m["stopReason"]?.string }
+                if row != sessions[i] { withAnimation(Motion.layout) { sessions[i] = row } }
             }
+            if wasRunning && !isRunning && sceneActive && visibleSessionId == sid { markSeen(sid) }
         case "session_info":
             guard let sid = m["sessionId"]?.string else { return }
             if let i = sessions.firstIndex(where: { $0.id == sid }), let t = m["title"]?.string, sessions[i].title != t {
@@ -437,6 +451,24 @@ final class AppModel {
         if drafts[sessionId] != next { drafts[sessionId] = next }
     }
 
+    /// A turn the bridge ran here ended after the conversation was last on screen, or it was marked unread.
+    func isUnread(_ s: SessionSummary) -> Bool {
+        if markedUnread.contains(s.id) { return true }
+        guard !s.running, let end = s.turnEndedAt, end > unreadSince else { return false }
+        // the Mac's clock stamps the end, the phone's the visit: a few seconds of slack
+        return end.timeIntervalSince(lastSeen[s.id] ?? .distantPast) > 3
+    }
+
+    /// The conversation is on screen (or the user marked it read).
+    func markSeen(_ sessionId: String) {
+        lastSeen[sessionId] = Date()
+        if markedUnread.contains(sessionId) { markedUnread.remove(sessionId) }
+    }
+
+    func setUnread(_ sessionId: String, _ unread: Bool) {
+        if unread { markedUnread.insert(sessionId) } else { markSeen(sessionId) }
+    }
+
     /// The store for a conversation only if one exists (no side effects).
     func existingStore(_ id: String) -> ChatStore? { stores[id] }
 
@@ -517,6 +549,7 @@ final class AppModel {
         watchers[s.sessionId, default: 0] += 1
         visibleSessionId = s.sessionId
         liveActivity.conversationOpened(s.sessionId)
+        if sceneActive { markSeen(s.sessionId) }   // otherwise when the app comes forward (scenePhaseChanged)
     }
 
     /// The last view of `s` going away detaches it. A push from the chat to a subagent (or back) disappears one view
@@ -525,6 +558,7 @@ final class AppModel {
         let n = max(0, (watchers[s.sessionId] ?? 1) - 1)
         watchers[s.sessionId] = n
         guard n == 0 else { return }
+        if sceneActive { markSeen(s.sessionId) }   // a turn that ended while it was open was seen
         Task {
             try? await Task.sleep(for: .milliseconds(600))
             guard (watchers[s.sessionId] ?? 0) == 0 else { return }

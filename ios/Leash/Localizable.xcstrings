@@ -21,6 +21,16 @@
         }
       }
     },
+    "%lld unread" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个未读"
+          }
+        }
+      }
+    },
     "-%lld" : {
 
     },
@@ -30,6 +40,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "草稿：%@"
+          }
+        }
+      }
+    },
+    "Mark as Read" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为已读"
+          }
+        }
+      }
+    },
+    "Mark as Unread" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标为未读"
+          }
+        }
+      }
+    },
+    "Unread" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未读"
           }
         }
       }
