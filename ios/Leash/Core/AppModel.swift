@@ -799,8 +799,11 @@ final class AppModel {
         }
     }
 
-    /// How long a removed queued message can be put back.
-    static let queueUndoWindow: Duration = .seconds(4)
+    /// How long a removed queued message can be put back. With VoiceOver or Switch Control on, reaching Undo takes
+    /// more than a glance and a tap, so the window is longer.
+    static var queueUndoWindow: Duration {
+        UIAccessibility.isVoiceOverRunning || UIAccessibility.isSwitchControlRunning ? .seconds(20) : .seconds(4)
+    }
 
     /// Drop a queued message at once; until the undo window ends it can be put back where it was (`undoRemoveQueued`).
     func removeQueued(_ s: ChatStore, _ q: QueuedMessage) {
