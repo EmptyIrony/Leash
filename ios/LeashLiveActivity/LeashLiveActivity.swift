@@ -23,7 +23,7 @@ struct LeashLiveActivity: Widget {
                         .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TrailingStatus(state: s, isStale: stale, font: .title3.weight(.semibold))
+                    TrailingStatus(state: s, isStale: stale, font: .headline)
                         .padding(.trailing, 6)
                         .frame(maxHeight: .infinity)
                 }
@@ -136,14 +136,30 @@ private struct CompactTrailing: View {
     var body: some View {
         switch state.phase {
         case .working:
-            LA.elapsed(since: state.startedAt)
-                .font(.subheadline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(LA.working.opacity(isStale ? 0.55 : 1))
-                .multilineTextAlignment(.trailing)
-                .frame(width: 52, alignment: .trailing)
+            ElapsedTime(start: state.startedAt, font: .subheadline.weight(.semibold), width: 52, dimmed: isStale)
         default:
             PhaseSymbol(phase: state.phase)
         }
+    }
+}
+
+/// Elapsed time in a fixed-width, single-line slot. A timer `Text` sizes itself for the widest value it could show
+/// (hours included), so with a flexible frame the narrow Dynamic Island regions squeeze it onto two lines ("0:" over
+/// "05"). A fixed width, one line and a little scaling keep it a calm, right-aligned number.
+private struct ElapsedTime: View {
+    let start: Date
+    let font: Font
+    let width: CGFloat
+    let dimmed: Bool
+
+    var body: some View {
+        LA.elapsed(since: start)
+            .font(font.monospacedDigit())
+            .foregroundStyle(LA.working.opacity(dimmed ? 0.55 : 1))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .multilineTextAlignment(.trailing)
+            .frame(width: width, alignment: .trailing)
     }
 }
 
@@ -156,11 +172,7 @@ private struct TrailingStatus: View {
     var body: some View {
         switch state.phase {
         case .working:
-            LA.elapsed(since: state.startedAt)
-                .font(font.monospacedDigit())
-                .foregroundStyle(LA.working.opacity(isStale ? 0.55 : 1))
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 88, alignment: .trailing)
+            ElapsedTime(start: state.startedAt, font: font, width: 72, dimmed: isStale)
         case .approval, .question:
             Image(systemName: LA.symbol(for: state.phase))
                 .font(font)
@@ -170,6 +182,8 @@ private struct TrailingStatus: View {
             Text(verbatim: LA.duration(from: state.startedAt, to: state.endedAt ?? state.updatedAt))
                 .font(font.monospacedDigit())
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
     }
 }
@@ -392,11 +406,7 @@ private struct SmallLayout: View {
                 .lineLimit(1)
                 Spacer(minLength: 4)
                 if state.phase == .working {
-                    LA.elapsed(since: state.startedAt)
-                        .monospacedDigit()
-                        .foregroundStyle(LA.working.opacity(isStale ? 0.55 : 1))
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 56, alignment: .trailing)
+                    ElapsedTime(start: state.startedAt, font: .caption, width: 48, dimmed: isStale)
                 }
             }
             .font(.caption)
