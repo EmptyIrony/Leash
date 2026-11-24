@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ChatView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     let store: ChatStore
     var openSession: (String) -> Void = { _ in }
 
@@ -239,16 +240,17 @@ struct ChatView: View {
             .haptic(.success, trigger: store.running) { was, now in was && !now && turnWasLong }  // long task done
             .haptic(.selection, trigger: images.count + files.count) { old, new in new > old }     // photo / file attached
             // a pushed subagent transcript keeps the conversation attached and on screen (AppModel.watch)
+            // what was typed stays with the conversation: left (Back, a Bark tap, the Live Activity) or the app
+            // put away, also across launches
             .onAppear {
                 model.watch(store)
-                if draft.isEmpty, let d = store.savedDraft { draft = d }
-                store.savedDraft = nil
+                if draft.isEmpty, let d = model.drafts[store.sessionId] { draft = d }
             }
             .onDisappear {
                 model.unwatch(store)
-                let d = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                store.savedDraft = d.isEmpty ? nil : draft
+                model.setDraft(draft, for: store.sessionId)
             }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { model.setDraft(draft, for: store.sessionId) } }
     }
 
     /// Only celebrate turns that took a while (≥ 8 s) and ended normally.

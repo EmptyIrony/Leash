@@ -90,6 +90,9 @@ final class AppModel {
     var port: Int = 8787 { didSet { UserDefaults.standard.set(port, forKey: "port") } }
     var token: String = "" { didSet { Keychain.set("token", token) } }
     var macName: String = "" { didSet { UserDefaults.standard.set(macName, forKey: "macName") } }
+    /// What was typed but not sent in each conversation, by session id, kept across launches (ChatView saves it when
+    /// the chat goes away or the app leaves the foreground); the list shows it under the title.
+    private(set) var drafts: [String: String] = [:] { didSet { UserDefaults.standard.set(drafts, forKey: "drafts") } }
 
     // live state
     var connection: BridgeConnection.State = .idle
@@ -148,6 +151,7 @@ final class AppModel {
         port = p == 0 ? 8787 : p
         token = Keychain.get("token") ?? ""
         macName = d.string(forKey: "macName") ?? ""
+        drafts = d.dictionary(forKey: "drafts") as? [String: String] ?? [:]
         link.onState = { [weak self] s in
             guard let self else { return }
             if case .failed = s, self.connection != s { Haptics.error() }   // e.g. token rejected
@@ -425,6 +429,12 @@ final class AppModel {
                               lockedBy: j["_leash"]?["lockedBy"]?.string,
                               lastStopReason: j["_leash"]?["stopReason"]?.string,
                               turnEndedAt: j["_leash"]?["turnEndedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
+    }
+
+    /// Keeps `text` as the conversation's draft; blank text removes it.
+    func setDraft(_ text: String, for sessionId: String) {
+        let next: String? = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        if drafts[sessionId] != next { drafts[sessionId] = next }
     }
 
     /// The store for a conversation only if one exists (no side effects).

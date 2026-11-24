@@ -190,7 +190,7 @@ struct SessionListView: View {
     }
 
     private func row(_ s: SessionSummary) -> some View {
-        NavigationLink(value: s.id) { SessionRow(session: s, showAgent: multiAgent && filter == "all") }
+        NavigationLink(value: s.id) { SessionRow(session: s, showAgent: multiAgent && filter == "all", draft: model.drafts[s.id]) }
             .listRowBackground(Theme.bgRaised)
     }
 
@@ -260,7 +260,7 @@ struct FolderSessionsView: View {
     var body: some View {
         List {
             ForEach(shown) { s in
-                NavigationLink(value: s.id) { SessionRow(session: s) }
+                NavigationLink(value: s.id) { SessionRow(session: s, draft: model.drafts[s.id]) }
                     .listRowBackground(Theme.bgRaised)
             }
         }
@@ -284,22 +284,44 @@ private struct FolderGroup: Identifiable {
 struct SessionRow: View {
     let session: SessionSummary
     var showAgent = false
+    /// Text left unsent in the composer (AppModel.drafts).
+    var draft: String?
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.displayTitle).font(.body.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(2)
                 HStack(spacing: 5) {
                     if showAgent { AgentIcon(agent: session.agent, size: 11) }
+                    if let draft { draftLine(draft) }
                     if let d = session.updatedAt {
-                        Text(d, format: .relative(presentation: .named)).font(.footnote).foregroundStyle(Theme.textSecondary)
+                        Text(d, format: .relative(presentation: .named))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize()
+                            .layoutPriority(1)
                     }
                 }
+                .font(.footnote)
             }
             Spacer(minLength: 4)
             ZStack { statusGlyph }
                 .animation(Motion.quick, value: status)
         }
         .padding(.vertical, 3)
+    }
+
+    /// "Draft: first line of it ·" before the date, as Messages does: the word and its weight say it, no colour;
+    /// only the snippet truncates.
+    @ViewBuilder private func draftLine(_ text: String) -> some View {
+        let first = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        let snippet = Text(verbatim: String(first.trimmingCharacters(in: .whitespaces).prefix(120)))
+            .fontWeight(.regular)
+            .foregroundStyle(Theme.textSecondary)
+        Text("Draft: \(snippet)")
+            .fontWeight(.semibold)
+            .foregroundStyle(Theme.textPrimary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+        if session.updatedAt != nil { Text(verbatim: "·").foregroundStyle(Theme.textSecondary) }
     }
 
     private enum Status: Equatable { case none, needsYou, running, locked }
