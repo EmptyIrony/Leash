@@ -2384,6 +2384,16 @@
         }
       }
     },
+    "Remove Queued Message" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除排队消息"
+          }
+        }
+      }
+    },
     "Removed" : {
       "localizations" : {
         "zh-Hans" : {

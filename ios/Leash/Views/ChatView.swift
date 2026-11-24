@@ -499,7 +499,8 @@ struct ChatView: View {
         undoManager.registerUndo(withTarget: store) { s in
             Task { @MainActor in appModel.undoRemoveQueued(s) }
         }
-        undoManager.setActionName(String(localized: "Remove queued message"))
+        // the system's shake alert is titled "Undo " + this
+        undoManager.setActionName(String(localized: "Remove Queued Message"))
     }
 
     /// The draft is a bare "/word" being typed: the commands it could start, Leash's own first, then the agent's in
