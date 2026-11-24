@@ -9,6 +9,10 @@ import SwiftUI
 /// No push (free team): updates happen only while the app runs. With "Update in Background" on, silent audio keeps
 /// it running while the activity follows a turn (BackgroundAudio). Every update sets `staleDate` 75 s ahead, so a
 /// frozen activity says it is old instead of pretending; a heartbeat keeps it fresh while the app is alive and connected.
+///
+/// When every turn is over the activity ends with the outcome. The Dynamic Island lets an ended activity go (Leash's
+/// own notification covers that moment); the Lock Screen keeps it until that conversation is opened, for at most
+/// `keepFinished`. A kept-alive "done" activity isn't an option: the suspended app couldn't take it down again.
 @MainActor
 final class LiveActivityController {
     typealias LAState = LeashActivityAttributes.ContentState
@@ -26,6 +30,8 @@ final class LiveActivityController {
     }
 
     static let staleAfter: TimeInterval = 75
+    /// how long a finished turn stays on the Lock Screen when nobody opens it (the system's maximum)
+    static let keepFinished: TimeInterval = 4 * 3600
     private static let defaultsKey = "liveActivity.tracked"
 
     private unowned let model: AppModel
@@ -93,6 +99,22 @@ final class LiveActivityController {
         }
         tracked[sid] = t
         setNeedsUpdate(immediate: true)
+        // kept attached for the headline while it worked (AppModel.unwatch): let go once it has stopped
+        if !running { model.releaseIfUnwatched(sid) }
+    }
+
+    /// Whether a turn of `sid` this iPhone started is still working (its chat stays attached meanwhile, so the
+    /// headline keeps saying what it does after you go back to the list).
+    func follows(_ sid: String) -> Bool { tracked[sid].map { $0.endedAt == nil } ?? false }
+
+    /// That conversation is on screen: its finished turn has been seen, so take the Lock Screen card down.
+    /// Looks through ActivityKit itself, not `activity`: the ended one is no longer ours, maybe from an earlier launch.
+    func conversationOpened(_ sid: String) {
+        for a in Activity<LeashActivityAttributes>.activities where a.id != activity?.id {
+            let s = a.content.state
+            guard s.sessionId == sid, !s.phase.isLive else { continue }
+            Task { await a.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 
     /// A permission request or question arrived live; alert (once) if nobody is looking at the app and Leash's own
@@ -208,13 +230,62 @@ final class LiveActivityController {
         return nil
     }
 
-    /// The live sub-line the chat shows ("Running npm test…"), only while Leash still receives that conversation.
-    private func step(_ sid: String) -> String? {
-        guard let s = model.existingStore(sid), s.attached, s.running else { return nil }
+    /// The latest turn's activity group of `s` (nothing after the last user message means no tools yet).
+    private static func turnGroup(_ s: ChatStore) -> ActivityGroup? {
         for item in s.displayItems().reversed() {
-            if case .activity(let g) = item, g.live { return String(g.liveAction.prefix(120)) }
+            switch item {
+            case .activity(let g): return g
+            case .user: return nil
+            default: continue
+            }
         }
         return nil
+    }
+
+    /// Headline, checklist and summary of `sid`'s turn. The headline only while Leash still receives it.
+    private func details(_ sid: String, live: Bool) -> (step: String?, progress: LAState.Progress?, summary: String?) {
+        guard let s = model.existingStore(sid), let g = Self.turnGroup(s) else { return (nil, nil, nil) }
+        let list = g.checklist
+        let progress = list.isEmpty ? nil : LAState.Progress(
+            done: list.filter { $0.status == "completed" }.count, total: list.count,
+            current: list.first { $0.status == "in_progress" }.map { String($0.title.prefix(80)) })
+        let summary = g.summary.isEmpty ? nil : String(g.summary.prefix(120))
+        guard live, s.attached, s.running else { return (nil, progress, summary) }
+        return (Self.headline(g).map { String($0.prefix(120)) }, progress, summary)
+    }
+
+    /// What it does right now, as specifically as Leash knows: the running tool ("Editing Foo.swift…"), else the
+    /// line its reasoning is on, else nil (the layout says "Working").
+    private static func headline(_ g: ActivityGroup) -> String? {
+        switch g.steps.last {
+        case .tool(let t)? where t.status == "in_progress" || t.status == "pending" || t.status.isEmpty:
+            return g.liveAction
+        case .subagent(let s)? where s.isRunning:
+            return g.liveAction
+        case .message(let m)? where m.role == .thought:
+            return thoughtLine(m.text) ?? String(localized: "Thinking…")
+        default:
+            return nil
+        }
+    }
+
+    /// One line from streaming reasoning: its last bold heading if it writes them, otherwise the first sentence of
+    /// its last finished paragraph (the one still streaming would flicker). Markdown stripped; nil if nothing's left.
+    static func thoughtLine(_ text: String) -> String? {
+        var lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if lines.count > 1, !(text.last?.isNewline ?? false) { lines.removeLast() }
+        let heading = lines.last { $0.hasPrefix("**") && $0.hasSuffix("**") && $0.count > 4 }
+        guard let raw = heading ?? lines.last else { return nil }
+        var line = raw
+        for mark in ["**", "__", "`"] { line = line.replacingOccurrences(of: mark, with: "") }
+        while let f = line.first, "#>-*".contains(f) { line = String(line.dropFirst()).trimmingCharacters(in: .whitespaces) }
+        // first sentence: up to ". " / "? " / "! " or a CJK full stop (kept: it reads as finished)
+        if let r = line.range(of: #"[.?!](\s|$)|[。？！]"#, options: .regularExpression) {
+            let end = line[r].first.map { "。？！".contains($0) } == true ? r.upperBound : r.lowerBound
+            line = String(line[..<end])
+        }
+        line = line.trimmingCharacters(in: .whitespaces)
+        return line.isEmpty ? nil : String(line.prefix(100))
     }
 
     private func buildState() -> LAState? {
@@ -227,7 +298,10 @@ final class LiveActivityController {
         if live.isEmpty {
             // final state: the conversation that ended last
             guard let t = tracked.values.max(by: { ($0.endedAt ?? .distantPast) < ($1.endedAt ?? .distantPast) }) else { return nil }
+            let d: (step: String?, progress: LAState.Progress?, summary: String?) =
+                t.missed ? (nil, nil, nil) : details(t.sessionId, live: false)
             return LAState(sessionId: t.sessionId, agent: t.agent, title: title(t), phase: t.outcome ?? .ended, step: nil,
+                         progress: d.progress, summary: d.summary,
                          startedAt: t.startedAt, endedAt: t.endedAt ?? now, updatedAt: confirmedAt, approval: nil, othersRunning: 0, note: n)
         }
         // focus: keep the current one unless another now needs you more (or it ended)
@@ -241,8 +315,9 @@ final class LiveActivityController {
         focusId = focus.sessionId
 
         let (phase, approval) = pendingPhase(focus.sessionId) ?? (.working, nil)
+        let d = details(focus.sessionId, live: phase == .working)
         return LAState(sessionId: focus.sessionId, agent: focus.agent, title: title(focus), phase: phase,
-                     step: phase == .working ? step(focus.sessionId) : nil,
+                     step: d.step, progress: d.progress, summary: d.summary,
                      startedAt: model.existingStore(focus.sessionId)?.turnStartedAt ?? focus.startedAt, endedAt: nil,
                      updatedAt: confirmedAt, approval: approval, othersRunning: live.count - 1, note: n)
     }
@@ -309,9 +384,10 @@ final class LiveActivityController {
             guard let a = activity else { return }
             activity = nil
             lastSent = nil
-            let quick = model.sceneActive || state.phase == .ended
+            // already seen if its chat is on screen; otherwise the Lock Screen keeps it until it's opened
+            let seen = model.sceneActive && model.visibleSessionId == state.sessionId
             await a.end(ActivityContent(state: state, staleDate: nil),
-                        dismissalPolicy: quick ? .immediate : .after(Date().addingTimeInterval(15 * 60)))
+                        dismissalPolicy: seen ? .immediate : .after(Date().addingTimeInterval(Self.keepFinished)))
             return
         }
 

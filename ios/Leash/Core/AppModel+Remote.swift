@@ -42,6 +42,8 @@ extension AppModel {
             notifier.refresh()
             // a turn started while in the background (a watch reply) can get its Live Activity now
             liveActivity.setNeedsUpdate(immediate: true)
+            // back to the chat it finished in: that counts as opening it
+            if let sid = visibleSessionId { liveActivity.conversationOpened(sid) }
         case .background: liveActivity.appBackgrounded()
         default: break
         }

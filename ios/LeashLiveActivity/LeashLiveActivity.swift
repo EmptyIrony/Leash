@@ -28,12 +28,15 @@ struct LeashLiveActivity: Widget {
                         .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.center) {
+                    // which conversation, quietly: the headline below says what it does
                     Text(verbatim: s.title)
-                        .font(.headline)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .frame(maxHeight: .infinity)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    DetailStack(state: s, isStale: stale)
+                    DetailStack(state: s, isStale: stale, roomy: false)
                         .padding(.horizontal, 6)
                         .padding(.top, 2)
                 }
@@ -191,12 +194,15 @@ private struct TrailingStatus: View {
     }
 }
 
-/// The status line, the one row of actions, and the footer.
-/// Continuity (the app's Motion vocabulary): a new step line blurs in over the old one, the button row and footer
-/// fade in and out while the rest moves to its new place; Reduce Motion keeps only the cross-fade.
+/// The headline, then what fits under it. `roomy` (Lock Screen): the action row, the checklist with its bar (or
+/// what the turn has done so far) and the footer. The Dynamic Island has room for one row: actions, else the
+/// checklist, else the footer.
+/// Continuity (the app's Motion vocabulary): a new headline blurs in over the old one, the rows under it fade in
+/// and out while the rest moves to its new place; Reduce Motion keeps only the cross-fade.
 private struct DetailStack: View {
     let state: LeashActivityAttributes.ContentState
     let isStale: Bool
+    var roomy = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -204,10 +210,17 @@ private struct DetailStack: View {
             StatusLine(state: state)
                 .id(statusID)
                 .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
-            Actions(state: state, isStale: isStale)
-                .transition(.opacity)
-            Footer(state: state, isStale: isStale)
-                .transition(.opacity)
+            if roomy {
+                Actions(state: state, isStale: isStale)
+                    .transition(.opacity)
+                ProgressSummary(state: state)
+                    .transition(.opacity)
+                Footer(state: state, isStale: isStale)
+                    .transition(.opacity)
+            } else {
+                IslandRow(state: state, isStale: isStale)
+                    .transition(.opacity)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34), value: statusID)
@@ -247,9 +260,8 @@ private struct StatusLine: View {
                 } icon: {
                     Image(systemName: LA.symbol(for: .working)).foregroundStyle(LA.working)
                 }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
             case .done, .failed, .stopped, .ended:
                 Label { finalText } icon: { Image(systemName: LA.symbol(for: state.phase)).foregroundStyle(LA.color(for: state.phase)) }
                     .font(.subheadline.weight(.semibold))
@@ -294,7 +306,7 @@ private struct Actions: View {
     let isStale: Bool
 
     var body: some View {
-        if state.phase == .approval, let a = state.approval, a.allowOptionId != nil || a.denyOptionId != nil {
+        if state.canAnswer, let a = state.approval {
             HStack(spacing: 8) {
                 if let deny = a.denyOptionId {
                     Button(intent: DenyRequestIntent(key: a.key, optionId: deny)) {
@@ -311,7 +323,7 @@ private struct Actions: View {
                     .tint(Color.accentColor)
                 }
             }
-        } else if state.phase == .working && (isStale || state.note == .unreachable) {
+        } else if state.offersRefresh(isStale: isStale) {
             Button(intent: RefreshActivityIntent()) {
                 Label("Refresh", systemImage: "arrow.clockwise").font(.subheadline.weight(.semibold))
             }
@@ -344,6 +356,100 @@ private struct Footer: View {
     }
 }
 
+extension LeashActivityAttributes.ContentState {
+    /// Allow / Deny can be offered from here
+    var canAnswer: Bool { phase == .approval && (approval?.allowOptionId != nil || approval?.denyOptionId != nil) }
+    /// Refresh is offered while it works but Leash's word on it is old
+    func offersRefresh(isStale: Bool) -> Bool { phase == .working && (isStale || note == .unreachable) }
+}
+
+/// The Dynamic Island's one row under the headline: the buttons (Refresh with how old this is), else the
+/// checklist, else the footer.
+private struct IslandRow: View {
+    let state: LeashActivityAttributes.ContentState
+    let isStale: Bool
+
+    var body: some View {
+        if state.canAnswer {
+            Actions(state: state, isStale: isStale)
+        } else if state.offersRefresh(isStale: isStale) {
+            HStack(spacing: 10) {
+                Actions(state: state, isStale: isStale)
+                Footer(state: state, isStale: isStale)
+            }
+        } else if state.phase == .working, let p = state.progress {
+            HStack(spacing: 6) {
+                ProgressLine(progress: p)
+                if state.othersRunning > 0 {
+                    Spacer(minLength: 6)
+                    Text("+\(state.othersRunning) more working")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+        } else {
+            Footer(state: state, isStale: isStale)
+        }
+    }
+}
+
+/// "3/7 · Update the controller"
+private struct ProgressLine: View {
+    let progress: LeashActivityAttributes.ContentState.Progress
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checklist")
+            Text(verbatim: "\(progress.done)/\(progress.total)").monospacedDigit()
+            if let current = progress.current { Text(verbatim: "· \(current)") }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+    }
+}
+
+/// Lock Screen, under the headline: the checklist with a bar while it works, else what the turn has done so far
+/// (also once it's finished: "Explored 12 files, ran 3 commands, edited 2 files").
+private struct ProgressSummary: View {
+    let state: LeashActivityAttributes.ContentState
+
+    var body: some View {
+        if state.phase == .working, let p = state.progress {
+            VStack(alignment: .leading, spacing: 5) {
+                ProgressView(value: Double(min(p.done, p.total)), total: Double(max(1, p.total)))
+                    .tint(LA.working)
+                ProgressLine(progress: p)
+            }
+        } else if state.phase == .working || !state.phase.isLive, let summary = state.summary {
+            Text(verbatim: summary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+}
+
+/// One line saying what is happening, for the smallest layout.
+private struct Headline: View {
+    let state: LeashActivityAttributes.ContentState
+
+    var body: some View {
+        switch state.phase {
+        case .approval: Text("Needs approval").foregroundStyle(LA.attention)
+        case .question: Text("Has a question").foregroundStyle(LA.attention)
+        case .working:
+            if let step = state.step { Text(verbatim: step) } else { Text("Working") }
+        case .done: Text("Done")
+        case .failed: Text("Failed")
+        case .stopped: Text("Stopped")
+        case .ended: Text("Turn ended")
+        }
+    }
+}
+
 // MARK: - Lock Screen (.medium) and Smart Stack (.small)
 
 private struct ActivityBanner: View {
@@ -367,10 +473,7 @@ private struct LockScreenLayout: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
                 AgentMark(agent: state.agent, size: 24)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: state.title).font(.headline).lineLimit(1)
-                    Text(verbatim: LA.agentLabel(state.agent)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
+                Text(verbatim: state.title).font(.headline).lineLimit(1)
                 Spacer(minLength: 8)
                 TrailingStatus(state: state, isStale: isStale)
             }
@@ -380,8 +483,8 @@ private struct LockScreenLayout: View {
     }
 }
 
-/// Apple Watch Smart Stack: one line of identity, one of state. No buttons (Allow needs an unlocked iPhone; the
-/// watch app answers requests).
+/// Apple Watch Smart Stack: which conversation and how long, then what it does. No buttons (Allow needs an
+/// unlocked iPhone; the watch app answers requests).
 private struct SmallLayout: View {
     let state: LeashActivityAttributes.ContentState
     let isStale: Bool
@@ -390,29 +493,17 @@ private struct SmallLayout: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 AgentMark(agent: state.agent, size: 16)
-                Text(verbatim: state.title).font(.headline).lineLimit(1)
-            }
-            HStack(spacing: 4) {
-                Image(systemName: LA.symbol(for: state.phase)).foregroundStyle(LA.color(for: state.phase))
-                Group {
-                    switch state.phase {
-                    case .approval: Text("Needs approval").foregroundStyle(LA.attention)
-                    case .question: Text("Has a question").foregroundStyle(LA.attention)
-                    case .working:
-                        if let step = state.step { Text(verbatim: step) } else { Text("Working") }
-                    case .done: Text("Done")
-                    case .failed: Text("Failed")
-                    case .stopped: Text("Stopped")
-                    case .ended: Text("Turn ended")
-                    }
-                }
-                .lineLimit(1)
+                Text(verbatim: state.title).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 4)
                 if state.phase == .working {
-                    ElapsedTime(start: state.startedAt, font: .caption, width: 48, dimmed: isStale)
+                    ElapsedTime(start: state.startedAt, font: .caption2, width: 44, dimmed: isStale)
+                } else {
+                    Image(systemName: LA.symbol(for: state.phase)).font(.caption).foregroundStyle(LA.color(for: state.phase))
                 }
             }
-            .font(.caption)
+            Headline(state: state)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
         }
     }
 }

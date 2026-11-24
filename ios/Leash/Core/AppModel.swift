@@ -506,6 +506,7 @@ final class AppModel {
     func watch(_ s: ChatStore) {
         watchers[s.sessionId, default: 0] += 1
         visibleSessionId = s.sessionId
+        liveActivity.conversationOpened(s.sessionId)
     }
 
     /// The last view of `s` going away detaches it. A push from the chat to a subagent (or back) disappears one view
@@ -518,8 +519,16 @@ final class AppModel {
             try? await Task.sleep(for: .milliseconds(600))
             guard (watchers[s.sessionId] ?? 0) == 0 else { return }
             if visibleSessionId == s.sessionId { visibleSessionId = nil }
+            // the Live Activity follows this turn: stay attached so it can say what the agent does (released at the end)
+            guard !liveActivity.follows(s.sessionId) else { return }
             detach(s)
         }
+    }
+
+    /// A turn the Live Activity followed ended: detach its chat if no view shows it any more.
+    func releaseIfUnwatched(_ sid: String) {
+        guard (watchers[sid] ?? 0) == 0, let s = stores[sid], s.attached else { return }
+        detach(s)
     }
 
     func detach(_ s: ChatStore) {
