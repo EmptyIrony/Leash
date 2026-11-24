@@ -772,7 +772,9 @@ final class AppModel {
             } catch {
                 // refused before any turn started (changed elsewhere, agent down, …): no turn op will clear it
                 if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
-                s.composerError = error.localizedDescription
+                // still queued: nothing went out. Once the bridge has taken the queue, the error is the turn failing,
+                // which it logs as a notice in the transcript
+                if !s.queued.isEmpty { s.composerError = error.localizedDescription }
                 Haptics.error()
             }
         }
