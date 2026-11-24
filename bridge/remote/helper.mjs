@@ -15,6 +15,10 @@
 //                                 for agents on the Mac itself
 //   helper.mjs btw                a side question (/btw) about a conversation; stdin {sessionId, cwd, question, model?,
 //                                 env?}. Answered by a throwaway fork of the session with no tools; nothing is saved
+//   helper.mjs cli-visibility <sessionId>
+//                                 whether Claude Code's /resume list shows this conversation
+//   helper.mjs show-in-cli <sessionId>
+//                                 make it show there (relabels the transcript's first entrypoint, in place)
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -269,6 +273,71 @@ async function btw() {
   });
 }
 
+/*
+ * Claude Code's /resume list skips a conversation whose first "entrypoint" (looked for in the transcript's first
+ * 64 KB, else the last one near its end) is an Agent SDK one, which every conversation Leash starts is. Relabelling
+ * that first one "cli" is all it takes; the phone's own turns still run through the SDK.
+ */
+const SDK_ENTRYPOINTS = new Set(['sdk-ts', 'sdk-py', 'sdk-cli']);
+const SCAN_BYTES = 65536;
+
+async function transcriptPath(sessionId) {
+  const sid = String(sessionId ?? '');
+  if (!/^[A-Za-z0-9-]+$/.test(sid)) throw Object.assign(new Error('bad session id'), { code: -32602 });
+  const root = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'), 'projects');
+  let dirs = [];
+  try { dirs = await fs.readdir(root); } catch {}
+  for (const d of dirs) {
+    const p = path.join(root, d, sid + '.jsonl');
+    if (existsSync(p)) return p;
+  }
+  throw Object.assign(new Error('Claude Code has no transcript of this conversation yet'), { code: -32004 });
+}
+
+/** The first (or last) entrypoint value in buf: { value, start, end } as byte offsets of the value, or null. */
+function findEntrypoint(buf, last = false) {
+  let best = null;
+  for (const key of ['"entrypoint":"', '"entrypoint": "']) {
+    const i = last ? buf.lastIndexOf(key) : buf.indexOf(key);
+    if (i < 0 || (best && (last ? i < best.at : i > best.at))) continue;
+    const start = i + key.length, end = buf.indexOf('"', start);   // values are plain words, never escaped
+    if (end < 0) continue;
+    best = { at: i, start, end, value: buf.toString('utf8', start, end) };
+  }
+  return best;
+}
+
+async function readAt(fh, position, length) {
+  const buf = Buffer.alloc(length);
+  const { bytesRead } = await fh.read(buf, 0, length, position);
+  return buf.subarray(0, bytesRead);
+}
+
+async function cliVisibility(sessionId) {
+  const fh = await fs.open(await transcriptPath(sessionId), 'r');
+  try {
+    let ep = findEntrypoint(await readAt(fh, 0, SCAN_BYTES));
+    const head = !!ep;
+    if (!ep) { const { size } = await fh.stat(); ep = findEntrypoint(await readAt(fh, Math.max(0, size - SCAN_BYTES), SCAN_BYTES), true); }
+    // a first entrypoint past the head (a large first message) can't be relabelled in place
+    return { visible: !ep || !SDK_ENTRYPOINTS.has(ep.value), entrypoint: ep?.value ?? null, fixable: head };
+  } finally { await fh.close(); }
+}
+
+async function showInCli(sessionId) {
+  const fh = await fs.open(await transcriptPath(sessionId), 'r+');
+  try {
+    const ep = findEntrypoint(await readAt(fh, 0, SCAN_BYTES));
+    if (!ep) throw Object.assign(new Error('this conversation starts with a large message, so its label is out of reach'), { code: -32008 });
+    if (!SDK_ENTRYPOINTS.has(ep.value)) return { visible: true, changed: false };
+    // Same length, in place: the value becomes cli, its closing quote moves up and spaces (JSON whitespace before the
+    // comma) fill the rest, so the line still parses and lines the agent appends meanwhile are untouched.
+    const patch = Buffer.from('cli"' + ' '.repeat(ep.end - ep.start - 3));
+    await fh.write(patch, 0, patch.length, ep.start);
+    return { visible: true, changed: true };
+  } finally { await fh.close(); }
+}
+
 try {
   if (cmd === 'browse') out(await browse(arg));
   else if (cmd === 'read') out(await read(arg, arg2, argv[3], argv[4]));
@@ -277,5 +346,7 @@ try {
   else if (cmd === 'locks') out(await locks());
   else if (cmd === 'exec') out(await exec(arg, arg2));
   else if (cmd === 'btw') out(await btw());
+  else if (cmd === 'cli-visibility') out(await cliVisibility(arg));
+  else if (cmd === 'show-in-cli') out(await showInCli(arg));
   else fail(-32601, 'unknown helper command ' + cmd);
 } catch (e) { fail(typeof e.code === 'number' ? e.code : -32603, e.message, e.data); }

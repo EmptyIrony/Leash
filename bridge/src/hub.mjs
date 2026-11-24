@@ -159,6 +159,8 @@ export class Hub extends EventEmitter {
     this.turbo = turbo ?? !helper;
     // /btw side questions need `claude -p --fork-session` on the host (helper.mjs btw); agy has no throwaway fork.
     this.sideQuestions = btw ?? !!helper;
+    /** conversations can be listed in Claude Code's own /resume on the agent's host (helper cli-visibility) */
+    this.cliList = !!helper;
     // "Open elsewhere" lock: a function resolving {now, held, touched} (see remote/helper.mjs locks).
     // Default: on for hubs with a remote helper (Claude Code); false turns it off.
     this.locksFn = locks === false ? null : typeof locks === 'function' ? locks : (helper ? () => this.runHelper(['locks'], 10000) : null);
@@ -239,7 +241,7 @@ export class Hub extends EventEmitter {
 
   setAgentState(state) {
     this.agentState = state;
-    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions });
+    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, cliList: this.cliList });
   }
 
   /** Merge this agent's _meta (e.g. Claude Code settings) into session/new|load|resume params. */
@@ -428,7 +430,7 @@ export class Hub extends EventEmitter {
   broadcast(msg) { const m = { ...msg, agentId: this.id }; for (const c of this.clients) c.send(m); }
 
   agentSummary() {
-    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, quota: this.quota?.latest ?? null };
+    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, cliList: this.cliList, quota: this.quota?.latest ?? null };
   }
 
   info() {
@@ -602,6 +604,8 @@ export class Hub extends EventEmitter {
       case 'bridge/restartAgent': return this.restartAgent();
       case 'bridge/shell': return this.shell(client, params);
       case 'bridge/btw': return this.btw(params);
+      case 'bridge/cliVisibility': return this.cliVisibility(params);
+      case 'bridge/showInCli': return this.showInCli(params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
       case 'bridge/noticed': {
         // a phone alerted about this request itself (Live Activity alert): Bark need not push it as well
@@ -963,6 +967,20 @@ export class Hub extends EventEmitter {
     const env = this.sessionMeta?.claudeCode?.options?.settings?.env ?? null;
     const r = await this.runHelper(['btw'], 170000, this.helper, JSON.stringify({ sessionId, cwd, question: q, model, env }));
     return { text: String(r.text ?? ''), durationMs: r.durationMs ?? null, model: r.model ?? null };
+  }
+
+  /**
+   * Claude Code's /resume list on the computer leaves out conversations started through the Agent SDK (all of
+   * Leash's). The helper reports whether one is listed and relabels it so it is; nothing else about it changes.
+   */
+  async cliVisibility({ sessionId }) {
+    if (!this.cliList) throw new RpcError(-32601, this.label + ' has no Claude Code /resume list');
+    return this.runHelper(['cli-visibility', String(sessionId ?? '')], 20000);
+  }
+
+  async showInCli({ sessionId }) {
+    if (!this.cliList) throw new RpcError(-32601, this.label + ' has no Claude Code /resume list');
+    return this.runHelper(['show-in-cli', String(sessionId ?? '')], 20000);
   }
 
   #recordTurnStats(s, usage) {

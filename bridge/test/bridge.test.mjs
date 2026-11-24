@@ -842,6 +842,45 @@ test('btw: side question runs helper btw (throwaway fork, no tools) mid-turn and
   await assert.rejects(agy.btw({ sessionId: 's', question: 'q' }), /side questions/);
 });
 
+test('cli list: a Leash (SDK) conversation is relabelled in place so Claude Code /resume lists it', async () => {
+  const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-cfg-'));
+  const proj = path.join(cfg, 'projects', '-x-proj');
+  fs.mkdirSync(proj, { recursive: true });
+  const sid = '0e53cb7a-c7d6-4f0c-8159-d42ccdd00d9c', big = 'aaaaaaaa-0000-4000-8000-000000000000';
+  const line = (o) => JSON.stringify(o) + '\n';
+  const file = path.join(proj, sid + '.jsonl');
+  fs.writeFileSync(file, line({ type: 'queue-operation', sessionId: sid }) +
+    line({ type: 'user', message: { role: 'user', content: 'hi' }, entrypoint: 'sdk-ts', cwd: '/x/proj', sessionId: sid }) +
+    line({ type: 'assistant', entrypoint: 'sdk-ts', sessionId: sid }));
+  // a first message larger than the 64 KB Claude Code reads first: its label is out of reach
+  fs.writeFileSync(path.join(proj, big + '.jsonl'), line({ type: 'user', message: { content: 'x'.repeat(70000) }, entrypoint: 'sdk-ts' }));
+  const t = await setup({ id: 'claude', locks: false, helper: [process.execPath, path.join(here, '..', 'remote', 'helper.mjs')],
+    agentEnv: { ...process.env, CLAUDE_CONFIG_DIR: cfg } });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    await c.wait(m => m.op === 'ready');
+    assert.equal(t.hub.agentSummary().cliList, true);
+    assert.deepEqual(await c.call('bridge/cliVisibility', { sessionId: sid }), { visible: false, entrypoint: 'sdk-ts', fixable: true });
+    const size = fs.statSync(file).size;
+    assert.deepEqual(await c.call('bridge/showInCli', { sessionId: sid }), { visible: true, changed: true });
+    assert.equal(fs.statSync(file).size, size, 'same length, in place');
+    const lines = fs.readFileSync(file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    assert.deepEqual(lines.map(l => l.entrypoint), [undefined, 'cli', 'sdk-ts'], 'only the first label changes');
+    assert.equal(lines[1].message.content, 'hi');
+    assert.deepEqual(await c.call('bridge/cliVisibility', { sessionId: sid }), { visible: true, entrypoint: 'cli', fixable: true });
+    assert.deepEqual(await c.call('bridge/showInCli', { sessionId: sid }), { visible: true, changed: false });
+
+    assert.deepEqual(await c.call('bridge/cliVisibility', { sessionId: big }), { visible: false, entrypoint: 'sdk-ts', fixable: false });
+    await assert.rejects(c.call('bridge/showInCli', { sessionId: big }), /large message/);
+    await assert.rejects(c.call('bridge/showInCli', { sessionId: '../../etc' }), /bad session id/);
+    await assert.rejects(c.call('bridge/cliVisibility', { sessionId: 'bbbbbbbb-0000-4000-8000-000000000000' }), /no transcript/);
+  } finally { c.close(); t.done(); fs.rmSync(cfg, { recursive: true, force: true }); }
+  const agy = new Hub({ agentCommand: 'x', log: () => {} });
+  assert.equal(agy.agentSummary().cliList, false);
+  await assert.rejects(agy.showInCli({ sessionId: sid }), /no Claude Code/);
+});
+
 test('subagents: child sessions file under the root, tagged; their requests show on the root; no root side effects', async () => {
   const t = await setup({ idleCloseMs: 1000 });
   const c = new Client(t.port);
