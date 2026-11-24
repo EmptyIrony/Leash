@@ -248,7 +248,7 @@ struct StepRow: View {
             }
             // an open step's title is a tall text block: opacity only then
             .buttonStyle(.pressable(scale: open ? 1 : 0.98))
-            if open { detail.padding(.leading, 24).padding(.bottom, 4).transition(Motion.reveal) }
+            if open && hasDetail { detail.padding(.leading, 24).padding(.bottom, 4).transition(Motion.reveal) }
         }
         .padding(.leading, 6)
     }
@@ -264,8 +264,8 @@ struct StepRow: View {
 
     @ViewBuilder private var title: some View {
         switch row.kind {
-        case .thought(let m): Text(m.text.trimmingCharacters(in: .whitespacesAndNewlines)).font(.footnote).foregroundStyle(Theme.textSecondary).italic()
-        case .note(let m): Text(m.text.trimmingCharacters(in: .whitespacesAndNewlines)).font(.footnote).foregroundStyle(Theme.textSecondary)
+        case .thought(let m): Text(Self.inline(m.text)).font(.footnote).foregroundStyle(Theme.textSecondary).italic()
+        case .note(let m): Text(Self.inline(m.text)).font(.footnote).foregroundStyle(Theme.textSecondary)
         case .reads(let ts): Text("Read \(ts.count) files").font(.footnote).foregroundStyle(Theme.textSecondary)
         case .tool(let t):
             if t.kind == "execute", let cmd = t.commandPreview {
@@ -293,10 +293,24 @@ struct StepRow: View {
         }
     }
 
+    /// A thought or note opens in place (its title drops the line limit): a second copy below would repeat it.
+    private var hasDetail: Bool {
+        switch row.kind {
+        case .thought, .note: return false
+        case .reads, .tool: return true
+        }
+    }
+
+    /// Inline markdown only (bold, code, links), so the footnote title reads like the text it stands for.
+    private static func inline(_ s: String) -> AttributedString {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (try? AttributedString(markdown: t, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(t)
+    }
+
     @ViewBuilder private var detail: some View {
         switch row.kind {
-        case .thought(let m), .note(let m):
-            MarkdownView(text: m.text).font(.footnote).foregroundStyle(Theme.textSecondary)
+        case .thought, .note:
+            EmptyView()
         case .reads(let ts):
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(ts) { t in
