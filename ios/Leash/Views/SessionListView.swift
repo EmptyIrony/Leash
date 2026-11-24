@@ -113,6 +113,11 @@ struct SessionListView: View {
                     folderHeader(group)
                 }
             }
+            // an agent picked in the filter has none (the overlay would sit on the picker)
+            if !searching && filtered.isEmpty && !model.sessions.isEmpty && !model.sessionsLoading {
+                Section { firstUseEmpty }
+                    .listRowBackground(Color.clear)
+            }
         }
         .listStyle(.sidebar)
         .onAppear {
@@ -128,13 +133,8 @@ struct SessionListView: View {
         .overlay {
             if searching && filtered.isEmpty {
                 ContentUnavailableView.search(text: search)
-            } else if model.agentReady && filtered.isEmpty && !model.sessionsLoading {
-                ContentUnavailableView {
-                    Label("No conversations", systemImage: "bubble.left.and.bubble.right")
-                } actions: {
-                    Button("New conversation") { showNew = true }
-                        .buttonStyle(.glassProminent)
-                }
+            } else if model.agentReady && model.sessions.isEmpty && !model.sessionsLoading {
+                firstUseEmpty
             }
         }
         .sheet(isPresented: $showQuota) {
@@ -162,6 +162,16 @@ struct SessionListView: View {
                 Button { showNew = true } label: { Image(systemName: "square.and.pencil") }
                     .disabled(!model.agentReady)
             }
+        }
+    }
+
+    private var firstUseEmpty: some View {
+        ContentUnavailableView {
+            Label("No conversations", systemImage: "bubble.left.and.bubble.right")
+        } actions: {
+            Button("New conversation") { showNew = true }
+                .buttonStyle(.glassProminent)
+                .disabled(!model.agentReady)
         }
     }
 
