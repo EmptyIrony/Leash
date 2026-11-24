@@ -224,8 +224,8 @@ private struct DetailStack: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34), value: statusID)
-        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34), value: isStale)
+        .animation(LeashMotionCurves.layout(reduced: reduceMotion), value: statusID)
+        .animation(LeashMotionCurves.layout(reduced: reduceMotion), value: isStale)
     }
 
     private var statusID: String {

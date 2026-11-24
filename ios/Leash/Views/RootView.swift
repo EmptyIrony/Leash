@@ -12,7 +12,7 @@ struct RootView: View {
                 .navigationDestination(for: String.self) { id in
                     ChatView(store: model.store(for: id), openSession: { next in
                         // Replace, don't stack: Back from the other conversation returns to the list.
-                        withAnimation { path = NavigationPath([next]) }
+                        withAnimation(Motion.layout) { path = NavigationPath([next]) }
                     })
                     // Swapping the stack's only conversation for another (the banner above, a Bark tap, the Live
                     // Activity) keeps the same slot, so without this SwiftUI reuses the view and its @State: the
@@ -51,7 +51,7 @@ struct RootView: View {
         if path.isEmpty {
             path.append(id)
         } else {
-            withAnimation { path = NavigationPath([id]) }
+            withAnimation(Motion.layout) { path = NavigationPath([id]) }
         }
     }
 }

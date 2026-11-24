@@ -104,14 +104,15 @@ struct SeededRandom {
 enum Motion {
     private static var reduced: Bool { UIAccessibility.isReduceMotionEnabled }
 
+    // The curves themselves are in `LeashMotionCurves` (SharedDesign), shared with the watch and the Live Activity.
     /// Things entering or leaving the layout: trays, banners, the scroll-to-bottom button.
-    static var layout: Animation { reduced ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34) }
+    static var layout: Animation { LeashMotionCurves.layout(reduced: reduced) }
     /// Expanding and collapsing rows, checklists, details.
-    static var disclose: Animation { reduced ? .easeInOut(duration: 0.18) : .snappy(duration: 0.3) }
+    static var disclose: Animation { LeashMotionCurves.disclose(reduced: reduced) }
     /// Small state feedback: enabled ↔ disabled, a label or symbol changing.
-    static var quick: Animation { reduced ? .easeInOut(duration: 0.15) : .smooth(duration: 0.22) }
+    static var quick: Animation { LeashMotionCurves.quick(reduced: reduced) }
     /// Touch-down feedback on custom buttons: in fast, settles without a bounce.
-    static var press: Animation { reduced ? .easeOut(duration: 0.1) : .snappy(duration: 0.18) }
+    static var press: Animation { LeashMotionCurves.press(reduced: reduced) }
 
     /// Glass docked above the composer (approval / question trays): the glass itself materializes through
     /// `glassEffectTransition(.materialize)`; this is only for its contents.

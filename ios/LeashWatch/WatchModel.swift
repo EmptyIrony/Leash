@@ -53,7 +53,7 @@ final class WatchModel {
         }
         knownRequests = ids
         // rows move to their new places instead of jumping (a short cross-fade with Reduce Motion)
-        withAnimation(WKAccessibilityIsReduceMotionEnabled() ? .easeInOut(duration: 0.2) : .smooth(duration: 0.34)) { snapshot = s }
+        withAnimation(LeashMotionCurves.layout(reduced: WKAccessibilityIsReduceMotionEnabled())) { snapshot = s }
         if let d = WatchMessage.encode(s) { UserDefaults.standard.set(d, forKey: Self.cacheKey) }
     }
 
