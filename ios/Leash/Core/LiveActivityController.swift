@@ -95,10 +95,11 @@ final class LiveActivityController {
         setNeedsUpdate(immediate: true)
     }
 
-    /// A permission request or question arrived live; alert (once) if nobody is looking at the app.
-    func requestArrived(_ req: PendingRequest) {
+    /// A permission request or question arrived live; alert (once) if nobody is looking at the app and Leash's own
+    /// notification didn't (`alerted`: notifications turned off).
+    func requestArrived(_ req: PendingRequest, alerted: Bool = false) {
         guard let sid = req.sessionId, tracked[sid] != nil else { return }
-        if !model.sceneActive { pendingAlertKey = req.key }
+        if !model.sceneActive && !alerted { pendingAlertKey = req.key }
         setNeedsUpdate(immediate: true)
     }
 

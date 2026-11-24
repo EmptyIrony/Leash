@@ -100,7 +100,7 @@ test('phone on screen: no push while it keeps pinging; push once it goes quiet',
   assert.equal(r.sent.length, 1);
 });
 
-test('a Leash kept running in the background: pushed after a short grace, unless its Live Activity alerted', async () => {
+test('a Leash running in the background: pushed after a short grace, unless it alerted itself', async () => {
   const bg = { lastSeen: 0, background: true };
   const r = rig({ clients: [bg] });
   ask(r.hub, 'claude:r1');
@@ -120,6 +120,17 @@ test('a Leash kept running in the background: pushed after a short grace, unless
   endTurn(r.hub);
   await sleep(GRACE + 20);
   assert.equal(r.sent.length, 3);
+  // the phone posted this turn end itself
+  const s = endTurn(r.hub);
+  s.turnEndedAt = Date.now();
+  s.endNoticedAt = Date.now() + 1;
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 3, 'noticed turn end is not pushed again');
+  // an older notice does not cover the next turn
+  s.turnEndedAt = s.endNoticedAt + 5;
+  r.hub.emit('turn_end', s);
+  await sleep(GRACE + 20);
+  assert.equal(r.sent.length, 4);
 });
 
 test('a request answered during the grace period is not pushed', async () => {
@@ -308,6 +319,11 @@ test('bridge/noticed marks the pending request on the hub that owns its key', as
     assert.ok(claude.pending.get('claude:r1').noticedAt > 0);
     assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { key: 'claude:r9' }), { ok: false });
     assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { key: 'nope' }), { ok: false });
+    // a turn end names its hub as agent
+    claude.sessions.set('s7', { sessionId: 's7' });
+    assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { agent: 'claude', sessionId: 's7', turnEnd: true }), { ok: true });
+    assert.ok(claude.sessions.get('s7').endNoticedAt > 0);
+    assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { agent: 'claude', sessionId: 'nope', turnEnd: true }), { ok: false });
   } finally { agy.stop(); claude.stop(); }
 });
 

@@ -608,7 +608,12 @@ export class Hub extends EventEmitter {
       case 'bridge/showInCli': return this.showInCli(params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
       case 'bridge/noticed': {
-        // a phone alerted about this request itself (Live Activity alert): Bark need not push it as well
+        // a phone alerted about this itself (its own notification or a Live Activity alert): Bark need not push it too
+        if (params.turnEnd) {
+          const s = this.sessions.get(params.sessionId);
+          if (s) s.endNoticedAt = Date.now();
+          return { ok: !!s };
+        }
         const p = this.pending.get(params.key);
         if (p) p.noticedAt = Date.now();
         return { ok: !!p };

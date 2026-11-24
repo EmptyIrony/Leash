@@ -39,6 +39,7 @@ extension AppModel {
         switch phase {
         case .active:
             foreground()
+            notifier.refresh()
             // a turn started while in the background (a watch reply) can get its Live Activity now
             liveActivity.setNeedsUpdate(immediate: true)
         case .background: liveActivity.appBackgrounded()
@@ -143,6 +144,36 @@ extension AppModel {
             return .macUnreachable
         } catch {
             return .failed
+        }
+    }
+
+    // MARK: notifications
+
+    func conversationTitle(_ sid: String?) -> String? {
+        guard let sid else { return nil }
+        return sessions.first(where: { $0.id == sid })?.displayTitle ?? existingStore(sid)?.title
+    }
+
+    /// A turn ended while Leash runs off screen: say so ourselves and tell the bridge, so Bark doesn't too.
+    func turnEndedOffScreen(_ sid: String, agent: String?, stopReason: String?, began: Date?) {
+        let agent = agent ?? existingStore(sid)?.agent ?? sessions.first(where: { $0.id == sid })?.agent ?? "agy"
+        guard notifier.turnEnded(sessionId: sid, agent: agent, label: agentLabel(agent), conversation: conversationTitle(sid),
+                                 stopReason: stopReason, began: began) else { return }
+        Task { _ = try? await link.call("bridge/noticed", ["agent": .string(agent), "sessionId": .string(sid), "turnEnd": .bool(true)], timeout: 10) }
+    }
+
+    /// Allow / Deny on a notification (the app may have been started in the background for it).
+    func answerFromNotification(key: String, optionId: String?, allow: Bool, url: String?) async {
+        await backgroundWork {
+            let outcome = await answer(key: key, optionId: optionId)
+            switch outcome {
+            case .done: liveActivity.show(allow ? .allowed : .denied)
+            case .alreadyAnswered: liveActivity.show(.alreadyAnswered)
+            default:
+                liveActivity.show(outcome == .macUnreachable ? .unreachable : .failed)
+                notifier.answerFailed(unreachable: outcome == .macUnreachable, url: url)
+            }
+            await liveActivity.flushNow()
         }
     }
 

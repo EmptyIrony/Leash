@@ -11,6 +11,7 @@ struct LeashApp: App {
         let model = AppModel.shared
         LiveActivityActions.handler = { action in await model.perform(action) }
         WatchRelay.shared.start(model: model)
+        LocalNotifier.shared.start()
     }
 
     var body: some Scene {

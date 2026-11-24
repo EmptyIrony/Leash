@@ -1,13 +1,14 @@
 // Optional Bark notifications (https://github.com/Finb/Bark). Leash has no APNs of its own, so when an agent
 // needs you or finishes while the app is not on screen, the bridge asks the Bark app to alert the phone
-// (iOS mirrors it to a paired Apple Watch). Configure with `"bark": {"key": "…"}` in ~/.leash/config.json
+// (iOS mirrors it to a paired Apple Watch). A Leash still running in the background posts its own notification
+// and says so (bridge/noticed); Bark then stays quiet, so it only covers a suspended or closed app. Configure with `"bark": {"key": "…"}` in ~/.leash/config.json
 // or `node src/index.mjs bark <key>`. Nothing here may throw into the hub: every path catches and logs.
 import path from 'node:path';
 import crypto from 'node:crypto';
 
 // The app sends a WebSocket ping every 15 s while it runs; a client silent for this long is suspended or gone.
 export const AWAY_MS = 25000;
-// A Leash connected from the background answers within this long if its Live Activity alerted about a request.
+// A Leash connected from the background says bridge/noticed within this long when it alerted about an event itself.
 export const BACKGROUND_GRACE_MS = 4000;
 
 const TEXT = {
@@ -119,7 +120,7 @@ export class BarkNotifier {
   /**
    * Run send() now if nobody is watching; if a client looks live, wait one ping period and send only if it went
    * quiet (the app was backgrounded right before the event). A Leash running in the background gets a short grace
-   * instead: its Live Activity may alert about a request itself (bridge/noticed). still() can veto a late send.
+   * instead: it may alert about the event itself (bridge/noticed). still() can veto a late send.
    */
   #whenAway(send, still = () => true) {
     const t = Date.now();
@@ -146,7 +147,7 @@ export class BarkNotifier {
       const parts = [this.#sessionName(hub, p.sessionId), p.params?.toolCall?.title ?? p.params?.message ?? ''].filter(Boolean);
       if (parts.length) body = parts.join(' · ');
     }
-    // still waiting, and the phone did not alert about it itself (bridge/noticed: a Live Activity alert)
+    // still waiting, and the phone did not alert about it itself (bridge/noticed)
     const still = () => { const m = hub.pending; if (!m?.get) return true; const q = m.get(p.key); return !!q && !q.noticedAt; };
     this.#whenAway(() => { this.push({ title, body, level: 'timeSensitive', group: label, url: this.#link(hub, p.sessionId) }); }, still);
   }
@@ -174,7 +175,9 @@ export class BarkNotifier {
         const name = this.s.detail ? this.#sessionName(hub, s.sessionId) : '';
         const extra = reason && !['end_turn', 'error'].includes(reason) ? reason : '';
         const body = [name, extra, took].filter(Boolean).join(' · ') || t.open;
-        this.#whenAway(() => { this.push({ title, body, level: 'active', group: label, url: this.#link(hub, s.sessionId) }); }, () => !s.running);
+        // not continued meanwhile, and the phone did not post this turn end itself
+        const still = () => !s.running && !(s.endNoticedAt >= (s.turnEndedAt ?? 0));
+        this.#whenAway(() => { this.push({ title, body, level: 'active', group: label, url: this.#link(hub, s.sessionId) }); }, still);
       } catch (e) { this.log('bark: ' + e.message); }
     }, 0);
     timer.unref?.();

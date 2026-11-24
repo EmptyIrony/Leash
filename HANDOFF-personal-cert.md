@@ -124,8 +124,12 @@ link routing; draft restore.
 - Update in Background (Settings, default on): while the activity follows a turn Leash plays a looping silent sound
   (`UIBackgroundModes` audio, mixes with other audio, not Now Playing) so it stays running and connected; it stops
   and closes the socket once the final state is out. It tells the bridge it is in the background
-  (`{op: "presence", visible}`), so Bark still pushes: a turn end after 4 s, a request after 4 s unless the Live
-  Activity alerted about it (`bridge/noticed`). A call interrupts it (it resumes afterwards, best effort); starting it
+  (`{op: "presence", visible}`).
+- Notifications: while Leash runs off screen it posts its own (a request with Allow / Deny, Allow asks to unlock; a
+  turn that ended, not one you stopped; tap opens the chat) and says `bridge/noticed` (`{key}` or
+  `{agent, sessionId, turnEnd: true}`); the bridge then skips Bark. With a Leash connected from the background Bark
+  waits 4 s for that, so it only reaches you when Leash is suspended, closed or has notifications off. Permission is
+  asked the first time you start a turn. The Live Activity alert is used only when Leash's own notifications are off. A call interrupts it (it resumes afterwards, best effort); starting it
   from the background (a watch reply) may be refused by iOS. Costs some battery.
 - An activity can only *start* while Leash is on screen (ActivityKit), so a turn started from the watch has no
   Live Activity until you open the phone app.

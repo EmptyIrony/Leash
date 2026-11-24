@@ -125,6 +125,7 @@ final class AppModel {
     @ObservationIgnored var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     /// keeps the app running in the background while the Live Activity follows a turn
     @ObservationIgnored let backgroundAudio = BackgroundAudio()
+    var notifier: LocalNotifier { .shared }
     let link = BridgeConnection()
     @ObservationIgnored private var nextCursor: String?
 
@@ -254,13 +255,18 @@ final class AppModel {
         case "request":
             addPending(m, notify: true)
         case "resolved":
-            if let k = m["key"]?.string { pending.removeValue(forKey: k) }
+            if let k = m["key"]?.string { pending.removeValue(forKey: k); notifier.remove(request: k) }
             refreshPendingCounts()
             liveActivity.setNeedsUpdate(immediate: true)
         case "turn":
             guard let sid = m["sessionId"]?.string else { return }
             let isRunning = m["running"]?.bool == true
+            let wasRunning = running.contains(sid)
+            let began = turnStarts[sid] ?? stores[sid]?.turnStartedAt
             if isRunning { running.insert(sid) } else { running.remove(sid) }
+            if wasRunning && !isRunning && !sceneActive {
+                turnEndedOffScreen(sid, agent: m["agentId"]?.string, stopReason: m["stopReason"]?.string, began: began)
+            }
             let startedAt = m["startedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
             if isRunning { turnStarts[sid] = startedAt ?? turnStarts[sid] ?? Date() } else { turnStarts[sid] = nil }
             defer { liveActivity.turnChanged(sid, running: isRunning, stopReason: m["stopReason"]?.string, startedAt: startedAt) }
@@ -349,7 +355,10 @@ final class AppModel {
         if notify {
             lastAttention = req
             if req.sessionId != visibleSessionId { Haptics.warning() }
-            liveActivity.requestArrived(req)
+            // off screen Leash alerts itself (and Bark stays quiet); the Live Activity alerts only when it can't
+            let alerted = !sceneActive && notifier.request(req, label: agentLabel(req.agentId), conversation: conversationTitle(req.sessionId))
+            if alerted { noticed(key: key) }
+            liveActivity.requestArrived(req, alerted: alerted)
         } else {
             liveActivity.setNeedsUpdate()
         }
@@ -557,7 +566,7 @@ final class AppModel {
         }
         s.running = true
         running.insert(s.sessionId)
-        if wasIdle { liveActivity.turnStarted(s) }
+        if wasIdle { liveActivity.turnStarted(s); notifier.askPermission() }
         Task {
             do {
                 var params: [String: JSON] = ["sessionId": .string(s.sessionId), "prompt": .array(blocks), "agent": .string(s.agent)]
@@ -693,7 +702,7 @@ final class AppModel {
         if wasIdle { s.turnStartedAt = Date() }
         s.running = true
         running.insert(s.sessionId)
-        if wasIdle { liveActivity.turnStarted(s) }
+        if wasIdle { liveActivity.turnStarted(s); notifier.askPermission() }
         Task {
             do {
                 _ = try await link.call("session/prompt", ["sessionId": .string(s.sessionId), "prompt": .array([]), "interrupt": .bool(true), "agent": .string(s.agent)], timeout: nil)

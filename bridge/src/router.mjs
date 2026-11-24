@@ -64,7 +64,11 @@ export class Router {
 
     if (method === 'session/list' && !agent) return this.listAll(client, rest);
     // request keys carry their hub ("claude:r3"), like replies
-    if (method === 'bridge/noticed') return (this.hubs.get(String(rest.key ?? '').split(':')[0]) ?? this.hubs.get(this.defaultId)).handleCall(client, method, rest);
+    // (a turn end names its hub as `agent`)
+    if (method === 'bridge/noticed') {
+      const hub = this.hubs.get(String(rest.key ?? '').split(':')[0]) ?? (agent && this.hubs.get(agent)) ?? this.hubs.get(this.defaultId);
+      return hub.handleCall(client, method, rest);
+    }
 
     const hub = this.hubFor(params);
     const r = await hub.handleCall(client, method, rest);
