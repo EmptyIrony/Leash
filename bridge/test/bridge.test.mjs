@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import WebSocket from 'ws';
 import { Hub, compactEvents, normalizeUpdate } from '../src/hub.mjs';
 import { QuotaPoller, normalizeQuota } from '../src/quota.mjs';
@@ -840,6 +841,50 @@ test('btw: side question runs helper btw (throwaway fork, no tools) mid-turn and
   assert.equal(agy.agentSummary().btw, false);
   assert.equal(agy.agentSummary().turbo, true);
   await assert.rejects(agy.btw({ sessionId: 's', question: 'q' }), /side questions/);
+});
+
+test('openOnComputer: opener gets one remote command that resumes by ID in the folder; refused mid-turn', async () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-open-'));
+  const rec = path.join(bin, 'argv.json');
+  const opener = path.join(bin, 'open');
+  // stands in for zsh -ic 'ubuntu --ghostty-window -t "$@"': records what it got
+  fs.writeFileSync(opener, '#!' + process.execPath + '\n' +
+    `require('fs').writeFileSync(${JSON.stringify(rec)}, JSON.stringify(process.argv.slice(2)));\n`, { mode: 0o755 });
+  const t = await setup({ id: 'claude', locks: false, open: [opener, '--flag'] });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    await c.wait(m => m.op === 'ready');
+    assert.equal(t.hub.agentSummary().openOnComputer, true);
+    const cwd = path.join(t.home, "it's here");
+    fs.mkdirSync(cwd);
+    const ns = await c.call('session/new', { cwd });
+    const promptP = c.call('session/prompt', { sessionId: ns.sessionId, prompt: [{ type: 'text', text: 'please edit' }] });
+    const req = await c.wait(m => m.op === 'request' && m.method === 'session/request_permission');
+    await assert.rejects(c.call('bridge/openOnComputer', { sessionId: ns.sessionId }), /working here/);
+    assert.ok(!fs.existsSync(rec), 'nothing opened mid-turn');
+    c.reply(req.key, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    await promptP;
+
+    assert.deepEqual(await c.call('bridge/openOnComputer', { sessionId: ns.sessionId }), { ok: true });
+    const argv = JSON.parse(fs.readFileSync(rec, 'utf8'));
+    assert.equal(argv[0], '--flag');
+    assert.equal(argv.length, 2, 'the remote command is a single argument');
+    // the remote shell parses it once: bash -lc <inner>
+    const words = execFileSync('sh', ['-c', 'eval "set -- $1"; printf "%s\\0" "$@"', 'sh', argv[1]]).toString().split('\0').slice(0, -1);
+    assert.deepEqual(words.slice(0, 2), ['bash', '-lc']);
+    const out = execFileSync('sh', ['-c', 'claude() { echo "$PWD|$*"; }; ' + words[2]]).toString().trim();
+    assert.equal(out, fs.realpathSync(cwd) + '|--resume ' + ns.sessionId);
+    assert.equal(t.hub.sessions.get(ns.sessionId).loaded, false, 'our copy is released');
+
+    await assert.rejects(c.call('bridge/openOnComputer', { sessionId: 'x; rm -rf ~' }), /bad session id/);
+    await assert.rejects(c.call('bridge/openOnComputer', { sessionId: 'nope' }), /unknown session/);
+    t.hub.opener = [process.execPath, '-e', 'process.stderr.write("no ghostty"); process.exit(3)'];
+    await assert.rejects(c.call('bridge/openOnComputer', { sessionId: ns.sessionId }), /no ghostty/);
+  } finally { c.close(); t.done(); fs.rmSync(bin, { recursive: true, force: true }); }
+  const agy = new Hub({ agentCommand: 'x', log: () => {} });
+  assert.equal(agy.agentSummary().openOnComputer, false);
+  await assert.rejects(agy.openOnComputer({ sessionId: 's' }), /cannot open/);
 });
 
 test('subagents: child sessions file under the root, tagged; their requests show on the root; no root side effects', async () => {

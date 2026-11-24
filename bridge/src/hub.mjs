@@ -15,6 +15,8 @@ export const BRIDGE_PROTOCOL = 1;
 const CHUNK_KINDS = new Set(['agent_message_chunk', 'agent_thought_chunk', 'user_message_chunk']);
 const BLOCKED_METHODS = new Set(['initialize', 'authenticate', 'logout']);
 /** The same helper the Claude Code host runs over SSH; agents on the Mac run it locally (for "!" shell commands). */
+/** One POSIX shell word. */
+const shq = s => "'" + String(s).replace(/'/g, "'\\''") + "'";
 const LOCAL_HELPER = [process.execPath, fileURLToPath(new URL('../remote/helper.mjs', import.meta.url))];
 
 /** Phone attachments (base64 grows them by 4/3; the bridge accepts frames up to 48 MiB). */
@@ -152,13 +154,15 @@ function guessKind(name) {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000, turbo = undefined, btw = undefined }) {
+  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000, turbo = undefined, btw = undefined, open = null }) {
     super();
     Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, listPerCwd, idleCloseMs, locksMaxAgeMs });
     // "Turbo" (bridge-side approve-all) is Antigravity's name; Claude Code has its own modes for that (bypassPermissions).
     this.turbo = turbo ?? !helper;
     // /btw side questions need `claude -p --fork-session` on the host (helper.mjs btw); agy has no throwaway fork.
     this.sideQuestions = btw ?? !!helper;
+    /** command prefix that opens a terminal window on this machine resuming a conversation (Claude Code) */
+    this.opener = open;
     // "Open elsewhere" lock: a function resolving {now, held, touched} (see remote/helper.mjs locks).
     // Default: on for hubs with a remote helper (Claude Code); false turns it off.
     this.locksFn = locks === false ? null : typeof locks === 'function' ? locks : (helper ? () => this.runHelper(['locks'], 10000) : null);
@@ -239,7 +243,7 @@ export class Hub extends EventEmitter {
 
   setAgentState(state) {
     this.agentState = state;
-    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions });
+    this.broadcast({ op: 'agent', state, error: this.agentError, info: this.agentInfo, label: this.label, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, openOnComputer: !!this.opener });
   }
 
   /** Merge this agent's _meta (e.g. Claude Code settings) into session/new|load|resume params. */
@@ -428,7 +432,7 @@ export class Hub extends EventEmitter {
   broadcast(msg) { const m = { ...msg, agentId: this.id }; for (const c of this.clients) c.send(m); }
 
   agentSummary() {
-    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, quota: this.quota?.latest ?? null };
+    return { id: this.id, label: this.label, state: this.agentState, error: this.agentError, info: this.agentInfo, home: this.home, steering: this.steers, turbo: this.turbo, btw: this.sideQuestions, openOnComputer: !!this.opener, quota: this.quota?.latest ?? null };
   }
 
   info() {
@@ -602,6 +606,7 @@ export class Hub extends EventEmitter {
       case 'bridge/restartAgent': return this.restartAgent();
       case 'bridge/shell': return this.shell(client, params);
       case 'bridge/btw': return this.btw(params);
+      case 'bridge/openOnComputer': return this.openOnComputer(params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
       case 'bridge/noticed': {
         // a phone alerted about this request itself (Live Activity alert): Bark need not push it as well
@@ -963,6 +968,45 @@ export class Hub extends EventEmitter {
     const env = this.sessionMeta?.claudeCode?.options?.settings?.env ?? null;
     const r = await this.runHelper(['btw'], 170000, this.helper, JSON.stringify({ sessionId, cwd, question: q, model, env }));
     return { text: String(r.text ?? ''), durationMs: r.durationMs ?? null, model: r.model ?? null };
+  }
+
+  /**
+   * "Open on Computer": a terminal window on this machine resumes the conversation in Claude Code. Its /resume list
+   * leaves out conversations started through the Agent SDK (all of Leash's), so it opens by ID from its own folder.
+   * Refused while a turn runs or a request waits here, so two writers never share it; our idle copy is released
+   * afterwards so the phone reloads from disk before it sends again (as when a lock is found).
+   */
+  async openOnComputer({ sessionId }) {
+    if (!this.opener) throw new RpcError(-32601, this.label + ' cannot open on this computer');
+    const sid = String(sessionId ?? '');
+    if (!/^[A-Za-z0-9-]+$/.test(sid)) throw new RpcError(-32602, 'bad session id');
+    const s = this.sessions.get(sid);
+    const cwd = s?.cwd ?? this.knownCwds.get(sid) ?? null;
+    if (!s && !cwd) throw new RpcError(-32004, 'unknown session');
+    if (s && (this.#busy(s) || [...this.pending.values()].some(p => p.sessionId === sid))) {
+      throw new RpcError(-32022, 'the conversation is working here; open it on the computer once it finishes');
+    }
+    // one argument, parsed once by the remote shell; a login shell so claude is on PATH
+    const remote = 'bash -lc ' + shq((cwd ? 'cd ' + shq(cwd) + ' && ' : '') + 'claude --resume ' + sid);
+    await this.#launch([...this.opener, remote]);
+    if (s?.loaded && !this.#busy(s)) await this.releaseSession(s);
+    return { ok: true };
+  }
+
+  /** Run a short local command that hands off to a GUI app (open -na …); resolves when it exits 0. */
+  #launch([cmd, ...args], timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], env: this.agentEnv });
+      let err = '';
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new RpcError(-32098, 'opening the window timed out')); }, timeoutMs);
+      child.stderr.on('data', d => { err += d; });
+      child.on('error', e => { clearTimeout(timer); reject(new RpcError(-32603, 'cannot open a window: ' + e.message)); });
+      child.on('close', code => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new RpcError(-32603, 'opening the window failed' + (err.trim() ? ': ' + err.trim().slice(-200) : ' (exit ' + code + ')')));
+      });
+    });
   }
 
   #recordTurnStats(s, usage) {
