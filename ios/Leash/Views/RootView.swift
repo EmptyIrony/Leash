@@ -14,6 +14,11 @@ struct RootView: View {
                         // Replace, don't stack: Back from the other conversation returns to the list.
                         withAnimation { path = NavigationPath([next]) }
                     })
+                    // Swapping the stack's only conversation for another (the banner above, a Bark tap, the Live
+                    // Activity) keeps the same slot, so without this SwiftUI reuses the view and its @State: the
+                    // composer's draft would follow into the other conversation. A new id leaves first (saving the
+                    // draft under its own conversation) and opens the next one fresh.
+                    .id(id)
                 }
                 .navigationDestination(for: FolderRoute.self) { FolderSessionsView(route: $0) }
         }
