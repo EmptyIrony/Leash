@@ -104,8 +104,8 @@ struct PoolCard: View {
             }
         }
         .padding(16)
-        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     private func resetText(_ d: Date) -> String {

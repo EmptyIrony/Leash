@@ -76,7 +76,7 @@ struct UserBubble: View {
         VStack(alignment: .trailing, spacing: 8) {
             ForEach(Array(item.images.enumerated()), id: \.offset) { i, d in
                 if let ui = UIImage(data: d) {
-                    ImageTile(image: ui, data: d, name: "image-\(i + 1).png", maxWidth: 220, maxHeight: 220, cornerRadius: 16)
+                    ImageTile(image: ui, data: d, name: "image-\(i + 1).png", maxWidth: 220, maxHeight: 220, cornerRadius: Theme.Radius.card)
                 }
             }
             if !files.isEmpty {
@@ -136,7 +136,7 @@ struct UserBubble: View {
         }
     }
 
-    private static let bubble = UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 20, bottomTrailingRadius: 6, topTrailingRadius: 20, style: .continuous)
+    private static let bubble = UnevenRoundedRectangle(topLeadingRadius: Theme.Radius.bubble, bottomLeadingRadius: Theme.Radius.bubble, bottomTrailingRadius: Theme.Radius.bubbleTail, topTrailingRadius: Theme.Radius.bubble, style: .continuous)
 }
 
 /// Result of a "!" shell command: terminal-style block, long output collapsed.
@@ -195,8 +195,8 @@ struct ShellOutputView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
     }
 
     private func lineCount(_ s: String) -> Int { s.isEmpty ? 0 : s.split(separator: "\n", omittingEmptySubsequences: false).count }
@@ -231,7 +231,7 @@ struct CodeText: View {
                 Text(shown).font(Theme.monoSmall).foregroundStyle(Theme.textSecondary).textSelection(.enabled).fixedSize(horizontal: true, vertical: false)
                     .padding(10)
             }
-            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
             if lines.count > maxLines && !expanded {
                 Button("Show all \(lines.count) lines") { expanded = true }.font(.caption)
             }
@@ -269,7 +269,7 @@ struct PlanCard: View {
             }
         }
         .padding(14)
-        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 }

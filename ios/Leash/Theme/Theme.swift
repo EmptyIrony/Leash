@@ -42,6 +42,23 @@ enum Theme {
 
     static let mono = Font.system(.footnote, design: .monospaced)
     static let monoSmall = Font.system(.caption2, design: .monospaced)
+
+    /// Corner radii by role (always drawn continuous). Pills, capsules and circles are shapes, not radii.
+    enum Radius {
+        /// The composer's glass slab.
+        static let composer: CGFloat = 26
+        /// Glass trays docked above the composer: approval / question, queue, side question, command palette.
+        static let tray: CGFloat = 22
+        /// A sent message bubble; `bubbleTail` is its corner nearest the sender.
+        static let bubble: CGFloat = 20
+        static let bubbleTail: CGFloat = 6
+        /// Raised blocks in the transcript: plan, tables, quota, load and lock notices; images in a bubble.
+        static let card: CGFloat = 16
+        /// Selectable rows, chips, thumbnails and inline images.
+        static let row: CGFloat = 12
+        /// Sunken boxes inside content: code blocks, diffs, shell output, inline errors.
+        static let inset: CGFloat = 10
+    }
 }
 
 extension View {

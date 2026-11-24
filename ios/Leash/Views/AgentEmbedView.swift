@@ -177,7 +177,7 @@ struct AgentEmbedView: View {
                         Button("Retry") { Task { await load(force: true) } }.font(.footnote)
                     }
                     .padding(12)
-                    .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
                 } else {
                     ActivitySpinner(size: 20).frame(maxWidth: .infinity).frame(height: min(max(height, 120), Self.inlineMax))
                 }

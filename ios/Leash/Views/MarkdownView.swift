@@ -374,7 +374,7 @@ private struct MarkdownBlockView: View, Equatable {
             }.padding(.leading, CGFloat(indent) * 16)
         case .quote(let t):
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 1).fill(Theme.accent.opacity(0.35)).frame(width: 2).opacity(chrome)
+                Capsule().fill(Theme.accent.opacity(0.35)).frame(width: 2).opacity(chrome)
                 reveal(Text(MarkdownView.inline(t))).lineSpacing(4).foregroundStyle(Theme.textSecondary)
             }
             .padding(.vertical, 2)
@@ -390,8 +390,8 @@ private struct MarkdownBlockView: View, Equatable {
                     reveal(Text(c).font(.system(size: 13, design: .monospaced))).foregroundStyle(Theme.textPrimary).lineSpacing(2).fixedSize(horizontal: true, vertical: false).padding(10)
                 }
             }
-            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
             .opacity(chrome)
         case .rule:
             Rectangle().fill(Theme.hairline).frame(height: 1).padding(.vertical, 4).opacity(whole)
@@ -557,9 +557,9 @@ struct MarkdownTable: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline, lineWidth: hairline))
+        .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.hairline, lineWidth: hairline))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0; Self.lastWidth = $0 }
         .padding(.vertical, 4)
     }

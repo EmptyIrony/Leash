@@ -65,8 +65,8 @@ struct ModelPicker: View {
                 if selected { Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(Theme.accent) }
             }
             .padding(.horizontal, 10).padding(.vertical, 9)
-            .background(selected ? Theme.accent.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(selected ? Theme.accent.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         }
         .buttonStyle(.pressable(scale: 0.98))
     }

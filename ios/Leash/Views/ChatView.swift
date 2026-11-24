@@ -341,7 +341,7 @@ struct ChatView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         }
         if let by = store.lockedBy {
             VStack(alignment: .leading, spacing: 8) {
@@ -350,7 +350,7 @@ struct ChatView: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         }
     }
 
@@ -592,7 +592,7 @@ struct ChatView: View {
                         ForEach(Array(images.enumerated()), id: \.offset) { i, d in
                             if let ui = UIImage(data: d) {
                                 Image(uiImage: ui).resizable().scaledToFill().frame(width: 56, height: 56)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
                                     .overlay(alignment: .topTrailing) {
                                         Button { images.remove(at: i) } label: {
                                             Image(systemName: "xmark.circle.fill").foregroundStyle(Color.white, Color.black.opacity(0.6))
@@ -639,7 +639,7 @@ struct ChatView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .frame(minHeight: 48)
-        .glassEffect(.regular.tint(slabTint), in: .rect(cornerRadius: 26))
+        .glassEffect(.regular.tint(slabTint), in: .rect(cornerRadius: Theme.Radius.composer))
         .glassEffectID("slab", in: glassNS)
         .opacity(composerEnabled ? 1 : 0.5)
         .animation(Motion.quick, value: isShell)

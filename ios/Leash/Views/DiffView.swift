@@ -95,8 +95,8 @@ struct DiffView: View {
             }
         }
         .background(Theme.bgSunken)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 
     @ViewBuilder private func row(_ l: DiffLine) -> some View {

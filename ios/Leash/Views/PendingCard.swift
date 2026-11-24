@@ -64,7 +64,7 @@ private struct ApprovalRequestBody: View {
             if let cmd = t.commandPreview, cmd != t.title || t.kind == "execute" {
                 Text(cmd).font(Theme.mono).lineLimit(4).textSelection(.enabled)
                     .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
             }
             if let d = t.firstDiff {
                 Button { showDiff = true } label: {
@@ -161,8 +161,8 @@ private extension View {
     /// never spills past the shrinking glass.
     func requestTrayShell(key: String) -> some View {
         padding(14)
-            .clipShape(.rect(cornerRadius: 22))
-            .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            .clipShape(.rect(cornerRadius: Theme.Radius.tray))
+            .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.tray))
             .animation(Motion.layout, value: key)
     }
 }
@@ -473,7 +473,7 @@ struct OptionRow: View {
     var highlightID: String = "selection"
     let action: () -> Void
 
-    private var rowShape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+    private var rowShape: RoundedRectangle { RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous) }
 
     /// The resting fill stays on every row, so the moving highlight never uncovers a gap.
     private var rowFill: some View {

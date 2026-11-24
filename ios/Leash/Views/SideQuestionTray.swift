@@ -21,7 +21,7 @@ struct SideQuestionTray: View {
             if !collapsed { content.transition(Motion.reveal) }
         }
         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.tray))
         .animation(Motion.disclose, value: collapsed)
         .animation(Motion.quick, value: item.pending)
         .sheet(isPresented: $showFull) { SideAnswerSheet(item: item) }

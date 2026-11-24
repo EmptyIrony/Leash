@@ -227,8 +227,8 @@ struct FileChip: View {
             .padding(.horizontal, 12).padding(.vertical, 6)
             .frame(minHeight: 44)
             .frame(maxWidth: 260, alignment: .leading)
-            .background(fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(fill, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         }
         .buttonStyle(.pressable)
         .contextMenu {
@@ -258,7 +258,7 @@ struct ComposerFileChip: View {
         }
         .padding(.leading, 10).padding(.trailing, 14)
         .frame(width: 168, height: 56)
-        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         .opacity(uploading ? 0.5 : 1)
         .overlay { if uploading { ProgressView() } }
         .overlay(alignment: .topTrailing) {
@@ -341,7 +341,7 @@ struct MarkdownImage: View {
             } else if let failure = failure ?? cache.failed[key]?.reason {
                 failureRow(failure)
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .secondarySystemFill))
+                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).fill(Color(uiColor: .secondarySystemFill))
                     .frame(maxWidth: 480).frame(height: 180)
                     .overlay { ProgressView() }
                     .accessibilityLabel(Text("Loading image"))
@@ -364,7 +364,7 @@ struct MarkdownImage: View {
         }
         .padding(12)
         .frame(maxWidth: 480, alignment: .leading)
-        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
     }
 
     /// Shows the cached copy at once and refetches it when it is older than 30 s; a failure is never cached, so a
@@ -423,7 +423,7 @@ struct ImageTile: View {
     var path: String? = nil
     var maxWidth: CGFloat = 480
     var maxHeight: CGFloat = 320
-    var cornerRadius: CGFloat = 12
+    var cornerRadius: CGFloat = Theme.Radius.row
     @State private var preview: URL?
     @State private var fileURL: URL?
 

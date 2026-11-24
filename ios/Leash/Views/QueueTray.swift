@@ -69,7 +69,7 @@ struct QueueTray: View {
             }
         }
         .padding(.leading, 14).padding(.trailing, 6).padding(.vertical, 8)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.tray))
         .animation(Motion.quick, value: running)
         .animation(Motion.disclose, value: collapsed)
     }

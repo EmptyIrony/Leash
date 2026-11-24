@@ -32,9 +32,9 @@ struct ChangesRow: View {
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 44)
-            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous))
         }
         .buttonStyle(.pressable(scale: 0.98))
         .accessibilityLabel(Text("\(n) files changed, \(changes.adds) additions, \(changes.dels) deletions"))

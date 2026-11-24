@@ -26,8 +26,8 @@ struct CommandPalette: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(height: rows * rowHeight)
-        .clipShape(.rect(cornerRadius: 22))
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .clipShape(.rect(cornerRadius: Theme.Radius.tray))
+        .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.tray))
     }
 
     private func row(_ c: AgentCommand) -> some View {
