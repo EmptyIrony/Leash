@@ -170,7 +170,7 @@ struct SessionListView: View {
             Label("No conversations", systemImage: "bubble.left.and.bubble.right")
         } actions: {
             Button("New conversation") { showNew = true }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .disabled(!model.agentReady)
         }
     }
