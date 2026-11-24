@@ -71,7 +71,7 @@ enum LA {
 
     static func symbol(for phase: LeashActivityAttributes.ContentState.Phase) -> String {
         switch phase {
-        case .working: return "sparkle"
+        case .working: return "smallcircle.filled.circle"   // the app's "in progress" marker (checklist, live row)
         case .approval: return "hand.raised.fill"
         case .question: return "questionmark.bubble.fill"
         case .done: return "checkmark.circle.fill"
@@ -97,7 +97,8 @@ enum LA {
 
 // MARK: - Pieces
 
-/// The agent's mark without a container (HIG). Monochrome where the system strips colour (Always-On, tinted).
+/// The agent's mark without a container (HIG). A monochrome silhouette of it where the system strips colour
+/// (Always-On, tinted).
 private struct AgentMark: View {
     let agent: String
     var size: CGFloat
@@ -107,7 +108,9 @@ private struct AgentMark: View {
     var body: some View {
         Group {
             if reduced || renderingMode != .fullColor {
-                Image(systemName: "sparkle").resizable().scaledToFit().padding(size * 0.12)
+                // the same agent's mark as a silhouette, so Always-On and tinted modes still say which agent it is
+                Image(agent == "claude" ? "ProviderClaude" : "ProviderGemini").renderingMode(.template).resizable().scaledToFit()
+                    .foregroundStyle(.primary)
             } else {
                 Image(agent == "claude" ? "ProviderClaude" : "ProviderGemini").resizable().scaledToFit()
             }
@@ -242,7 +245,7 @@ private struct StatusLine: View {
                 Label {
                     if let step = state.step { Text(verbatim: step) } else { Text("Working") }
                 } icon: {
-                    Image(systemName: "sparkle").foregroundStyle(LA.working)
+                    Image(systemName: LA.symbol(for: .working)).foregroundStyle(LA.working)
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
