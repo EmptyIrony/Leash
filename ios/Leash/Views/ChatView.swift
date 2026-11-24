@@ -125,6 +125,7 @@ struct ChatView: View {
             .navigationBarTitleDisplayMode(.inline)
         return base
             .toolbar { ToolbarItem(placement: .topBarTrailing) { moreMenu } }
+            .navigationDestination(for: SubagentRoute.self) { r in SubagentView(store: model.store(for: r.root), childId: r.child) }
             .sheet(item: fileSheet) { f in FileViewer(path: f.path, agent: store.agent, sessionId: store.sessionId) }
             .sheet(isPresented: $showQuota) {
                 QuotaSheet()
@@ -297,7 +298,7 @@ struct ChatView: View {
                         turnStartedAt: store.turnStartedAt,
                         openFile: { fileToOpen = $0 })
         case .segment(let s):
-            SegmentRow(segment: s, store: store, openFile: { fileToOpen = $0 })
+            SegmentRow(segment: s, store: store, blocked: s.liveLine != nil && !permissionRequests.isEmpty, openFile: { fileToOpen = $0 })
         case .answer(let m):
             // the answer streaming at the end of a running turn reveals its new text as it arrives
             let streaming: Bool = {

@@ -167,11 +167,23 @@ struct ActivityRow: View {
 
     /// The live line cross-fades when the agent moves to its next action.
     @ViewBuilder private var subLine: some View {
-        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (group.summary.isEmpty ? " " : group.summary + "  ›"))
-        ZStack(alignment: .leading) {
-            Text(line).id(line).transition(Motion.swap)
+        let agents = blocked || group.live ? [] : group.runningSubagents
+        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (agents.isEmpty ? (group.summary.isEmpty ? " " : group.summary + "  ›") : Self.agentsLine(agents)))
+        HStack(spacing: 6) {
+            // a background subagent outlives the turn: the header stays "Worked for …", the sub-line says it still runs
+            if !agents.isEmpty && !agents.contains(where: \.needsAction) { ActivitySpinner(size: 11).transition(Motion.pop) }
+            ZStack(alignment: .leading) {
+                Text(line).id(line).transition(Motion.swap)
+            }
+            .foregroundStyle(blocked || agents.contains(where: \.needsAction) ? Theme.attention : (group.live || !agents.isEmpty ? Theme.textSecondary : Theme.textTertiary))
         }
         .animation(Motion.quick, value: line)
+    }
+
+    private static func agentsLine(_ agents: [SubagentItem]) -> String {
+        if agents.contains(where: \.needsAction) { return String(localized: "Agent needs approval") + "  ›" }
+        if agents.count == 1 { return String(localized: "Still running: \(agents[0].displayTitle)") + "  ›" }
+        return String(localized: "\(agents.count) agents still running") + "  ›"
     }
 }
 
@@ -180,6 +192,7 @@ struct ActivityRow: View {
 struct SegmentRow: View {
     let segment: StepSegment
     let store: ChatStore
+    var blocked = false                  // an approval waits: the header says so, this line holds still
     var openFile: (String) -> Void
 
     private var open: Bool { store.expandedGroups.contains(segment.id) }
@@ -203,7 +216,7 @@ struct SegmentRow: View {
                     .foregroundStyle(active ? Theme.textSecondary : Theme.textTertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .shimmer(active)
+                    .shimmer(active && !blocked)
                     if !rows.isEmpty {
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.semibold))
@@ -262,7 +275,7 @@ struct StepList: View {
 
 /// Rows in the expanded list; consecutive reads coalesce into "Read N files".
 struct StepRowModel: Identifiable {
-    enum Kind { case thought(MessageItem), note(MessageItem), tool(ToolItem), reads([ToolItem]) }
+    enum Kind { case thought(MessageItem), note(MessageItem), tool(ToolItem), reads([ToolItem]), subagent(SubagentItem) }
     let id: UUID
     let kind: Kind
 
@@ -283,6 +296,8 @@ struct StepRowModel: Identifiable {
             case .message(let m):
                 flushReads()
                 out.append(StepRowModel(id: m.id, kind: m.role == .thought ? .thought(m) : .note(m)))
+            case .subagent(let s):
+                flushReads(); out.append(StepRowModel(id: s.id, kind: .subagent(s)))
             default: break
             }
         }
@@ -304,6 +319,11 @@ struct StepRow: View {
     }
 
     var body: some View {
+        // a subagent's row navigates to its transcript instead of opening in place
+        if case .subagent(let s) = row.kind { SubagentStepRow(item: s, rootSessionId: store.sessionId) } else { stepBody }
+    }
+
+    private var stepBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button(action: toggle) {
                 HStack(spacing: 8) {
@@ -328,6 +348,7 @@ struct StepRow: View {
         case .note: Image(systemName: "text.bubble")
         case .reads: Image(systemName: "doc.text")
         case .tool(let t): Image(systemName: ToolIcon.name(t.kind))
+        case .subagent: Image(systemName: "arrow.triangle.branch")
         }
     }
 
@@ -344,6 +365,7 @@ struct StepRow: View {
             } else {
                 Text(t.title).font(.footnote).foregroundStyle(Theme.textPrimary)
             }
+        case .subagent(let s): Text(s.displayTitle).font(.footnote).foregroundStyle(Theme.textPrimary)
         }
     }
 
@@ -365,7 +387,7 @@ struct StepRow: View {
     /// A thought or note opens in place (its title drops the line limit): a second copy below would repeat it.
     private var hasDetail: Bool {
         switch row.kind {
-        case .thought, .note: return false
+        case .thought, .note, .subagent: return false
         case .reads, .tool: return true
         }
     }
@@ -378,7 +400,7 @@ struct StepRow: View {
 
     @ViewBuilder private var detail: some View {
         switch row.kind {
-        case .thought, .note:
+        case .thought, .note, .subagent:
             EmptyView()
         case .reads(let ts):
             VStack(alignment: .leading, spacing: 4) {

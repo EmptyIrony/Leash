@@ -555,10 +555,19 @@ final class ChatStore {
         func flushRun(last: Bool) {
             guard let first = run.first else { return }
             let active = last && !g.answerFollows
+            let listed = !StepRowModel.build(run).isEmpty
             // a run with nothing to list (only the steps tool) shows only while it is the current one
-            if active || !StepRowModel.build(run).isEmpty {
-                items.append(.segment(StepSegment(id: first.id.derived(2), steps: run, liveLine: active ? g.liveAction : nil)))
-            }
+            guard active || listed else { run = []; return }
+            // the current action while a tool runs or the agent thinks; between tools the run so far, not "Thinking…"
+            let busy: Bool = {
+                switch run.last {
+                case .tool(let t)?: return t.status == "in_progress" || t.status == "pending" || t.status.isEmpty
+                case .message(let m)?: return m.role == .thought
+                default: return false
+                }
+            }()
+            let seg = StepSegment(id: first.id.derived(2), steps: run)
+            items.append(.segment(StepSegment(id: seg.id, steps: run, liveLine: active ? (busy || !listed ? g.liveAction : seg.summary) : nil)))
             run = []
         }
         for s in g.steps {
