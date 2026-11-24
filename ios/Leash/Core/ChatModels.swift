@@ -653,7 +653,12 @@ final class ChatStore {
     var turnStartedAt: Date?
     var attached = false
     var loading = false
-    var error: String?
+    /// What went wrong with what is in the composer: a send refused before any turn started (the draft is back),
+    /// a file that couldn't be attached or uploaded, a change the agent refused. Shown in the composer until
+    /// dismissed or the next send; a turn that fails once running is a transcript notice instead.
+    var composerError: String?
+    /// The conversation couldn't be loaded; shown in place of the transcript (or under it) with Try Again.
+    var loadError: String?
     /// Set while another client (Claude Code terminal / desktop app) has this conversation open: "cli", "claude-desktop", …
     var lockedBy: String?
     /// Text the bridge refused to send (conversation locked) or a queued message taken back; the composer puts it back.

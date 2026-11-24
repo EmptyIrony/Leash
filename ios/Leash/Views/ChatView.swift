@@ -14,6 +14,8 @@ struct ChatView: View {
     @State private var files: [PendingFile] = []
     @State private var showFileImporter = false
     @State private var uploading = false
+    /// The composer error this view put up for a failed upload: removing a file it names clears it.
+    @State private var uploadError: String?
     @State private var pickerItems: [PhotosPickerItem] = []
     /// Following the newest output; cleared when the user scrolls up, set again at the bottom or on send.
     @State private var pinned = true
@@ -294,6 +296,16 @@ struct ChatView: View {
         if store.loading {
             HStack(spacing: 10) { Spacer(); ActivitySpinner(size: 18); Text("Loading conversation…").foregroundStyle(Theme.textSecondary); Spacer() }
                 .padding(.top, 60)
+        } else if let e = store.loadError, store.entries.isEmpty {
+            ContentUnavailableView {
+                Label("Couldn't load the conversation", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(verbatim: e)
+            } actions: {
+                Button("Try Again") { Task { await model.attach(store) } }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 40)
         } else if store.attached && store.entries.isEmpty && !store.running {
             VStack(spacing: 10) {
                 AgentIcon(agent: store.agent, size: emptyMark)
@@ -310,8 +322,23 @@ struct ChatView: View {
         if let stop = store.lastStopReason, stop != "end_turn", !store.running {
             Label("Stopped · \(stop)", systemImage: "stop.circle").font(.caption).foregroundStyle(Theme.textTertiary)
         }
-        if let e = store.error {
-            Label(e, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Theme.danger)
+        if let e = store.loadError, !store.entries.isEmpty {
+            // a reload under a transcript already on screen failed: what is shown may be out of date
+            VStack(alignment: .leading, spacing: 8) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Couldn't load the conversation").foregroundStyle(Theme.textPrimary)
+                        Text(verbatim: e).font(.caption).foregroundStyle(Theme.textSecondary)
+                    }
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
+                }
+                .font(.callout)
+                Button("Try Again") { Task { await model.attach(store) } }.font(.callout.weight(.semibold))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         if let by = store.lockedBy {
             VStack(alignment: .leading, spacing: 8) {
@@ -382,6 +409,7 @@ struct ChatView: View {
     /// Asks the agent, as a message in the conversation, to commit what its last turn changed.
     private func commitChanges(_ c: TurnChanges) {
         let paths = c.files.map { $0.relative(to: store.cwd) }.joined(separator: ", ")
+        clearComposerError()
         withAnimation(Motion.layout) {
             model.send(store, text: String(localized: "Commit the changes from your last turn: \(paths)"), images: [])
             pinned = true
@@ -518,6 +546,7 @@ struct ChatView: View {
 
     private var slab: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let e = store.composerError { composerErrorLine(e).transition(Motion.reveal) }
             if isShell { shellStatus.transition(Motion.reveal) }
             if isBtw { btwStatus.transition(Motion.reveal) }
             if let c = pickedCommand { commandStatus(c).transition(Motion.reveal) }
@@ -538,7 +567,11 @@ struct ChatView: View {
                             }
                         }
                         ForEach(files) { f in
-                            ComposerFileChip(file: f, uploading: uploading) { files.removeAll { $0.id == f.id } }
+                            ComposerFileChip(file: f, uploading: uploading) {
+                                files.removeAll { $0.id == f.id }
+                                if let e = uploadError, store.composerError == e { store.composerError = nil }
+                                uploadError = nil
+                            }
                         }
                     }
                     .padding(.top, 4).padding(.horizontal, 2)
@@ -576,12 +609,16 @@ struct ChatView: View {
         .animation(Motion.quick, value: isShell)
         .animation(Motion.quick, value: isBtw)
         .animation(Motion.quick, value: pickedCommand?.name)
+        .animation(Motion.quick, value: store.composerError)
+        .onChange(of: store.composerError) { _, e in
+            if let e { AccessibilityNotification.Announcement(e).post() }
+        }
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems, maxSelectionCount: 4, matching: .images)
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let r = PendingFile.load(result)
             files += r.files
-            if !r.tooLarge.isEmpty { store.error = String(localized: "Files over 25 MB can't be attached: \(r.tooLarge.joined(separator: ", "))"); Haptics.error() }
-            else if !r.unreadable.isEmpty { store.error = String(localized: "Couldn't read: \(r.unreadable.joined(separator: ", "))"); Haptics.error() }
+            if !r.tooLarge.isEmpty { store.composerError = String(localized: "Files over 25 MB can't be attached: \(r.tooLarge.joined(separator: ", "))"); Haptics.error() }
+            else if !r.unreadable.isEmpty { store.composerError = String(localized: "Couldn't read: \(r.unreadable.joined(separator: ", "))"); Haptics.error() }
         }
     }
 
@@ -625,6 +662,27 @@ struct ChatView: View {
             .disabled(!composerEnabled)
             .accessibilityLabel("Add")
         }
+    }
+
+    /// What went wrong with what is in the composer (ChatStore.composerError); the × puts it away.
+    private func composerErrorLine(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger)
+            Text(verbatim: message).foregroundStyle(Theme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            // a 20 pt glyph with a 44 pt hit area that doesn't grow the line
+            Button { store.composerError = nil; uploadError = nil } label: {
+                Image(systemName: "xmark").font(.caption2.weight(.bold)).foregroundStyle(Theme.textSecondary)
+                    .frame(width: 20, height: 20)
+                    .padding(12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable)
+            .padding(-12)
+            .accessibilityLabel("Dismiss")
+        }
+        .font(.caption.weight(.medium))
+        .padding(.leading, 8).padding(.trailing, 4).padding(.top, 4)
     }
 
     /// What a side question is, or why another one can't be asked yet.
@@ -790,6 +848,7 @@ struct ChatView: View {
     /// Stop the running turn and send the draft (plus anything queued) right after it.
     private func interruptAndSend() {
         guard canSend, !isShell, !isBtw else { return }
+        clearComposerError()
         withAnimation(Motion.layout) {
             sendDraft(interrupt: store.running)
             pinned = true
@@ -799,6 +858,7 @@ struct ChatView: View {
     }
 
     private func sendQueuedNow() {
+        clearComposerError()
         let interrupting = store.running
         withAnimation(Motion.layout) {
             model.sendQueued(store)
@@ -811,6 +871,7 @@ struct ChatView: View {
     /// The draft clears, the message rises into the transcript and the scroll follows it in one motion.
     private func send() {
         guard canSend else { return }
+        clearComposerError()
         if isBtw {
             // answered beside the conversation: no steering, no queue, no scroll
             withAnimation(Motion.layout) { model.askSideQuestion(store, btwQuestion); draft = "" }
@@ -828,6 +889,11 @@ struct ChatView: View {
             position.scrollTo(edge: .bottom)
         }
         sendTick += 1
+    }
+
+    private func clearComposerError() {
+        store.composerError = nil
+        uploadError = nil
     }
 
     /// Text, photos and files go out as one message; picked files are stored on the agent's host first and the
@@ -855,7 +921,8 @@ struct ChatView: View {
                     if pinned { position.scrollTo(edge: .bottom) }
                 }
             } catch {
-                store.error = error.localizedDescription
+                store.composerError = error.localizedDescription
+                uploadError = store.composerError
                 Haptics.error()
             }
         }

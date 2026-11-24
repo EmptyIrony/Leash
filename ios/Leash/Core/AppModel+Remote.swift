@@ -211,12 +211,12 @@ extension AppModel {
             if s.attaching { return .failed }
         }
         if s.lockedBy != nil { return .locked }
-        guard s.attached else { return s.error == nil ? .macUnreachable : .failed }
+        guard s.attached else { return s.loadError == nil ? .macUnreachable : .failed }
 
         // what was already there must not count as this message's outcome
         let draftBefore = s.unsentDraft
         s.unsentDraft = nil
-        s.error = nil
+        s.composerError = nil
         let queuedBefore = s.queued.count
         let wasRunning = s.running
         send(s, text: text, images: [])
@@ -227,16 +227,16 @@ extension AppModel {
         while Date() < deadline {
             try? await Task.sleep(for: .milliseconds(150))
             if s.lockedBy != nil { restore(); return .locked }
-            if s.unsentDraft != nil { restore(); return s.error == nil ? .changedElsewhere : .failed }
+            if s.unsentDraft != nil { restore(); return s.composerError == nil ? .changedElsewhere : .failed }
             if s.queued.count > queuedBefore { restore(); return .done }
             if !wasRunning, let echoId {
                 // idle: the optimistic bubble is adopted by the bridge's echo of this very message
-                if s.pendingEcho?.id != echoId && s.error == nil { restore(); return .done }
-            } else if wasRunning, s.error == nil, let last = s.entries.last, case .message(let m) = last, m.role == .user, m.text.contains(text) {
+                if s.pendingEcho?.id != echoId && s.composerError == nil { restore(); return .done }
+            } else if wasRunning, s.composerError == nil, let last = s.entries.last, case .message(let m) = last, m.role == .user, m.text.contains(text) {
                 // mid-turn with steering: the bridge echoes it into the running turn
                 restore(); return .done
             }
-            if s.error != nil && !s.running { restore(); return .failed }
+            if s.composerError != nil && !s.running { restore(); return .failed }
         }
         restore()
         return isConnected ? .failed : .macUnreachable

@@ -487,6 +487,7 @@ final class AppModel {
         if s.attaching { s.reattachNeeded = true; return }
         s.attaching = true
         s.loading = s.entries.isEmpty
+        s.loadError = nil   // Try Again shows progress, not the old failure
         defer {
             s.loading = false
             s.attaching = false
@@ -525,17 +526,15 @@ final class AppModel {
             s.queued = QueuedMessage.list(r["queue"])
             for p in r["pending"]?.array ?? [] { addPending(p, notify: false) }
             s.attached = true
-            s.error = nil
             s.lockedBy = nil
             // idle and the catch-up held no echo of it: the prompt never reached the bridge (connection dropped)
             if !s.running, let echoAtStart, s.pendingEcho?.id == echoAtStart { withAnimation(Motion.layout) { s.pendingEcho = nil } }
         } catch let e as BridgeError where e.code == BridgeError.lockedElsewhere {
             s.lockedBy = e.holder ?? "other"
             s.attached = false
-            s.error = nil
             if let echoAtStart, s.pendingEcho?.id == echoAtStart { withAnimation(Motion.layout) { s.pendingEcho = nil } }
         } catch {
-            s.error = error.localizedDescription
+            s.loadError = error.localizedDescription
         }
         if let i = sessions.firstIndex(where: { $0.id == s.sessionId }), sessions[i].lockedBy != s.lockedBy {
             withAnimation(Motion.layout) { sessions[i].lockedBy = s.lockedBy }
@@ -657,13 +656,14 @@ final class AppModel {
             } catch {
                 // still waiting on its echo: the bridge refused it before any turn started, so nothing was sent
                 // (after the echo, the error is the turn failing; the bridge logs that as a notice)
+                let refused = echoID == nil || s.pendingEcho?.id == echoID
                 if let echoID, s.pendingEcho?.id == echoID {
                     withAnimation(Motion.layout) { dropEcho(s, echoID) }
                     if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
                     s.unsentDraft = restore
                     if !images.isEmpty { s.unsentImages = images }
                 }
-                s.error = error.localizedDescription
+                if refused { s.composerError = error.localizedDescription }
                 Haptics.error()
             }
         }
@@ -700,7 +700,7 @@ final class AppModel {
             } catch let e as BridgeError where e.code == -1 {
                 // connection dropped; the command still finishes on the host and shows up after the resync
             } catch {
-                s.error = error.localizedDescription
+                s.composerError = error.localizedDescription
                 Haptics.error()
             }
             s.shellRunning = false
@@ -771,7 +771,7 @@ final class AppModel {
             } catch {
                 // refused before any turn started (changed elsewhere, agent down, …): no turn op will clear it
                 if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
-                s.error = error.localizedDescription
+                s.composerError = error.localizedDescription
                 Haptics.error()
             }
         }
@@ -794,7 +794,7 @@ final class AppModel {
             } catch let e as BridgeError where e.code == BridgeError.alreadySent {
                 // it went out with the turn that just ended
             } catch {
-                s.error = error.localizedDescription
+                s.composerError = error.localizedDescription
             }
         }
     }
@@ -811,7 +811,7 @@ final class AppModel {
             do {
                 let r = try await link.call("session/set_config_option", .object(params))
                 s.setConfigOptions(r["configOptions"])
-            } catch { s.error = error.localizedDescription }
+            } catch { s.composerError = error.localizedDescription }
         }
     }
 
@@ -835,7 +835,7 @@ final class AppModel {
     func setMode(_ s: ChatStore, mode: String) {
         Task {
             do { _ = try await link.call("session/set_mode", ["sessionId": .string(s.sessionId), "modeId": .string(mode), "agent": .string(s.agent)]); s.currentMode = mode }
-            catch { s.error = error.localizedDescription }
+            catch { s.composerError = error.localizedDescription }
         }
     }
 
