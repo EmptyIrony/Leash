@@ -32,6 +32,10 @@ struct ChatView: View {
     /// "New Conversation Here" is waiting on the agent (session/new can take a while)
     @State private var startingNew = false
     @State private var newError: String?
+    /// "Open on Computer" is waiting on the bridge, then confirms for a moment.
+    @State private var openingOnComputer = false
+    @State private var openedOnComputer = false
+    @State private var openError: String?
     @AppStorage("turboConfirmed") private var turboConfirmed = false
     @AppStorage("bypassConfirmed") private var bypassConfirmed = false
     @FocusState private var composerFocused: Bool
@@ -181,19 +185,35 @@ struct ChatView: View {
             .alert("Couldn't start a conversation", isPresented: showNewError, presenting: newError) { _ in
                 Button("OK", role: .cancel) {}
             } message: { Text($0) }
+            .alert("Couldn't open on the computer", isPresented: showOpenError, presenting: openError) { _ in
+                Button("Copy Command") { UIPasteboard.general.string = resumeCommand }
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
     }
 
     @ViewBuilder private var startingCapsule: some View {
         if startingNew {
-            HStack(spacing: 10) { ActivitySpinner(size: 18); Text("Starting…") }
-                .padding(.horizontal, 18).padding(.vertical, 12)
-                .glassEffect(.regular, in: .capsule)
-                .transition(.opacity.animation(Motion.quick))
+            statusCapsule { ActivitySpinner(size: 18); Text("Starting…") }
+        } else if openingOnComputer {
+            statusCapsule { ActivitySpinner(size: 18); Text("Opening on Computer…") }
+        } else if openedOnComputer {
+            statusCapsule { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green); Text("Opened on Computer") }
         }
+    }
+
+    private func statusCapsule<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        HStack(spacing: 10) { content() }
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .glassEffect(.regular, in: .capsule)
+            .transition(.opacity.animation(Motion.quick))
     }
 
     private var showNewError: Binding<Bool> {
         Binding(get: { newError != nil }, set: { if !$0 { newError = nil } })
+    }
+
+    private var showOpenError: Binding<Bool> {
+        Binding(get: { openError != nil }, set: { if !$0 { openError = nil } })
     }
 
     private func enableApproveAll(_ mode: String) {
@@ -944,7 +964,14 @@ struct ChatView: View {
             if let cwd = store.cwd {
                 Button { UIPasteboard.general.string = cwd; Haptics.selection() } label: { Label("Copy Folder Path", systemImage: "doc.on.doc") }
             }
-            if store.agent == "claude" {
+            if model.opensOnComputer(store.agent) {
+                Button(action: openOnComputer) {
+                    Label("Open on Computer", systemImage: "desktopcomputer")
+                    Text("In a new terminal window")
+                }
+                .disabled(openingOnComputer || store.running || !pendingHere.isEmpty || !model.isConnected)
+            } else if store.agent == "claude" {
+                // a bridge that can't open windows: the same command, to paste on the computer
                 Button { UIPasteboard.general.string = resumeCommand; Haptics.selection() } label: {
                     Label("Continue on Computer", systemImage: "desktopcomputer")
                     Text("Copies a terminal command")
@@ -962,6 +989,25 @@ struct ChatView: View {
         let resume = "claude --resume \(store.sessionId)"
         guard let cwd = store.cwd else { return resume }
         return "cd '\(cwd.replacingOccurrences(of: "'", with: "'\\''"))' && \(resume)"
+    }
+
+    /// A Claude Code window on the computer picks this conversation up (the bridge refuses mid-turn).
+    private func openOnComputer() {
+        guard !openingOnComputer else { return }
+        openingOnComputer = true
+        Task {
+            do {
+                try await model.openOnComputer(store)
+                Haptics.success()
+                withAnimation(Motion.quick) { openingOnComputer = false; openedOnComputer = true }
+                try? await Task.sleep(for: .seconds(2))
+                withAnimation(Motion.quick) { openedOnComputer = false }
+            } catch {
+                openingOnComputer = false
+                openError = error.localizedDescription
+                Haptics.error()
+            }
+        }
     }
 
     /// A fresh conversation in this folder, replacing this one on the stack (Back goes to the list).

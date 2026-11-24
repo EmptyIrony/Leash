@@ -931,6 +931,66 @@
         }
       }
     },
+    "Open on Computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在电脑上打开"
+          }
+        }
+      }
+    },
+    "In a new terminal window" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在新的终端窗口中"
+          }
+        }
+      }
+    },
+    "Opening on Computer…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在电脑上打开…"
+          }
+        }
+      }
+    },
+    "Opened on Computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在电脑上打开"
+          }
+        }
+      }
+    },
+    "Couldn't open on the computer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在电脑上打开"
+          }
+        }
+      }
+    },
+    "Copy Command" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制命令"
+          }
+        }
+      }
+    },
     "Copy Folder Path" : {
       "localizations" : {
         "zh-Hans" : {
