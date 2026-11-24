@@ -78,7 +78,9 @@ export function compactEvents(events) {
     if (CHUNK_KINDS.has(k) && update.content?.type === 'text') {
       const prev = out[out.length - 1];
       const pu = prev?.update;
-      if (pu && pu.sessionUpdate === k && pu.content?.type === 'text' && (pu.messageId ?? null) === (update.messageId ?? null)) {
+      // a subagent's chunks never merge into the parent's (Claude Code's replay can reuse one messageId for both)
+      if (pu && pu.sessionUpdate === k && pu.content?.type === 'text' && (pu.messageId ?? null) === (update.messageId ?? null)
+          && subagentOf(pu) === subagentOf(update)) {
         prev.update = { ...pu, content: { ...pu.content, text: pu.content.text + update.content.text } };
         prev.seq = seq;
         continue;
@@ -102,6 +104,14 @@ export function compactEvents(events) {
   }
   return out;
 }
+
+/** The child session a recorded update came from (the bridge tags subagent updates it files under their root). */
+const subagentOf = u => u?._meta?.leash?.subagent ?? null;
+
+/** Child-session updates about state the phone keeps only for the root session. */
+const CHILD_DROPPED = new Set(['available_commands_update', 'usage_update', 'current_mode_update', 'session_info_update']);
+/** A subagent still has work in flight (its turn can outlive the parent's prompt). */
+const childBusy = c => ['running', 'requires_action'].includes(c?.state?.state);
 
 /** agy sends tool calls as {name, args:{CommandLine, toolSummary, ...}}; map them onto ACP's title/rawInput. */
 export function normalizeUpdate(u) {
@@ -173,6 +183,9 @@ export class Hub extends EventEmitter {
     this.restartTimer = null;
     this.stopping = false;
     this.knownCwds = new Map();    // sessionId -> cwd (from session/list)
+    // Subagent sessions the agent announced with subagent_update (ACP "subagents" RFD): child sessionId ->
+    // {root, parent, title, description, state}. Their updates and requests are filed under the root session.
+    this.children = new Map();
     this.stderrTail = [];
     this.quota = null;           // QuotaPoller (optional)
   }
@@ -203,6 +216,9 @@ export class Hub extends EventEmitter {
           fs: { readTextFile: false, writeTextFile: false },
           terminal: false,
           elicitation: { form: {} },
+          // subagents as child sessions (claude-agent-acp's RFD form): their history replays on load, and their
+          // updates come on their own session ids instead of mixed into the parent's
+          subagents: {},
         },
         clientInfo: { name: 'leash-bridge', title: 'Leash', version: BRIDGE_VERSION },
       }, { timeoutMs: 60000 });
@@ -269,6 +285,7 @@ export class Hub extends EventEmitter {
     this.log(`agent exited code=${code} signal=${signal}${err ? ' err=' + err.message : ''}`);
     if (!this.agentError) this.agentError = `agent exited (code ${code}${signal ? ', ' + signal : ''})` + (this.stderrTail.length ? ': ' + this.stderrTail.slice(-3).join(' | ') : '');
     this.agent = null;
+    this.children.clear();
     for (const p of [...this.pending.values()]) this.#resolvePending(p.key, { reason: 'agent_exited' });
     for (const s of this.sessions.values()) {
       s.loaded = false; s.loading = null;
@@ -295,7 +312,7 @@ export class Hub extends EventEmitter {
     if (!this.agentInfo?.agentCapabilities?.sessionCapabilities?.close) return [];
     const closed = [];
     for (const s of this.sessions.values()) {
-      if (!s.loaded || s.loading || s.running || s.subscribers.size > 0) continue;
+      if (!s.loaded || s.loading || this.#busy(s) || s.subscribers.size > 0) continue;
       if ([...this.pending.values()].some(p => p.sessionId === s.sessionId)) continue;
       if (now - (s.lastActive ?? 0) < this.idleCloseMs) continue;
       try { await this.agent.call('session/close', { sessionId: s.sessionId }, { timeoutMs: 15000 }); } catch {}
@@ -335,12 +352,12 @@ export class Hub extends EventEmitter {
     if (holder) {
       // our own turn: keep watching it; a "busy" holder is then most likely that very turn (shared status DB)
       if (s?.running && (!forPrompt || (holder.basis === 'busy' && lk.ownWrites))) return lk;
-      if (s?.loaded && !s.running) await this.releaseSession(s);
+      if (s?.loaded && !this.#busy(s)) await this.releaseSession(s);
       this.lockedNotified.set(sessionId, holder.entrypoint || 'other');
       throw new RpcError(-32020, 'conversation is busy in ' + describeHolder(holder) + '; wait until it finishes', { locked: true, holders: [holder] });
     }
     const touchedAt = lk.touched?.[sessionId] ?? 0;
-    if (s?.loaded && !s.running && s.extBaseline != null && touchedAt > s.extBaseline) {
+    if (s?.loaded && !this.#busy(s) && s.extBaseline != null && touchedAt > s.extBaseline) {
       await this.releaseSession(s);
       if (forPrompt) throw new RpcError(-32021, 'conversation changed on another device; reload it before sending', { stale: true });
     }
@@ -349,7 +366,7 @@ export class Hub extends EventEmitter {
 
   /** Release loaded sessions another client has open (or used since we loaded them) and tell the phones. */
   async sweepLocks() {
-    const loaded = [...this.sessions.values()].filter(s => s.loaded && !s.running && !s.loading);
+    const loaded = [...this.sessions.values()].filter(s => s.loaded && !this.#busy(s) && !s.loading);
     if (!loaded.length && !this.lockedNotified.size) return [];
     const lk = await this.foreignLocks();
     if (!lk) return [];
@@ -443,14 +460,44 @@ export class Hub extends EventEmitter {
     for (const c of s.subscribers) c.send(msg);
   }
 
+  /** A prompt is in flight, or a subagent it started is still working (background subagents outlive the turn). */
+  #busy(s) {
+    if (s.running) return true;
+    for (const c of this.children.values()) if (c.root === s.sessionId && childBusy(c)) return true;
+    return false;
+  }
+
+  /** subagent_update on `parentId` (a root or itself a child) announces or updates a child session. */
+  #trackSubagent(parentId, u) {
+    if (u.sessionUpdate !== 'subagent_update' || typeof u.sessionId !== 'string') return;
+    const root = this.children.get(parentId)?.root ?? parentId;
+    const c = this.children.get(u.sessionId) ?? { root, parent: parentId, title: null, description: null, state: null };
+    for (const k of ['title', 'description', 'state']) if (u[k] !== undefined) c[k] = u[k];
+    this.children.set(u.sessionId, c);
+  }
+
+  /** A child session's update goes into its root's log, tagged with the child id; it never touches the root's state. */
+  #onChildUpdate(childId, child, update) {
+    const s = this.sessions.get(child.root);
+    if (!s) return;
+    const u = normalizeUpdate(update ?? {});
+    if (CHILD_DROPPED.has(u.sessionUpdate)) return;
+    this.#trackSubagent(childId, u);
+    const meta = u._meta && typeof u._meta === 'object' ? u._meta : {};
+    this.#record(s, { ...u, _meta: { ...meta, leash: { ...(meta.leash ?? {}), subagent: childId } } });
+  }
+
   #onAgentNotification(method, params) {
     if (method !== 'session/update' || !params?.sessionId) {
       this.broadcast({ op: 'notification', method, params });
       return;
     }
+    const child = this.children.get(params.sessionId);
+    if (child) return this.#onChildUpdate(params.sessionId, child, params.update);
     const s = this.#session(params.sessionId);
     const u = normalizeUpdate(params.update ?? {});
     switch (u.sessionUpdate) {
+      case 'subagent_update': this.#trackSubagent(s.sessionId, u); break;
       case 'config_option_update': if (u.configOptions) s.configOptions = u.configOptions; break;
       case 'current_mode_update': if (s.modes && u.currentModeId) s.modes = { ...s.modes, currentModeId: u.currentModeId }; break;
       case 'session_info_update':
@@ -480,6 +527,10 @@ export class Hub extends EventEmitter {
           return;
         }
       }
+      // a subagent's request names its child session: file it under the root, which shows and cancels it
+      const child = this.children.get(sessionId);
+      const subagent = child ? { sessionId, title: child.title ?? null, description: child.description ?? null } : null;
+      if (child) sessionId = child.root;
       const sess = this.sessions.get(sessionId);
       if (method === 'session/request_permission' && sess?.autoApprove) {
         const opts = params?.options ?? [];
@@ -491,7 +542,7 @@ export class Hub extends EventEmitter {
         }
       }
       const key = this.id + ':r' + (this.nextKey++);
-      const p = { key, rpcId, method, params, sessionId, createdAt: Date.now() };
+      const p = { key, rpcId, method, params, sessionId, subagent, createdAt: Date.now() };
       this.pending.set(key, p);
       this.broadcast(this.pendingMsg(p));
       this.emit('attention', p);
@@ -501,7 +552,7 @@ export class Hub extends EventEmitter {
     try { this.agent?.respondError(rpcId, { code: -32601, message: 'Method not supported by Leash bridge: ' + method }); } catch {}
   }
 
-  pendingMsg(p) { return { op: 'request', agentId: this.id, key: p.key, method: p.method, sessionId: p.sessionId, params: p.params, createdAt: p.createdAt }; }
+  pendingMsg(p) { return { op: 'request', agentId: this.id, key: p.key, method: p.method, sessionId: p.sessionId, subagent: p.subagent ?? null, params: p.params, createdAt: p.createdAt }; }
 
   #resolvePending(key, info) {
     const p = this.pending.get(key);
@@ -670,6 +721,8 @@ export class Hub extends EventEmitter {
     const useCwd = cwd || s.cwd || this.knownCwds.get(sessionId) || this.home;
     s.cwd = useCwd;
     s.resetForReload();
+    // the load's replay announces them again
+    for (const [id, c] of this.children) if (c.root === sessionId) this.children.delete(id);
     s.loading = (async () => {
       let r;
       if (caps.loadSession) r = await agent.call('session/load', this.withSessionMeta({ sessionId, cwd: useCwd, mcpServers: [] }));

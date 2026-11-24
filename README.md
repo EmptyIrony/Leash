@@ -89,6 +89,12 @@ Mac bridge ──zsh -c 'source ~/.zshrc; ubuntu …/bridge/remote/run-acp.sh'�
 * `bridge/remote/helper.mjs` runs on the host for folder browsing, file reads/uploads and quota (`claude -p /usage`: a local command, 0 tokens).
 * Sessions started in Claude Code's Code Mode are resumed by passing `settings.env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` through `_meta.claudeCode.options`.
 * The adapter uses your own Claude login on that machine (`ANTHROPIC_API_KEY` is unset in `run-acp.sh`).
+* **Subagents**: the bridge declares `clientCapabilities.subagents`, so claude-agent-acp runs each Agent/Task subagent as a
+  child session announced with `subagent_update` (and replays the child's history on load). The bridge files child
+  updates under the root conversation with `_meta.leash.subagent = <child id>`, files a child's permission / question
+  requests under the root too (`request.subagent = {sessionId, title, description}`), and drops child updates that would
+  touch root state (commands, usage, mode, title). A background subagent can keep working after the prompt returns; the
+  root then counts as busy, so the idle and lock sweeps don't close it.
 * **Busy-elsewhere lock**: a conversation that Claude Code is *running a turn in* (terminal or Claude desktop app;
   session-file `status` other than `idle`) cannot be opened or prompted from the phone (error `-32020`, lock icon in
   the list); merely having it open there does not lock it. `helper.mjs locks` reads Claude Code's

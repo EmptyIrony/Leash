@@ -78,6 +78,27 @@ async function prompt(m, p, r) {
         update(sid, { sessionUpdate: 'tool_call_update', toolCallId: 't1', status: ok ? 'completed' : 'failed' });
         update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ok ? ' Done.' : ' Skipped.' } });
       }
+      if (text.includes('delegate')) {
+        // like claude-agent-acp's subagents RFD form: a child session announced on the parent, its own updates and
+        // permission requests on the child's id, a grandchild announced on the child
+        const c = 'child-' + sid, g = 'grand-' + sid;
+        update(sid, { sessionUpdate: 'subagent_update', sessionId: c, title: 'Explore the repo', description: 'Explore', state: { state: 'running' } });
+        update(c, { sessionUpdate: 'session_message', messageId: 'm-in', senderSessionId: sid, recipientSessionId: c, content: [{ type: 'text', text: 'look around' }] });
+        update(c, { sessionUpdate: 'config_option_update', configOptions: [{ id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: 'fable', options: [{ value: 'fable', name: 'Fable 5.2' }] }] });
+        update(c, { sessionUpdate: 'available_commands_update', availableCommands: [] });
+        update(c, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'child looks' } });
+        update(c, { sessionUpdate: 'tool_call', toolCallId: 'ct1', title: 'Edit a.txt', kind: 'edit', status: 'pending', _meta: { claudeCode: { toolName: 'Edit', parentToolUseId: 'launch-1' } } });
+        const res = await ask('session/request_permission', { sessionId: c, toolCall: { toolCallId: 'ct1', title: 'Edit a.txt' }, options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }] });
+        update(c, { sessionUpdate: 'tool_call_update', toolCallId: 'ct1', status: res?.outcome?.optionId === 'allow' ? 'completed' : 'failed' });
+        update(c, { sessionUpdate: 'subagent_update', sessionId: g, title: 'Nested', state: { state: 'running' } });
+        update(g, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'grandchild' } });
+        update(g, { sessionUpdate: 'session_info_update', title: 'not the root title' });
+        update(c, { sessionUpdate: 'subagent_update', sessionId: g, state: { state: 'idle', stopReason: 'end_turn' } });
+        update(c, { sessionUpdate: 'agent_message_chunk', messageId: 'shared', content: { type: 'text', text: 'child final' } });
+        update(sid, { sessionUpdate: 'agent_message_chunk', messageId: 'shared', content: { type: 'text', text: 'parent done' } });
+        // "bg": a background subagent that is still working when the parent's prompt returns
+        if (!text.includes('bg')) update(sid, { sessionUpdate: 'subagent_update', sessionId: c, state: { state: 'idle', stopReason: 'end_turn' } });
+      }
       if (text.includes('stubborn')) await sleep(300);   // ignores cancel and ends normally
       if (text.includes('slow')) { for (let i = 0; i < 40 && !cancelled.has(sid); i++) await sleep(25); if (cancelled.has(sid)) return r({ stopReason: 'cancelled' }); }
       for (const s of steered.get(sid).splice(0)) update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' steered: ' + s } });
