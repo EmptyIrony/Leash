@@ -43,7 +43,11 @@ extension AppModel {
             // a turn started while in the background (a watch reply) can get its Live Activity now
             liveActivity.setNeedsUpdate(immediate: true)
             // back to the chat it finished in: that counts as opening it
-            if let sid = visibleSessionId { liveActivity.conversationOpened(sid); markSeen(sid) }
+            if let sid = visibleSessionId {
+                liveActivity.conversationOpened(sid)
+                // a tap that brought the app forward to another conversation hasn't shown this one
+                if openRequest == nil { markSeen(sid) }
+            }
         case .background: liveActivity.appBackgrounded()
         default: break
         }

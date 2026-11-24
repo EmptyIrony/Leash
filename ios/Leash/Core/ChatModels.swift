@@ -450,7 +450,8 @@ struct TurnChanges: Identifiable {
     init?(_ g: ActivityGroup) {
         var order: [String] = []
         var byPath: [String: File] = [:]
-        for t in Self.tools(g.steps) where ["edit", "delete", "move"].contains(t.kind) && t.status != "failed" {
+        // a failed, refused or never-finished edit changed nothing
+        for t in Self.tools(g.steps) where ["edit", "delete", "move"].contains(t.kind) && !["failed", "pending", "in_progress"].contains(t.status) {
             guard let p = t.editedPath else { continue }
             if byPath[p] == nil {
                 order.append(p)
@@ -482,7 +483,10 @@ struct TurnChanges: Identifiable {
 
     /// The steps ran a git commit (the agent's own, or one it was asked for).
     static func ranCommit(_ steps: [ChatEntry]) -> Bool {
-        tools(steps).contains { $0.kind == "execute" && ($0.commandPreview ?? $0.title).contains("git commit") }
+        // "git commit", "git -C repo commit", "git -c k=v commit"; not "git commit-tree"
+        tools(steps).contains { t in
+            t.kind == "execute" && (t.commandPreview ?? t.title).range(of: #"\bgit(\s+-[cC]\s+\S+|\s+--?[a-z][\w-]*(=\S+)?)*\s+commit(\s|$)"#, options: .regularExpression) != nil
+        }
     }
 }
 
@@ -970,10 +974,11 @@ final class ChatStore {
         case "session_info_update":
             if let t = u["title"]?.string { title = t }
         case "available_commands_update":
+            var seen = Set<String>()   // a name listed twice (project and user command) keeps its first
             commands = (u["availableCommands"]?.array ?? []).compactMap { c in
                 guard let raw = c["name"]?.string else { return nil }
                 let n = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
-                guard !n.isEmpty else { return nil }
+                guard !n.isEmpty, seen.insert(n).inserted else { return nil }
                 return AgentCommand(name: n, description: c["description"]?.string ?? "", hint: c["input"]?["hint"]?.string)
             }
         case "usage_update":
