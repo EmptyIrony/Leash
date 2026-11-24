@@ -48,7 +48,7 @@ final class ToolItem: Identifiable {
     var rawOutput: JSON?
     var autoApproved = false
     var name: String?
-    /// cached +/- line counts of the first diff (computing diffs in view bodies is expensive)
+    /// cached +/- line counts over all its diff blocks (computing diffs in view bodies is expensive)
     var diffAdds = 0
     var diffDels = 0
     init(toolCallId: String) { self.toolCallId = toolCallId }
@@ -87,7 +87,13 @@ final class ToolItem: Identifiable {
         if let s = u["status"]?.string { status = s }
         if let c = u["content"]?.array {
             content = c.compactMap(ToolItem.parseContent)
-            if let d = firstDiff { let s = LineDiff.stats(LineDiff.compute(old: d.old, new: d.new)); diffAdds = s.add; diffDels = s.del }
+            let blocks = diffs
+            if !blocks.isEmpty {
+                // Claude Code's final update sends one block per hunk, each with its context lines on both sides
+                var add = 0, del = 0
+                for d in blocks { let s = LineDiff.stats(LineDiff.compute(old: d.old, new: d.new)); add += s.add; del += s.del }
+                diffAdds = add; diffDels = del
+            }
         }
         if let l = u["locations"]?.array {
             locations = l.compactMap { loc in
@@ -128,6 +134,18 @@ final class ToolItem: Identifiable {
     var firstDiff: (path: String, old: String?, new: String)? {
         for c in content { if case .diff(let p, let o, let n) = c { return (p, o, n) } }
         return nil
+    }
+
+    var diffs: [(path: String, old: String?, new: String)] {
+        content.compactMap { if case .diff(let p, let o, let n) = $0 { return (p, o, n) }; return nil }
+    }
+
+    /// The file an edit / delete / move changed: its diff's, else its first location without the line.
+    var editedPath: String? {
+        if let p = firstDiff?.path, !p.isEmpty { return p }
+        guard let l = locations.first else { return nil }
+        if let r = l.range(of: ":\\d+$", options: .regularExpression) { return String(l[..<r.lowerBound]) }
+        return l
     }
 
     var commandPreview: String? {
@@ -402,6 +420,72 @@ struct ActivityGroup: Identifiable {
     }
 }
 
+/// What a finished turn did to files: its edit, delete and move tools (its subagents' too) by file, newest change last.
+/// Counts add up the edits' own diffs, so a line written and then rewritten counts twice; a change made through a
+/// shell command isn't seen.
+struct TurnChanges: Identifiable {
+    struct File: Identifiable {
+        var id: String { path }
+        let path: String
+        var tools: [ToolItem]
+        var adds = 0
+        var dels = 0
+        /// its first change wrote it from nothing
+        var created = false
+        /// its last change deleted it
+        var deleted = false
+        func relative(to cwd: String?) -> String {
+            guard let cwd, !cwd.isEmpty else { return path }
+            let base = cwd.hasSuffix("/") ? cwd : cwd + "/"
+            return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : path
+        }
+    }
+    let id: UUID
+    let files: [File]
+    let adds: Int
+    let dels: Int
+    /// The newest turn that changed files, with no commit run since: it can ask the agent to commit them.
+    var canCommit = false
+
+    init?(_ g: ActivityGroup) {
+        var order: [String] = []
+        var byPath: [String: File] = [:]
+        for t in Self.tools(g.steps) where ["edit", "delete", "move"].contains(t.kind) && t.status != "failed" {
+            guard let p = t.editedPath else { continue }
+            if byPath[p] == nil {
+                order.append(p)
+                let blocks = t.diffs
+                byPath[p] = File(path: p, tools: [], created: t.kind == "edit" && !blocks.isEmpty && blocks.allSatisfy { ($0.old ?? "").isEmpty })
+            }
+            byPath[p]!.tools.append(t)
+            byPath[p]!.adds += t.diffAdds
+            byPath[p]!.dels += t.diffDels
+            byPath[p]!.deleted = t.kind == "delete"
+        }
+        guard !order.isEmpty else { return nil }
+        id = g.id.derived(3)
+        files = order.compactMap { byPath[$0] }
+        adds = files.reduce(0) { $0 + $1.adds }
+        dels = files.reduce(0) { $0 + $1.dels }
+    }
+
+    /// Every tool of these steps, a subagent's (and its subagents') included.
+    static func tools(_ steps: [ChatEntry]) -> [ToolItem] {
+        steps.flatMap { e -> [ToolItem] in
+            switch e {
+            case .tool(let t): return [t]
+            case .subagent(let s): return tools(s.entries)
+            default: return []
+            }
+        }
+    }
+
+    /// The steps ran a git commit (the agent's own, or one it was asked for).
+    static func ranCommit(_ steps: [ChatEntry]) -> Bool {
+        tools(steps).contains { $0.kind == "execute" && ($0.commandPreview ?? $0.title).contains("git commit") }
+    }
+}
+
 /// A live turn's run of tools and thoughts between two of the agent's messages ("Explored 3 files, ran 2 commands").
 struct StepSegment: Identifiable {
     let id: UUID
@@ -429,6 +513,7 @@ enum DisplayItem: Identifiable {
     case stats(TurnStats)
     case notice(NoticeItem)
     case planDoc(PlanItem)
+    case changes(TurnChanges)
     var id: UUID {
         switch self {
         case .user(let m), .answer(let m): return m.id
@@ -437,6 +522,7 @@ enum DisplayItem: Identifiable {
         case .stats(let s): return s.id
         case .notice(let n): return n.id
         case .planDoc(let p): return p.id
+        case .changes(let c): return c.id
         }
     }
 }
@@ -609,6 +695,9 @@ final class ChatStore {
         var out: [DisplayItem] = []
         var group: ActivityGroup? = nil
         var answer: MessageItem? = nil
+        /// the newest turn's changes (by index in `out`), and whether a commit ran in or after that turn
+        var latestChanges: Int?
+        var committedSince = false
 
         func demoteAnswer() {
             if let a = answer {
@@ -618,12 +707,20 @@ final class ChatStore {
             }
         }
         func flush(stats: TurnStats? = nil) {
+            var changes: TurnChanges? = nil
             if var g = group {
                 g.stats = stats ?? g.stats
                 g.answerFollows = answer != nil
                 if g.live && !expandedGroups.contains(g.id) { out.append(contentsOf: liveTimeline(g)) } else { out.append(.activity(g)) }
+                if !g.live {
+                    changes = TurnChanges(g)
+                    let committed = TurnChanges.ranCommit(g.steps)
+                    if changes != nil { committedSince = committed } else if committed { committedSince = true }
+                }
             }
             if let a = answer { out.append(.answer(a)) }
+            // answer, then what changed, then the stats line
+            if let c = changes { latestChanges = out.count; out.append(.changes(c)) }
             group = nil; answer = nil
         }
 
@@ -669,6 +766,7 @@ final class ChatStore {
             group?.live = true
         }
         flush()
+        if let i = latestChanges, !committedSince, case .changes(var c) = out[i] { c.canCommit = true; out[i] = .changes(c) }
         // the optimistic bubble is drawn as the transcript's last user row, so the echo can adopt it in place
         if let p = pendingEcho { out.append(.user(p.item)) }
         return out

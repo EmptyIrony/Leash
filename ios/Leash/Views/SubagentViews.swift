@@ -175,7 +175,7 @@ private struct SubagentTranscript: View {
             NoticeView(item: n)
         case .planDoc(let p):
             PlanCard(item: p)
-        case .stats, .segment:
+        case .stats, .segment, .changes:
             EmptyView()
         }
     }

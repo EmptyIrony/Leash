@@ -22,6 +22,8 @@ struct ChatView: View {
     @State private var lastAtEnd = true
     @State private var showPhotoPicker = false
     @State private var fileToOpen: String?
+    /// A turn's "files changed" row was tapped.
+    @State private var changesShown: TurnChanges?
     /// An approve-everything mode (agy's Turbo, Claude Code's Bypass permissions) waiting for its one-time confirmation.
     @State private var confirmMode: String?
     @State private var sendTick = 0
@@ -180,6 +182,12 @@ struct ChatView: View {
         content
             .sheet(isPresented: $showFiles) {
                 if let cwd = store.cwd { ProjectBrowser(root: cwd, agent: store.agent, sessionId: store.sessionId) }
+            }
+            .sheet(item: $changesShown) { c in
+                ChangesSheet(changes: c, cwd: store.cwd, agent: store.agent, sessionId: store.sessionId,
+                             commit: c.canCommit ? { commitChanges(c) } : nil,
+                             commitEnabled: composerEnabled && !store.running && pendingHere.isEmpty)
+                    .presentationDetents([.large])
             }
             .overlay { startingCapsule }
             .alert("Couldn't start a conversation", isPresented: showNewError, presenting: newError) { _ in
@@ -355,7 +363,20 @@ struct ChatView: View {
             NoticeView(item: n)
         case .planDoc(let p):
             PlanCard(item: p)
+        case .changes(let c):
+            ChangesRow(changes: c) { changesShown = c }
         }
+    }
+
+    /// Asks the agent, as a message in the conversation, to commit what its last turn changed.
+    private func commitChanges(_ c: TurnChanges) {
+        let paths = c.files.map { $0.relative(to: store.cwd) }.joined(separator: ", ")
+        withAnimation(Motion.layout) {
+            model.send(store, text: String(localized: "Commit the changes from your last turn: \(paths)"), images: [])
+            pinned = true
+            position.scrollTo(edge: .bottom)
+        }
+        sendTick += 1
     }
 
     // MARK: bottom controls (approval / question tray + composer + selector chips), one glass container
