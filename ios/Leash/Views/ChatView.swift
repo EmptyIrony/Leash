@@ -930,10 +930,24 @@ struct ChatView: View {
             if let cwd = store.cwd {
                 Button { UIPasteboard.general.string = cwd; Haptics.selection() } label: { Label("Copy Folder Path", systemImage: "doc.on.doc") }
             }
+            if store.agent == "claude" {
+                Button { UIPasteboard.general.string = resumeCommand; Haptics.selection() } label: {
+                    Label("Continue on Computer", systemImage: "desktopcomputer")
+                    Text("Copies a terminal command")
+                }
+            }
         } label: {
             Image(systemName: "ellipsis")
         }
         .menuOrder(.fixed)
+    }
+
+    /// Picks this conversation up in the Claude Code terminal. Its /resume list leaves out conversations started through
+    /// the Agent SDK (Leash's), so they open only by ID, from their own folder.
+    private var resumeCommand: String {
+        let resume = "claude --resume \(store.sessionId)"
+        guard let cwd = store.cwd else { return resume }
+        return "cd '\(cwd.replacingOccurrences(of: "'", with: "'\\''"))' && \(resume)"
     }
 
     /// A fresh conversation in this folder, replacing this one on the stack (Back goes to the list).
