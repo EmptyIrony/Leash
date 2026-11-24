@@ -13,6 +13,8 @@
 //   helper.mjs exec <cwd> <cmd>   run a "!" shell command for the phone in a conversation's folder (login shell,
 //                                 stdin closed, 120 s timeout, output capped); the Mac bridge runs this file locally
 //                                 for agents on the Mac itself
+//   helper.mjs btw                a side question (/btw) about a conversation; stdin {sessionId, cwd, question, model?,
+//                                 env?}. Answered by a throwaway fork of the session with no tools; nothing is saved
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -221,6 +223,52 @@ async function upload(sessionId, name, bytes) {
   throw Object.assign(new Error('too many files with this name'), { code: -32008 });
 }
 
+const BTW_TIMEOUT_MS = 150000;   // under the bridge's own limit: its kill only reaches the local ssh
+const BTW_PREAMBLE = '<system-reminder>This is a side question (/btw) from the user, asked while the main task may still be ' +
+  'running elsewhere (a tool call without a result may still be in progress). Answer it directly in one response from ' +
+  'what you already know of this conversation. You have no ' +
+  'tools in this reply, so do not try to use any, and do not continue or restart the main task.</system-reminder>\n\n';
+
+/**
+ * /btw: `claude -p --resume <id> --fork-session --no-session-persistence` reads the conversation as it is on disk
+ * (also mid-turn) and answers once; no tools, no MCP servers, nothing written back, so the conversation and its
+ * lock state are untouched.
+ */
+async function btw() {
+  let raw = '';
+  process.stdin.setEncoding('utf8');
+  for await (const chunk of process.stdin) raw += chunk;
+  let req; try { req = JSON.parse(raw); } catch { throw Object.assign(new Error('btw: bad request'), { code: -32602 }); }
+  const sid = String(req.sessionId ?? '');
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(sid)) throw Object.assign(new Error('btw: bad session id'), { code: -32602 });
+  const question = String(req.question ?? '').trim();
+  if (!question) throw Object.assign(new Error('btw: empty question'), { code: -32602 });
+  let dir = path.resolve(req.cwd ? String(req.cwd).replace(/^~(?=$|\/)/, home) : home);
+  try { if (!(await fs.stat(dir)).isDirectory()) dir = home; } catch { dir = home; }
+  const args = ['-p', BTW_PREAMBLE + question, '--resume', sid, '--fork-session', '--no-session-persistence',
+    '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--max-turns', '1'];
+  const model = typeof req.model === 'string' ? req.model : '';
+  if (model && model !== 'default' && !model.startsWith('-')) args.push('--model', model);
+  // the session's own settings env (Code Mode): Claude Code reads it from --settings, not from the process env
+  const sEnv = Object.fromEntries(Object.entries(req.env ?? {}).filter(([k, v]) => /^[A-Z0-9_]+$/.test(k) && typeof v === 'string'));
+  if (Object.keys(sEnv).length) args.push('--settings', JSON.stringify({ env: sEnv }));
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    execFile(claudeBin(), args, { cwd: dir, env, timeout: BTW_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+      let j = null;
+      try { j = JSON.parse(String(stdout || '').trim().split('\n').pop()); } catch {}
+      if (!j) {
+        const why = err?.killed ? 'timed out' : (String(stderr || '').trim().split('\n').pop() || err?.message || 'no answer');
+        return reject(Object.assign(new Error('btw: ' + why), { code: -32603 }));
+      }
+      if (j.is_error && !j.result) return reject(Object.assign(new Error('btw: ' + (j.subtype || 'failed')), { code: -32603 }));
+      resolve({ text: String(j.result ?? ''), durationMs: Date.now() - started, model: Object.keys(j.modelUsage ?? {})[0] ?? null });
+    });
+  });
+}
+
 try {
   if (cmd === 'browse') out(await browse(arg));
   else if (cmd === 'read') out(await read(arg, arg2, argv[3], argv[4]));
@@ -228,5 +276,6 @@ try {
   else if (cmd === 'quota') out(await quota());
   else if (cmd === 'locks') out(await locks());
   else if (cmd === 'exec') out(await exec(arg, arg2));
+  else if (cmd === 'btw') out(await btw());
   else fail(-32601, 'unknown helper command ' + cmd);
 } catch (e) { fail(typeof e.code === 'number' ? e.code : -32603, e.message, e.data); }

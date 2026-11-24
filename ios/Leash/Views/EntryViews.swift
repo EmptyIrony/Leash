@@ -1,19 +1,5 @@
 import SwiftUI
 
-struct EntryView: View {
-    let entry: ChatEntry
-    var openFile: (String) -> Void
-    var body: some View {
-        switch entry {
-        case .message(let m): MessageView(item: m)
-        case .tool(let t): ToolCard(item: t, openFile: openFile)
-        case .plan(let p): PlanCard(item: p)
-        case .notice(let n): NoticeView(item: n)
-        case .stats(let s): StatsLine(stats: s)
-        }
-    }
-}
-
 /// Pieces of a user message. Claude Code writes "!" shell runs and slash commands into the transcript as tagged text
 /// (`<bash-input>`, `<bash-stdout>`…, `<command-name>`…, tag bodies HTML-escaped); they render as commands, not prose.
 enum UserSegment: Hashable {

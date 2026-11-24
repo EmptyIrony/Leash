@@ -127,7 +127,7 @@ struct SessionListView: View {
         .refreshable { await model.refreshSessions() }
         .overlay {
             if model.agentReady && model.sessions.isEmpty && !model.sessionsLoading {
-                ContentUnavailableView("No conversations", systemImage: "sparkles", description: Text("Start one with the compose button."))
+                ContentUnavailableView("No conversations", systemImage: "bubble.left.and.bubble.right", description: Text("Start one with the compose button."))
             }
         }
         .sheet(isPresented: $showQuota) {

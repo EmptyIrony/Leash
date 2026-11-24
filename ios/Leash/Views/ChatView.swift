@@ -21,18 +21,26 @@ struct ChatView: View {
     @State private var lastAtEnd = true
     @State private var showPhotoPicker = false
     @State private var fileToOpen: String?
-    @State private var confirmTurbo = false
+    /// An approve-everything mode (agy's Turbo, Claude Code's Bypass permissions) waiting for its one-time confirmation.
+    @State private var confirmMode: String?
     @State private var sendTick = 0
     @State private var stopTick = 0
     @State private var showQuota = false
     @State private var showModelPicker = false
     @State private var showEffort = false
+    @State private var showFiles = false
+    /// "New Conversation Here" is waiting on the agent (session/new can take a while)
+    @State private var startingNew = false
+    @State private var newError: String?
     @AppStorage("turboConfirmed") private var turboConfirmed = false
+    @AppStorage("bypassConfirmed") private var bypassConfirmed = false
     @FocusState private var composerFocused: Bool
     @Namespace private var glassNS
     @Namespace private var quotaNS
     /// The optimistic bubble has waited ≥ 2 s for its echo: show "Sending…" under it.
     @State private var sendingSlow = false
+    /// The agent's mark above an empty conversation.
+    @ScaledMetric(relativeTo: .title2) private var emptyMark: CGFloat = 28
 
     private var pendingHere: [PendingRequest] { model.pendingFor(store.sessionId) }
     private var permissionRequests: [PendingRequest] { pendingHere.filter { $0.isPermission } }
@@ -40,7 +48,7 @@ struct ChatView: View {
 
     // Split into small pieces so the type checker stays fast.
     var body: some View {
-        lifecycle(chrome(scrollArea))
+        lifecycle(folderActions(chrome(scrollArea)))
     }
 
     /// What pinning needs from the scroll view: content height, bottom inset (composer + trays) and whether the
@@ -88,7 +96,9 @@ struct ChatView: View {
                 pinned = true
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) { bottomControls }
+        // a bar, not just an inset: the system's soft scroll edge effect keeps text legible under the glass
+        // (no custom fade, so the glass refracts the transcript like the system's own bars)
+        .safeAreaBar(edge: .bottom, spacing: 0) { bottomControls }
     }
 
     private func jumpToBottom() {
@@ -109,12 +119,13 @@ struct ChatView: View {
     private func chrome<V: View>(_ content: V) -> some View {
         let base = content
             .background { SpaceBackground(stars: false) }
-            .safeAreaInset(edge: .top, spacing: 0) { otherSessionsBanner }
+            .safeAreaBar(edge: .top, spacing: 0) { otherSessionsBanner }
             .navigationTitle(store.title ?? String(localized: "Conversation"))
             .navigationSubtitle(subtitle)
             .navigationBarTitleDisplayMode(.inline)
         return base
             .toolbar { ToolbarItem(placement: .topBarTrailing) { moreMenu } }
+            .navigationDestination(for: SubagentRoute.self) { r in SubagentView(store: model.store(for: r.root), childId: r.child) }
             .sheet(item: fileSheet) { f in FileViewer(path: f.path, agent: store.agent, sessionId: store.sessionId) }
             .sheet(isPresented: $showQuota) {
                 QuotaSheet()
@@ -122,16 +133,57 @@ struct ChatView: View {
                     .navigationTransition(.zoom(sourceID: "quota", in: quotaNS))
             }
             .embedFullscreenHost()
-            .confirmationDialog("Turn on Turbo?", isPresented: $confirmTurbo, titleVisibility: .visible) {
-                Button("Turbo — approve everything", role: .destructive) { enableTurbo() }
-            } message: {
-                Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
+            .confirmationDialog(confirmMode == "bypassPermissions" ? Text("Turn on Bypass permissions?") : Text("Turn on Turbo?"),
+                                isPresented: Binding(get: { confirmMode != nil }, set: { if !$0 { confirmMode = nil } }),
+                                titleVisibility: .visible, presenting: confirmMode) { mode in
+                if mode == "bypassPermissions" {
+                    Button("Bypass permissions — never ask", role: .destructive) { enableApproveAll(mode) }
+                } else {
+                    Button("Turbo — approve everything", role: .destructive) { enableApproveAll(mode) }
+                }
+            } message: { mode in
+                if mode == "bypassPermissions" {
+                    Text("Claude Code will run every command and edit in this conversation without asking you first.")
+                } else {
+                    Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
+                }
             }
     }
 
-    private func enableTurbo() {
-        turboConfirmed = true
-        model.choose(mode: "turbo", for: store)
+    /// The folder actions of the ⋯ menu (kept out of `chrome` so neither chain grows too long to type-check).
+    private func folderActions<V: View>(_ content: V) -> some View {
+        content
+            .sheet(isPresented: $showFiles) {
+                if let cwd = store.cwd { ProjectBrowser(root: cwd, agent: store.agent, sessionId: store.sessionId) }
+            }
+            .overlay { startingCapsule }
+            .alert("Couldn't start a conversation", isPresented: showNewError, presenting: newError) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
+    }
+
+    @ViewBuilder private var startingCapsule: some View {
+        if startingNew {
+            HStack(spacing: 10) { ActivitySpinner(size: 18); Text("Starting…") }
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+                .transition(.opacity.animation(Motion.quick))
+        }
+    }
+
+    private var showNewError: Binding<Bool> {
+        Binding(get: { newError != nil }, set: { if !$0 { newError = nil } })
+    }
+
+    private func enableApproveAll(_ mode: String) {
+        if mode == "bypassPermissions" { bypassConfirmed = true } else { turboConfirmed = true }
+        confirmMode = nil
+        model.choose(mode: mode, for: store)
+    }
+
+    private func pickMode(_ v: String) {
+        let confirmed = v == "bypassPermissions" ? bypassConfirmed : turboConfirmed
+        if ModeNames.approvesAll(v) && !confirmed { confirmMode = v } else { model.choose(mode: v, for: store) }
     }
 
     private func lifecycle<V: View>(_ content: V) -> some View {
@@ -139,7 +191,6 @@ struct ChatView: View {
             .task { await model.attach(store) }
             .task { await model.refreshQuota() }
             .task(id: store.pendingEcho?.id) { await watchSending() }
-            .onDisappear { model.detach(store) }
             .onChange(of: pickerItems) { _, items in loadPicked(items) }
             .onChange(of: store.unsentDraft) { _, t in
                 // a queued message taken back goes in front of whatever is being typed
@@ -154,13 +205,14 @@ struct ChatView: View {
             .haptic(.warning, trigger: pendingHere.count) { old, new in new > old }               // agent needs you
             .haptic(.success, trigger: store.running) { was, now in was && !now && turnWasLong }  // long task done
             .haptic(.selection, trigger: images.count + files.count) { old, new in new > old }     // photo / file attached
+            // a pushed subagent transcript keeps the conversation attached and on screen (AppModel.watch)
             .onAppear {
-                model.visibleSessionId = store.sessionId
+                model.watch(store)
                 if draft.isEmpty, let d = store.savedDraft { draft = d }
                 store.savedDraft = nil
             }
             .onDisappear {
-                if model.visibleSessionId == store.sessionId { model.visibleSessionId = nil }
+                model.unwatch(store)
                 let d = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 store.savedDraft = d.isEmpty ? nil : draft
             }
@@ -190,7 +242,7 @@ struct ChatView: View {
                 .padding(.top, 60)
         } else if store.attached && store.entries.isEmpty && !store.running {
             VStack(spacing: 10) {
-                Image(systemName: "sparkles").font(.title2).foregroundStyle(Theme.accent)
+                AgentIcon(agent: store.agent, size: emptyMark)
                 Group { if store.agent == "claude" { Text("Ask Claude anything") } else { Text("Ask Antigravity anything") } }
                     .font(.headline).fontWidth(.expanded)
                 if let cwd = store.cwd { Text(verbatim: model.shortPath(cwd, agent: store.agent)).font(Theme.mono).foregroundStyle(Theme.textTertiary) }
@@ -253,6 +305,8 @@ struct ChatView: View {
                         blocked: g.live && !permissionRequests.isEmpty,
                         turnStartedAt: store.turnStartedAt,
                         openFile: { fileToOpen = $0 })
+        case .segment(let s):
+            SegmentRow(segment: s, store: store, blocked: s.liveLine != nil && !permissionRequests.isEmpty, openFile: { fileToOpen = $0 })
         case .answer(let m):
             // the answer streaming at the end of a running turn reveals its new text as it arrives
             let streaming: Bool = {
@@ -300,6 +354,16 @@ struct ChatView: View {
                     }
                     .transition(Motion.pop)
                 }
+                if let side = store.sideQuestions.first {
+                    SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
+                                     close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
+                        .environment(\.embedAgent, store.agent)
+                        .environment(\.transcriptSession, store.sessionId)
+                        .id(side.id)
+                        .glassEffectID("btw", in: glassNS)
+                        .glassEffectTransition(.materialize)
+                        .transition(Motion.tray)
+                }
                 if !store.queued.isEmpty {
                     QueueTray(items: store.queued, running: store.running, collapsed: trayVisible, enabled: composerEnabled,
                               edit: { model.unqueue(store, $0, edit: true); composerFocused = true },
@@ -315,23 +379,12 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 6)
             .padding(.top, 10)
-            .background(alignment: .bottom) { composerFade }
             .animation(Motion.layout, value: permissionRequests.first?.key)
             .animation(Motion.layout, value: questionRequests.first?.key)
             .animation(Motion.layout, value: pinned)
             .animation(Motion.layout, value: store.queued)
+            .animation(Motion.layout, value: store.sideQuestions.map(\.id))
         }
-    }
-
-    /// Transcript fades out under the composer so glass never sits on top of readable text.
-    private var composerFade: some View {
-        LinearGradient(stops: [
-            .init(color: Theme.bgBase.opacity(0), location: 0),
-            .init(color: Theme.bgBase.opacity(0.85), location: 0.35),
-            .init(color: Theme.bgBase, location: 1),
-        ], startPoint: .top, endPoint: .bottom)
-        .ignoresSafeArea(edges: .bottom)
-        .allowsHitTesting(false)
     }
 
     static func lockText(_ by: String) -> String {
@@ -345,10 +398,19 @@ struct ChatView: View {
 
     /// "!" at the start of the draft switches the composer to shell mode (like Claude Code's CLI).
     private var isShell: Bool { draft.hasPrefix("!") }
+    /// "/btw …" asks a side question (like Claude Code's /btw), for agents the bridge can fork (Claude Code).
+    private var isBtw: Bool {
+        guard model.asksSideQuestions(store.agent), draft.lowercased().hasPrefix("/btw") else { return false }
+        return draft.count == 4 || draft.dropFirst(4).first?.isWhitespace == true
+    }
+    private var btwQuestion: String { String(draft.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var sideQuestionsFull: Bool { store.sideQuestions.count >= AppModel.maxSideQuestions }
     private var shellCommand: String { String(draft.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private var canSend: Bool {
         guard model.isReady(store.agent) && store.attached else { return false }
+        // not held back by a running turn: that is what side questions are for
+        if isBtw { return !btwQuestion.isEmpty && !sideQuestionsFull }
         if isShell { return !shellCommand.isEmpty && !store.running && !store.shellRunning }
         if uploading { return false }
         return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty || !files.isEmpty
@@ -358,7 +420,8 @@ struct ChatView: View {
     private var slab: some View {
         VStack(alignment: .leading, spacing: 8) {
             if isShell { shellStatus.transition(Motion.reveal) }
-            if (!images.isEmpty || !files.isEmpty) && !isShell {
+            if isBtw { btwStatus.transition(Motion.reveal) }
+            if (!images.isEmpty || !files.isEmpty) && !isShell && !isBtw {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Array(images.enumerated()), id: \.offset) { i, d in
@@ -390,7 +453,10 @@ struct ChatView: View {
                     .textInputAutocapitalization(isShell ? .never : .sentences)
                     .keyboardType(isShell ? .asciiCapable : .default)
                     .focused($composerFocused)
-                    .padding(.vertical, 7)
+                    // one line is exactly as tall as the 34 pt buttons, so the row is centred; more lines grow upward
+                    // with the buttons staying on the last line (the HStack is bottom-aligned)
+                    .padding(.vertical, 6)
+                    .frame(minHeight: 34)
                     .disabled(!composerEnabled)
                     .onKeyPress(.return, phases: .down) { press in
                         if press.modifiers.contains(.command) { send(); return .handled }
@@ -401,10 +467,11 @@ struct ChatView: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .frame(minHeight: 48)
-        .glassEffect(.regular.tint(isShell ? Theme.shell.opacity(0.16) : Theme.bgBase.opacity(0.55)), in: .rect(cornerRadius: 26))
+        .glassEffect(.regular.tint(slabTint), in: .rect(cornerRadius: 26))
         .glassEffectID("slab", in: glassNS)
         .opacity(composerEnabled ? 1 : 0.5)
         .animation(Motion.quick, value: isShell)
+        .animation(Motion.quick, value: isBtw)
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems, maxSelectionCount: 4, matching: .images)
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let r = PendingFile.load(result)
@@ -414,9 +481,22 @@ struct ChatView: View {
         }
     }
 
-    /// "+" menu (photos, shell); in shell mode a terminal button that leaves shell mode.
+    private var slabTint: Color {
+        if isShell { return Theme.shell.opacity(0.16) }
+        if isBtw { return Theme.accent.opacity(0.14) }
+        return .clear   // plain Liquid Glass, as the system's search field
+    }
+
+    /// "+" menu (photos, files, side question); in shell or side-question mode a button that leaves the mode.
     @ViewBuilder private var leadingButton: some View {
-        if isShell {
+        if isBtw {
+            Button { draft = String(draft.dropFirst(4)).trimmingCharacters(in: .whitespaces); Haptics.selection() } label: {
+                Image(systemName: "bubble.left.and.bubble.right.fill").font(.body.weight(.semibold)).foregroundStyle(Theme.accent).frame(width: 34, height: 34)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Leave side question")
+        } else if isShell {
             Button { draft.removeFirst(); Haptics.selection() } label: {
                 Image(systemName: "terminal.fill").font(.body.weight(.semibold)).foregroundStyle(Theme.shell).frame(width: 34, height: 34)
                     .contentTransition(.symbolEffect(.replace))
@@ -429,8 +509,10 @@ struct ChatView: View {
                     Button { showPhotoPicker = true } label: { Label("Photo Library", systemImage: "photo.on.rectangle") }
                 }
                 Button { showFileImporter = true } label: { Label("Choose Files", systemImage: "folder") }
-                Divider()
-                Button { draft = "!" + draft; composerFocused = true } label: { Label("Run shell command", systemImage: "terminal") }
+                if model.asksSideQuestions(store.agent) {
+                    Divider()
+                    Button { draft = "/btw " + draft; composerFocused = true } label: { Label("Ask a side question", systemImage: "bubble.left.and.bubble.right") }
+                }
             } label: {
                 Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(Theme.textSecondary).frame(width: 34, height: 34)
                     .contentTransition(.symbolEffect(.replace))
@@ -439,6 +521,18 @@ struct ChatView: View {
             .disabled(!composerEnabled)
             .accessibilityLabel("Add")
         }
+    }
+
+    /// What a side question is, or why another one can't be asked yet.
+    private var btwStatus: some View {
+        HStack(spacing: 6) {
+            Image(systemName: sideQuestionsFull ? "hourglass" : "bubble.left.and.bubble.right")
+            if sideQuestionsFull { Text("Close a side question to ask another") } else { Text("Side question · not added to the conversation") }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(sideQuestionsFull ? Theme.textSecondary : Theme.accent)
+        .lineLimit(1).truncationMode(.tail)
+        .padding(.horizontal, 8).padding(.top, 4)
     }
 
     /// Where the command runs, or why it can't run yet.
@@ -522,7 +616,7 @@ struct ChatView: View {
     /// same glyph, so the glyph morphs in place in both and only the live one shows (switching it doesn't animate).
     private var primaryControl: some View {
         let glyph = actionGlyph
-        let menuLive = store.running && hasDraft && !isShell
+        let menuLive = store.running && hasDraft && !isShell && !isBtw
         return ZStack {
             primaryButton(glyph).actionLayer(live: !menuLive)
             interruptMenu(glyph).actionLayer(live: menuLive)
@@ -537,7 +631,7 @@ struct ChatView: View {
         }
         .buttonStyle(.plain)
         .disabled(glyph.isDisabled)
-        .accessibilityLabel(glyph == .stop ? Text("Stop") : (isShell ? Text("Run") : Text("Send")))
+        .accessibilityLabel(glyph == .stop ? Text("Stop") : (isShell ? Text("Run") : (isBtw ? Text("Ask") : Text("Send"))))
     }
 
     // tap: steer or queue; touch and hold: stop the turn and send now. A shortcut, not the only way:
@@ -591,7 +685,7 @@ struct ChatView: View {
 
     /// Stop the running turn and send the draft (plus anything queued) right after it.
     private func interruptAndSend() {
-        guard canSend, !isShell else { return }
+        guard canSend, !isShell, !isBtw else { return }
         withAnimation(Motion.layout) {
             sendDraft(interrupt: store.running)
             pinned = true
@@ -613,6 +707,12 @@ struct ChatView: View {
     /// The draft clears, the message rises into the transcript and the scroll follows it in one motion.
     private func send() {
         guard canSend else { return }
+        if isBtw {
+            // answered beside the conversation: no steering, no queue, no scroll
+            withAnimation(Motion.layout) { model.askSideQuestion(store, btwQuestion); draft = "" }
+            sendTick += 1
+            return
+        }
         withAnimation(Motion.layout) {
             if isShell {
                 model.runShell(store, command: shellCommand)
@@ -757,17 +857,19 @@ struct ChatView: View {
 
     @ViewBuilder private var modeChip: some View {
         let modeChoices: [ConfigChoice] = store.modeOption?.choices ?? store.modes.map { ConfigChoice(value: $0.id, name: $0.name, description: nil, group: nil) }
-        let current = store.autoApprove ? "turbo" : (store.modeOption?.current.string ?? store.currentMode ?? "default")
-        let chipTint: Color = store.autoApprove ? Theme.turbo : (current == "plan" ? Theme.running : Theme.textPrimary)
-        let glass: Glass = store.autoApprove ? Glass.regular.tint(Theme.turbo.opacity(0.45)).interactive() : Glass.regular.interactive()
-        let chipText: String = ModeNames.name(current, fallback: modeChoices.first { $0.value == current }?.name ?? String(localized: "Mode"))
+        let agent = store.agent
+        let turbo = model.hasTurbo(agent)
+        let current = store.autoApprove && turbo ? "turbo" : (store.modeOption?.current.string ?? store.currentMode ?? "default")
+        let approveAll = ModeNames.approvesAll(current)
+        let chipTint: Color = approveAll ? Theme.turbo : (current == "plan" ? Theme.running : Theme.textPrimary)
+        let glass: Glass = approveAll ? Glass.regular.tint(Theme.turbo.opacity(0.45)).interactive() : Glass.regular.interactive()
+        let chipText: String = ModeNames.name(current, agent: agent, fallback: modeChoices.first { $0.value == current }?.name ?? String(localized: "Mode"))
         if !modeChoices.isEmpty {
             Menu {
-                Picker("Mode", selection: Binding(get: { current }, set: { v in
-                    if v == "turbo" && !turboConfirmed { confirmTurbo = true } else { model.choose(mode: v, for: store) }
-                })) {
-                    ForEach(modeChoices) { c in Label(ModeNames.name(c.value, fallback: c.name), systemImage: modeIcon(c.value)).tag(c.value) }
-                    Label("Turbo · approve all", systemImage: "bolt.fill").tag("turbo")
+                Picker("Mode", selection: Binding(get: { current }, set: { pickMode($0) })) {
+                    ForEach(modeChoices) { c in Label(ModeNames.name(c.value, agent: agent, fallback: c.name), systemImage: modeIcon(c.value)).tag(c.value) }
+                    // Antigravity only: Claude Code's own list already has Bypass permissions
+                    if turbo { Label("Turbo · approve all", systemImage: "bolt.fill").tag("turbo") }
                 }
             } label: {
                 ChipLabel(icon: modeIcon(current), text: chipText)
@@ -792,6 +894,7 @@ struct ChatView: View {
         switch v {
         case "accept-edits", "acceptEdits": return "pencil.line"
         case "bypassPermissions": return "exclamationmark.shield"
+        case "dontAsk": return "hand.raised.slash"
         case "auto": return "wand.and.sparkles"
         case "plan": return "list.bullet.clipboard"
         case "turbo": return "bolt.fill"
@@ -822,27 +925,42 @@ struct ChatView: View {
         }
     }
 
+    /// What acts on this conversation's folder; the context and quota live in the chips below.
     private var moreMenu: some View {
         Menu {
+            Button(action: startNewHere) { Label("New Conversation Here", systemImage: "square.and.pencil") }
+                .disabled(store.cwd == nil || startingNew || !model.isReady(store.agent))
+            Divider()
+            Button { showFiles = true } label: { Label("Browse Files", systemImage: "folder") }
+                .disabled(store.cwd == nil || !model.isConnected)
+            Button { draft = "!" + draft; composerFocused = true } label: { Label("Run Shell Command", systemImage: "terminal") }
+                .disabled(isShell || isBtw || !composerEnabled)
             if let cwd = store.cwd {
-                Button { UIPasteboard.general.string = cwd } label: { Label("Copy folder path", systemImage: "doc.on.doc") }
-            }
-            ForEach(store.otherOptions) { opt in
-                if opt.type == "boolean" {
-                    Button { model.setConfig(store, option: opt, value: .bool(!(opt.current.bool ?? false))) } label: {
-                        Label(opt.name, systemImage: opt.current.bool == true ? "checkmark.square" : "square")
-                    }
-                } else if !opt.choices.isEmpty {
-                    Picker(opt.name, selection: Binding(get: { opt.current.string ?? "" }, set: { model.setConfig(store, option: opt, value: .string($0)) })) {
-                        ForEach(opt.choices) { c in Text(c.name).tag(c.value) }
-                    }
-                }
-            }
-            if let u = store.usage, u.size > 0 {
-                Text("Context: \(compactNumber(u.used)) of \(compactNumber(u.size)) tokens")
+                Button { UIPasteboard.general.string = cwd; Haptics.selection() } label: { Label("Copy Folder Path", systemImage: "doc.on.doc") }
             }
         } label: {
             Image(systemName: "ellipsis")
+        }
+        .menuOrder(.fixed)
+    }
+
+    /// A fresh conversation in this folder, replacing this one on the stack (Back goes to the list).
+    private func startNewHere() {
+        guard let cwd = store.cwd, !startingNew else { return }
+        startingNew = true
+        let agent = store.agent, here = store.sessionId
+        Task {
+            do {
+                let id = try await model.newSession(cwd: cwd, agent: agent)
+                startingNew = false
+                Haptics.impact(.medium)
+                // only if the user is still here; a late answer must not pull them out of wherever they went
+                if model.visibleSessionId == here { openSession(id) }
+            } catch {
+                startingNew = false
+                newError = error.localizedDescription
+                Haptics.error()
+            }
         }
     }
 }
@@ -860,19 +978,34 @@ struct AnswerView: View {
     }
 }
 
-/// Localized names for agy's mode / effort ids (agy sends English names).
+/// Each CLI's own names for its permission modes, localized (both agents send English names).
 enum ModeNames {
-    static func name(_ id: String, fallback: String) -> String {
+    static func name(_ id: String, agent: String, fallback: String) -> String {
+        if agent == "claude" {
+            // Claude Code (claude-agent-acp): default = "Manual", the CLI's --permission-mode manual
+            switch id {
+            case "default": return String(localized: "Manual")
+            case "acceptEdits": return String(localized: "Accept edits")
+            case "plan": return String(localized: "Plan")
+            case "auto": return String(localized: "Auto")
+            case "dontAsk": return String(localized: "Don't ask")
+            case "bypassPermissions": return String(localized: "Bypass permissions")
+            default: return fallback
+            }
+        }
+        // Antigravity (agy acp), plus Leash's bridge-side "turbo"
         switch id {
         case "default": return String(localized: "Default")
-        case "accept-edits", "acceptEdits": return String(localized: "Accept edits")
-        case "bypassPermissions": return String(localized: "Bypass permissions")
+        case "accept-edits": return String(localized: "Accept edits")
         case "auto": return String(localized: "Auto")
         case "plan": return String(localized: "Plan")
         case "turbo": return String(localized: "Turbo")
         default: return fallback
         }
     }
+
+    /// Modes that run everything without asking: agy's Turbo, Claude Code's Bypass permissions.
+    static func approvesAll(_ id: String) -> Bool { id == "turbo" || id == "bypassPermissions" }
 }
 
 enum EffortNames {

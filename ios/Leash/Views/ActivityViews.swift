@@ -9,9 +9,13 @@ struct ActivityRow: View {
     var turnStartedAt: Date?
     var openFile: (String) -> Void
     @State private var showChecklist = false
-    @State private var showAllSteps = false
 
     private var expanded: Bool { store.expandedGroups.contains(group.id) }
+    /// A live turn not opened in full lays its messages and runs out below the header (ChatStore.liveTimeline), with
+    /// the current action on its last run; the header keeps a sub-line only for an approval wait or before any step.
+    private var showsSubLine: Bool {
+        !group.live || expanded || blocked || (group.steps.isEmpty && !group.answerFollows)
+    }
 
     var body: some View {
         let checklist = group.checklist
@@ -33,11 +37,14 @@ struct ActivityRow: View {
                                 .foregroundStyle(Theme.textTertiary)
                                 .rotationEffect(.degrees(expanded ? 180 : 0))
                         }
-                        subLine
-                            .font(.footnote)
-                            .foregroundStyle(blocked ? Theme.attention : (group.live ? Theme.textSecondary : Theme.textTertiary))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                        if showsSubLine {
+                            subLine
+                                .font(.footnote)
+                                .foregroundStyle(blocked ? Theme.attention : (group.live ? Theme.textSecondary : Theme.textTertiary))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .transition(Motion.swap)
+                        }
                     }
                     Spacer(minLength: 6)
                 }
@@ -66,7 +73,7 @@ struct ActivityRow: View {
             }
 
             if expanded {
-                stepList
+                StepList(rows: StepRowModel.build(group.steps), live: group.live, store: store, openFile: openFile)
                     .padding(.leading, 8)
                     .transition(Motion.reveal)
             }
@@ -74,6 +81,7 @@ struct ActivityRow: View {
         .padding(.vertical, 2)
         .animation(Motion.quick, value: group.live)
         .animation(Motion.quick, value: blocked)
+        .animation(Motion.quick, value: showsSubLine)
         .animation(Motion.quick, value: checklist.filter { $0.status == "completed" }.count)
         .haptic(.increase, trigger: checklist.filter { $0.status == "completed" }.count) { old, new in group.live && new > old }
     }
@@ -81,19 +89,29 @@ struct ActivityRow: View {
     @ViewBuilder private var leadingGlyph: some View {
         if blocked { Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention).font(.footnote).symbolEffect(.pulse, options: .repeating).transition(Motion.pop) }
         // one moving signal per row: the shimmering header (a spinner instead when Reduce Motion is on)
-        else if group.live && reduceMotion { ActivitySpinner(size: 14).transition(Motion.pop) }
-        // one Image for live and done, so the sparkle morphs into the end-state symbol in place
+        else if group.live && reduceMotion { ActivitySpinner(size: 14).accessibilityHidden(true).transition(Motion.pop) }
+        // one Image for live and done, so the live marker morphs into the end-state symbol in place
         else {
             Image(systemName: glyphName)
                 .font(glyphFont)
                 .foregroundStyle(glyphColor)
                 .contentTransition(glyphSwap)
                 .transition(Motion.pop)
+                .accessibilityLabel(glyphLabel ?? Text(verbatim: ""))
+                .accessibilityHidden(glyphLabel == nil)
         }
     }
 
+    /// The header already says working / worked; only failure and a stop need saying.
+    private var glyphLabel: Text? {
+        if group.live { return nil }
+        if group.failedCount > 0 { return Text("Failed") }
+        if group.stats?.stopReason == "cancelled" { return Text("Stopped") }
+        return nil
+    }
+
     private var glyphName: String {
-        if group.live { return "sparkle" }
+        if group.live { return "smallcircle.filled.circle" }   // the same "in progress" marker as the checklist
         if group.failedCount > 0 { return "exclamationmark.circle" }
         if group.stats?.stopReason == "cancelled" { return "stop.circle" }
         return "checkmark.circle"
@@ -104,7 +122,7 @@ struct ActivityRow: View {
         return group.failedCount > 0 ? Theme.attention : Theme.textTertiary
     }
 
-    private var glyphFont: Font { group.live ? .footnote.weight(.semibold) : .footnote }
+    private var glyphFont: Font { .footnote }   // one weight, so the ring doesn't change stroke in the swap
 
     private var glyphSwap: ContentTransition { reduceMotion ? .opacity : .symbolEffect(.replace) }
 
@@ -149,17 +167,91 @@ struct ActivityRow: View {
 
     /// The live line cross-fades when the agent moves to its next action.
     @ViewBuilder private var subLine: some View {
-        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (group.summary.isEmpty ? " " : group.summary + "  ›"))
-        ZStack(alignment: .leading) {
-            Text(line).id(line).transition(Motion.swap)
+        let agents = blocked || group.live ? [] : group.runningSubagents
+        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (agents.isEmpty ? (group.summary.isEmpty ? " " : group.summary + "  ›") : Self.agentsLine(agents)))
+        HStack(spacing: 6) {
+            // a background subagent outlives the turn: the header stays "Worked for …", the sub-line says it still runs
+            if !agents.isEmpty && !agents.contains(where: \.needsAction) { ActivitySpinner(size: 11).transition(Motion.pop) }
+            ZStack(alignment: .leading) {
+                Text(line).id(line).transition(Motion.swap)
+            }
+            .foregroundStyle(blocked || agents.contains(where: \.needsAction) ? Theme.attention : (group.live || !agents.isEmpty ? Theme.textSecondary : Theme.textTertiary))
         }
         .animation(Motion.quick, value: line)
     }
 
-    // MARK: expanded list
-    private var rows: [StepRowModel] { StepRowModel.build(group.steps) }
+    private static func agentsLine(_ agents: [SubagentItem]) -> String {
+        if agents.contains(where: \.needsAction) { return String(localized: "Agent needs approval") + "  ›" }
+        if agents.count == 1 { return String(localized: "Still running: \(agents[0].displayTitle)") + "  ›" }
+        return String(localized: "\(agents.count) agents still running") + "  ›"
+    }
+}
 
-    @ViewBuilder private var stepList: some View {
+/// One run of tools in a live turn: "Explored 3 files, ran 2 commands ⌄", or the current action while it is the last
+/// run. No glyph of its own (the header carries the turn's status); it opens in place to its steps.
+struct SegmentRow: View {
+    let segment: StepSegment
+    let store: ChatStore
+    var blocked = false                  // an approval waits: the header says so, this line holds still
+    var openFile: (String) -> Void
+
+    private var open: Bool { store.expandedGroups.contains(segment.id) }
+
+    var body: some View {
+        let rows = StepRowModel.build(segment.steps)
+        let active = segment.liveLine != nil
+        let line = segment.liveLine ?? segment.summary
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(Motion.disclose) {
+                    if open { store.expandedGroups.remove(segment.id) } else { store.expandedGroups.insert(segment.id) }
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    // the active line cross-fades as the agent moves to its next action
+                    ZStack(alignment: .leading) {
+                        Text(line).id(line).transition(Motion.swap)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(active ? Theme.textSecondary : Theme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .shimmer(active && !blocked)
+                    if !rows.isEmpty {
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Theme.textTertiary)
+                            .rotationEffect(.degrees(open ? 180 : 0))
+                    }
+                    Spacer(minLength: 6)
+                }
+                .padding(.leading, 26)   // under the header's title, past its glyph column
+                .frame(minHeight: 22)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressable(scale: 1))
+            .disabled(rows.isEmpty)
+
+            if open && !rows.isEmpty {
+                StepList(rows: rows, live: active, store: store, openFile: openFile)
+                    .padding(.leading, 8)
+                    .transition(Motion.reveal)
+            }
+        }
+        .animation(Motion.quick, value: line)
+        .animation(Motion.quick, value: active)
+    }
+}
+
+/// The rail of steps under an opened turn or run; a long list shows its first and last steps until asked for all.
+struct StepList: View {
+    let rows: [StepRowModel]
+    var live = false
+    let store: ChatStore
+    var openFile: (String) -> Void
+    @State private var showAllSteps = false
+
+    var body: some View {
         let all = rows
         let collapsed = all.count > 30 && !showAllSteps
         let head = collapsed ? Array(all.prefix(3)) : all
@@ -177,13 +269,13 @@ struct ActivityRow: View {
         }
         // only a live turn's new steps rise in (the rail grows with them); a finished turn never animates here, and
         // the >30 head/tail split stays instant so crossing it doesn't fade every row out and back in
-        .animation(group.live && !collapsed ? Motion.layout : nil, value: all.count)
+        .animation(live && !collapsed ? Motion.layout : nil, value: all.count)
     }
 }
 
 /// Rows in the expanded list; consecutive reads coalesce into "Read N files".
 struct StepRowModel: Identifiable {
-    enum Kind { case thought(MessageItem), note(MessageItem), tool(ToolItem), reads([ToolItem]) }
+    enum Kind { case thought(MessageItem), note(MessageItem), tool(ToolItem), reads([ToolItem]), subagent(SubagentItem) }
     let id: UUID
     let kind: Kind
 
@@ -204,6 +296,8 @@ struct StepRowModel: Identifiable {
             case .message(let m):
                 flushReads()
                 out.append(StepRowModel(id: m.id, kind: m.role == .thought ? .thought(m) : .note(m)))
+            case .subagent(let s):
+                flushReads(); out.append(StepRowModel(id: s.id, kind: .subagent(s)))
             default: break
             }
         }
@@ -225,6 +319,11 @@ struct StepRow: View {
     }
 
     var body: some View {
+        // a subagent's row navigates to its transcript instead of opening in place
+        if case .subagent(let s) = row.kind { SubagentStepRow(item: s, rootSessionId: store.sessionId) } else { stepBody }
+    }
+
+    private var stepBody: some View {
         VStack(alignment: .leading, spacing: 4) {
             Button(action: toggle) {
                 HStack(spacing: 8) {
@@ -238,7 +337,7 @@ struct StepRow: View {
             }
             // an open step's title is a tall text block: opacity only then
             .buttonStyle(.pressable(scale: open ? 1 : 0.98))
-            if open { detail.padding(.leading, 24).padding(.bottom, 4).transition(Motion.reveal) }
+            if open && hasDetail { detail.padding(.leading, 24).padding(.bottom, 4).transition(Motion.reveal) }
         }
         .padding(.leading, 6)
     }
@@ -249,13 +348,14 @@ struct StepRow: View {
         case .note: Image(systemName: "text.bubble")
         case .reads: Image(systemName: "doc.text")
         case .tool(let t): Image(systemName: ToolIcon.name(t.kind))
+        case .subagent: Image(systemName: "arrow.triangle.branch")
         }
     }
 
     @ViewBuilder private var title: some View {
         switch row.kind {
-        case .thought(let m): Text(m.text.trimmingCharacters(in: .whitespacesAndNewlines)).font(.footnote).foregroundStyle(Theme.textSecondary).italic()
-        case .note(let m): Text(m.text.trimmingCharacters(in: .whitespacesAndNewlines)).font(.footnote).foregroundStyle(Theme.textSecondary)
+        case .thought(let m): Text(Self.inline(m.text)).font(.footnote).foregroundStyle(Theme.textSecondary).italic()
+        case .note(let m): Text(Self.inline(m.text)).font(.footnote).foregroundStyle(Theme.textSecondary)
         case .reads(let ts): Text("Read \(ts.count) files").font(.footnote).foregroundStyle(Theme.textSecondary)
         case .tool(let t):
             if t.kind == "execute", let cmd = t.commandPreview {
@@ -265,6 +365,7 @@ struct StepRow: View {
             } else {
                 Text(t.title).font(.footnote).foregroundStyle(Theme.textPrimary)
             }
+        case .subagent(let s): Text(s.displayTitle).font(.footnote).foregroundStyle(Theme.textPrimary)
         }
     }
 
@@ -283,10 +384,24 @@ struct StepRow: View {
         }
     }
 
+    /// A thought or note opens in place (its title drops the line limit): a second copy below would repeat it.
+    private var hasDetail: Bool {
+        switch row.kind {
+        case .thought, .note, .subagent: return false
+        case .reads, .tool: return true
+        }
+    }
+
+    /// Inline markdown only (bold, code, links), so the footnote title reads like the text it stands for.
+    private static func inline(_ s: String) -> AttributedString {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (try? AttributedString(markdown: t, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(t)
+    }
+
     @ViewBuilder private var detail: some View {
         switch row.kind {
-        case .thought(let m), .note(let m):
-            MarkdownView(text: m.text).font(.footnote).foregroundStyle(Theme.textSecondary)
+        case .thought, .note, .subagent:
+            EmptyView()
         case .reads(let ts):
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(ts) { t in

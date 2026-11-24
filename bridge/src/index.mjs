@@ -119,7 +119,7 @@ const hubs = agentDefs.map(a => {
     home: a.home || os.homedir(), sessionMeta: a.sessionMeta ?? null, helper, maxListed: a.maxListed ?? 0,
     // Claude Code (reached through a helper) drops photo-first sessions from an unscoped list; see Hub.listSessions
     listPerCwd: a.listPerCwd ?? !!helper,
-    idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, log });
+    idleCloseMs: (a.idleCloseMin ?? 20) * 60000, locks, turbo: a.turbo, btw: a.btw, log });
   hub.on('attention', p => log(`[${a.id}] needs input: ${p.method} session=${p.sessionId}`));
   // quota is read only when the phone asks for it (bridge/quota), never on a timer or after turns
   if (a.quota === 'statusline' && cfg.quota?.enabled !== false) {

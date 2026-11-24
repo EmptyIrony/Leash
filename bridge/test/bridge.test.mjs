@@ -788,3 +788,97 @@ test('session/list tells how the bridge\'s last turn in a conversation ended', a
     assert.ok(row._leash.turnEndedAt > 0);
   } finally { c.close(); t.done(); }
 });
+
+test('btw: side question runs helper btw (throwaway fork, no tools) mid-turn and records nothing', async () => {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-claude-'));
+  const fake = path.join(bin, 'claude');
+  // stands in for the claude CLI: answers with what it was started with
+  fs.writeFileSync(fake, '#!' + process.execPath + '\n' +
+    "process.stdout.write(JSON.stringify({ type: 'result', result: JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd(), key: process.env.ANTHROPIC_API_KEY ?? null }), modelUsage: { 'claude-test': {} } }) + '\\n');\n", { mode: 0o755 });
+  const t = await setup({ id: 'claude', helper: [process.execPath, path.join(here, '..', 'remote', 'helper.mjs')], locks: false,
+    agentEnv: { ...process.env, CLAUDE_CODE_EXECUTABLE: fake, ANTHROPIC_API_KEY: 'sk-test' },
+    sessionMeta: { claudeCode: { options: { settings: { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } } } } } });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const ready = await c.wait(m => m.op === 'ready');
+    assert.equal(ready.agent?.btw ?? t.hub.agentSummary().btw, true);
+    assert.equal(t.hub.agentSummary().turbo, false);
+    const cwd = path.join(t.home, 'proj');
+    const ns = await c.call('session/new', { cwd });
+    const promptP = c.call('session/prompt', { sessionId: ns.sessionId, prompt: [{ type: 'text', text: 'please edit' }] });
+    const req = await c.wait(m => m.op === 'request' && m.method === 'session/request_permission');
+    const s = t.hub.sessions.get(ns.sessionId);
+    assert.equal(s.running, true);
+    const seq = s.seq, seen = c.msgs.length;
+    const r = await c.call('bridge/btw', { sessionId: ns.sessionId, question: '  /why so slow?  ' });
+    assert.equal(r.model, 'claude-test');
+    const got = JSON.parse(r.text);
+    assert.equal(got.cwd, fs.realpathSync(cwd));
+    assert.equal(got.key, null, 'no API key: the subscription login answers');
+    const a = got.argv;
+    assert.equal(a[0], '-p');
+    assert.ok(a[1].startsWith('<system-reminder>') && a[1].endsWith('/why so slow?'), 'a leading "/" is not read as a command');
+    const after = flag => a[a.indexOf(flag) + 1];
+    assert.equal(after('--resume'), ns.sessionId);
+    for (const f of ['--fork-session', '--no-session-persistence', '--strict-mcp-config']) assert.ok(a.includes(f), f);
+    assert.equal(after('--tools'), '');
+    assert.equal(after('--max-turns'), '1');
+    assert.deepEqual(JSON.parse(after('--settings')), { env: { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: '1' } });
+    const model = s.configOptions.find(o => o.id === 'model').currentValue;
+    if (model !== 'default') assert.equal(after('--model'), model);
+    assert.equal(s.seq, seq, 'nothing recorded in the conversation');
+    assert.ok(!c.msgs.slice(seen).some(m => m.op === 'update' || m.op === 'turn'), 'nothing broadcast');
+    assert.equal(s.running, true, 'the turn is untouched');
+    await assert.rejects(c.call('bridge/btw', { sessionId: ns.sessionId, question: ' ' }), /question/);
+    await assert.rejects(c.call('bridge/setAutoApprove', { sessionId: ns.sessionId, enabled: true }), /Turbo/);
+    c.reply(req.key, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    assert.equal((await promptP).stopReason, 'end_turn');
+  } finally { c.close(); t.done(); fs.rmSync(bin, { recursive: true, force: true }); }
+  // agy (no helper): no side questions, Turbo available
+  const agy = new Hub({ agentCommand: 'x', log: () => {} });
+  assert.equal(agy.agentSummary().btw, false);
+  assert.equal(agy.agentSummary().turbo, true);
+  await assert.rejects(agy.btw({ sessionId: 's', question: 'q' }), /side questions/);
+});
+
+test('subagents: child sessions file under the root, tagged; their requests show on the root; no root side effects', async () => {
+  const t = await setup({ idleCloseMs: 1000 });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const ns = await c.call('session/new', { cwd: path.join(t.home, 'proj') });
+    const sid = ns.sessionId, child = 'child-' + sid, grand = 'grand-' + sid;
+    const promptP = c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'delegate bg' }] });
+    const req = await c.wait(m => m.op === 'request' && m.method === 'session/request_permission');
+    assert.equal(req.sessionId, sid, 'filed under the root');
+    assert.equal(req.params.sessionId, child, 'the agent still gets its own params back');
+    assert.deepEqual(req.subagent, { sessionId: child, title: 'Explore the repo', description: 'Explore' });
+    c.reply(req.key, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    await promptP;
+    const ups = c.msgs.filter(m => m.op === 'update');
+    assert.ok(ups.every(m => m.sessionId === sid), 'every update reaches the phone on the root session');
+    const tagged = ups.filter(m => m.update._meta?.leash?.subagent);
+    assert.ok(tagged.some(m => m.update._meta.leash.subagent === child && m.update.sessionUpdate === 'tool_call_update' && m.update.status === 'completed'));
+    assert.ok(tagged.some(m => m.update._meta.leash.subagent === grand && m.update.content?.text === 'grandchild'));
+    assert.ok(tagged.some(m => m.update._meta.leash.subagent === child && m.update.sessionUpdate === 'subagent_update' && m.update.sessionId === grand), 'grandchild announced inside the child');
+    assert.ok(!ups.some(m => m.update.sessionUpdate === 'available_commands_update' && m.update._meta?.leash?.subagent), 'child command lists dropped');
+    assert.ok(!ups.some(m => m.update.sessionUpdate === 'session_info_update' && m.update._meta?.leash?.subagent), 'child titles dropped');
+    assert.ok(!t.hub.sessions.has(child) && !t.hub.sessions.has(grand), 'no session state for children');
+    assert.equal(t.hub.children.get(grand).root, sid);
+    const s = t.hub.sessions.get(sid);
+    assert.equal(s.configOptions[0].currentValue, 'gemini-4-hydrogen', "the child's model list leaves the root's alone");
+    assert.notEqual(s.title, 'not the root title');
+    // snapshot: the child's and the parent's chunks with one messageId stay apart
+    const late = new Client(t.port); await late.opened;
+    const snap = await late.call('bridge/attach', { sessionId: sid });
+    const shared = snap.events.filter(e => e.update.messageId === 'shared').map(e => [e.update._meta?.leash?.subagent ?? null, e.update.content.text]);
+    assert.deepEqual(shared, [[child, 'child final'], [null, 'parent done']]);
+    late.close();
+    // the background child is still running after the turn: the idle sweep leaves the root loaded
+    await c.call('bridge/detach', { sessionId: sid });
+    assert.deepEqual(await t.hub.closeIdleSessions(Date.now() + 60000), []);
+    t.hub.children.get(child).state = { state: 'idle', stopReason: 'end_turn' };
+    assert.deepEqual(await t.hub.closeIdleSessions(Date.now() + 60000), [sid]);
+  } finally { c.close(); t.done(); }
+});

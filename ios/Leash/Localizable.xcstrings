@@ -1,6 +1,316 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld agents still running" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个 agent 仍在运行"
+          }
+        }
+      }
+    },
+    "Agent needs approval" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 需要批准"
+          }
+        }
+      }
+    },
+    "Agent not loaded" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 未加载"
+          }
+        }
+      }
+    },
+    "Needs approval" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要批准"
+          }
+        }
+      }
+    },
+    "New Conversation Here" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此新建对话"
+          }
+        }
+      }
+    },
+    "Browse Files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "浏览文件"
+          }
+        }
+      }
+    },
+    "Can't open folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开文件夹"
+          }
+        }
+      }
+    },
+    "Empty Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "空文件夹"
+          }
+        }
+      }
+    },
+    "Couldn't start a conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法新建对话"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "好"
+          }
+        }
+      }
+    },
+    "No answer came back." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有收到回答。"
+          }
+        }
+      }
+    },
+    "Prompt" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示词"
+          }
+        }
+      }
+    },
+    "ran %lld agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 %lld 个 agent"
+          }
+        }
+      }
+    },
+    "ran 1 agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 1 个 agent"
+          }
+        }
+      }
+    },
+    "Show more" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开"
+          }
+        }
+      }
+    },
+    "Side question: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便问：%@"
+          }
+        }
+      }
+    },
+    "Close side question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭这条顺便问"
+          }
+        }
+      }
+    },
+    "Show All" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示全部"
+          }
+        }
+      }
+    },
+    "Answering from this conversation…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在根据对话回答…"
+          }
+        }
+      }
+    },
+    "Side Question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便问"
+          }
+        }
+      }
+    },
+    "Leave side question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出顺便问"
+          }
+        }
+      }
+    },
+    "Ask a side question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便问一句"
+          }
+        }
+      }
+    },
+    "Close a side question to ask another" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先关掉一条顺便问，再问新的"
+          }
+        }
+      }
+    },
+    "Side question · not added to the conversation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顺便问 · 不会加入对话"
+          }
+        }
+      }
+    },
+    "Ask" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提问"
+          }
+        }
+      }
+    },
+    "Manual" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动"
+          }
+        }
+      }
+    },
+    "Don't ask" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不询问"
+          }
+        }
+      }
+    },
+    "Still running: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在运行：%@"
+          }
+        }
+      }
+    },
+    "Turn on Bypass permissions?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启跳过权限确认？"
+          }
+        }
+      }
+    },
+    "Bypass permissions — never ask" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过权限确认 — 从不询问"
+          }
+        }
+      }
+    },
+    "Claude Code will run every command and edit in this conversation without asking you first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个对话里 Claude Code 会直接执行所有命令和编辑，不再先问你。"
+          }
+        }
+      }
+    },
     " · %lld failed" : {
       "localizations" : {
         "zh-Hans" : {
@@ -791,7 +1101,7 @@
         }
       }
     },
-    "Copy folder path" : {
+    "Copy Folder Path" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -1011,6 +1321,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "超高"
+          }
+        }
+      }
+    },
+    "Failed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "失败"
           }
         }
       }
@@ -1794,7 +2114,7 @@
         }
       }
     },
-    "Run shell command" : {
+    "Run Shell Command" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2172,6 +2492,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "结束原因"
+          }
+        }
+      }
+    },
+    "Stopped" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止"
           }
         }
       }

@@ -14,6 +14,10 @@ struct AgentInfo: Identifiable, Hashable {
     var imageInput: Bool
     /// Mid-turn messages are injected into the running turn (Claude Code); otherwise the bridge queues them.
     var steering = false
+    /// Antigravity's "Turbo": the bridge approves every permission prompt. Claude Code has its own modes for that.
+    var turbo = false
+    /// /btw side questions (Claude Code: a throwaway fork on its host).
+    var btw = false
     var isReady: Bool { state == "ready" }
 }
 
@@ -38,12 +42,21 @@ struct SessionSummary: Identifiable, Hashable {
     var folderName: String { (cwd as NSString).lastPathComponent }
 }
 
+/// The subagent a request came from (the bridge files it under the root conversation).
+struct SubagentRef: Hashable {
+    let sessionId: String
+    let title: String?
+    let agentType: String?
+    var label: String { [title, agentType == title ? nil : agentType].compactMap { $0 }.joined(separator: " · ") }
+}
+
 struct PendingRequest: Identifiable, Hashable {
     let key: String
     var agentId: String = "agy"
     let method: String
     let sessionId: String?
     let params: JSON
+    var subagent: SubagentRef?
     var id: String { key }
     var isPermission: Bool { method == "session/request_permission" }
     var toolTitle: String { params["toolCall"]?["title"]?.string ?? params["message"]?.string ?? String(localized: "Needs your input") }
@@ -118,6 +131,8 @@ final class AppModel {
     func agent(_ id: String) -> AgentInfo? { agents.first { $0.id == id } }
     func isReady(_ agentId: String) -> Bool { isConnected && (agent(agentId)?.isReady ?? (agentId == "agy" && agentState == "ready")) }
     func steers(_ agentId: String) -> Bool { agent(agentId)?.steering ?? false }
+    func hasTurbo(_ agentId: String) -> Bool { agent(agentId)?.turbo ?? false }
+    func asksSideQuestions(_ agentId: String) -> Bool { agent(agentId)?.btw ?? false }
     func agentLabel(_ id: String) -> String { agent(id)?.label ?? (id == "claude" ? "Claude Code" : "Antigravity") }
 
     init() {
@@ -213,6 +228,8 @@ final class AppModel {
                     agents[i].imageInput = info["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false
                 }
                 agents[i].steering = m["steering"]?.bool ?? false
+                agents[i].turbo = m["turbo"]?.bool ?? false
+                agents[i].btw = m["btw"]?.bool ?? false
             }
             if m["agentId"]?.string == nil || m["agentId"]?.string == "agy" { applyAgent(m) }
             if agentState == "ready" {
@@ -299,7 +316,9 @@ final class AppModel {
                          home: a["home"]?.string,
                          name: info?["agentInfo"]?["title"]?.string ?? info?["agentInfo"]?["name"]?.string,
                          imageInput: info?["agentCapabilities"]?["promptCapabilities"]?["image"]?.bool ?? false,
-                         steering: a["steering"]?.bool ?? false)
+                         steering: a["steering"]?.bool ?? false,
+                         turbo: a["turbo"]?.bool ?? false,
+                         btw: a["btw"]?.bool ?? false)
     }
 
     private func applyAgent(_ a: JSON?) {
@@ -314,7 +333,10 @@ final class AppModel {
 
     private func addPending(_ p: JSON, notify: Bool) {
         guard let key = p["key"]?.string, let method = p["method"]?.string else { return }
-        let req = PendingRequest(key: key, agentId: p["agentId"]?.string ?? String(key.split(separator: ":").first ?? "agy"), method: method, sessionId: p["sessionId"]?.string, params: p["params"] ?? .null)
+        var req = PendingRequest(key: key, agentId: p["agentId"]?.string ?? String(key.split(separator: ":").first ?? "agy"), method: method, sessionId: p["sessionId"]?.string, params: p["params"] ?? .null)
+        if let sub = p["subagent"], let sid = sub["sessionId"]?.string {
+            req.subagent = SubagentRef(sessionId: sid, title: sub["title"]?.string, agentType: sub["description"]?.string)
+        }
         pending[key] = req
         refreshPendingCounts()
         if notify {
@@ -461,6 +483,29 @@ final class AppModel {
         }
     }
 
+    /// Views showing a conversation: its chat, and a subagent's transcript pushed on top of it (which hides the chat).
+    @ObservationIgnored private var watchers: [String: Int] = [:]
+
+    /// A view showing `s` appeared: it stays attached (live updates) and counts as on screen while any such view is.
+    func watch(_ s: ChatStore) {
+        watchers[s.sessionId, default: 0] += 1
+        visibleSessionId = s.sessionId
+    }
+
+    /// The last view of `s` going away detaches it. A push from the chat to a subagent (or back) disappears one view
+    /// as the other appears, in either order: the short wait lets the next one claim the conversation first.
+    func unwatch(_ s: ChatStore) {
+        let n = max(0, (watchers[s.sessionId] ?? 1) - 1)
+        watchers[s.sessionId] = n
+        guard n == 0 else { return }
+        Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard (watchers[s.sessionId] ?? 0) == 0 else { return }
+            if visibleSessionId == s.sessionId { visibleSessionId = nil }
+            detach(s)
+        }
+    }
+
     func detach(_ s: ChatStore) {
         // keep the store cached (cheap) but stop live updates for sessions we left
         s.attached = false
@@ -592,6 +637,34 @@ final class AppModel {
         }
     }
 
+    /// At most this many side questions are open at once; closing one makes room.
+    static let maxSideQuestions = 3
+
+    /// /btw: ask about the conversation without adding to it, also mid-turn. The bridge answers only this phone.
+    func askSideQuestion(_ s: ChatStore, _ question: String) {
+        let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, s.sideQuestions.count < Self.maxSideQuestions else { return }
+        let item = SideQuestion(question: q)
+        s.sideQuestions.append(item)
+        Task {
+            do {
+                let r = try await link.call("bridge/btw", ["sessionId": .string(s.sessionId), "question": .string(q), "agent": .string(s.agent)], timeout: 190)
+                let text = (r["text"]?.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                withAnimation(Motion.layout) {
+                    s.resolveSideQuestion(item.id, answer: text.isEmpty ? nil : text, error: text.isEmpty ? String(localized: "No answer came back.") : nil)
+                }
+                if text.isEmpty { Haptics.error() } else { Haptics.success() }
+            } catch {
+                withAnimation(Motion.layout) { s.resolveSideQuestion(item.id, answer: nil, error: error.localizedDescription) }
+                Haptics.error()
+            }
+        }
+    }
+
+    func closeSideQuestion(_ s: ChatStore, _ id: UUID) {
+        s.sideQuestions.removeAll { $0.id == id }
+    }
+
     /// The queue's "Interrupt and Send" (mid-turn) / "Send Now" (after a Stop): send what is queued right away.
     func sendQueued(_ s: ChatStore) {
         guard !s.queued.isEmpty, isReady(s.agent), s.attached else { return }
@@ -658,9 +731,10 @@ final class AppModel {
         }
     }
 
-    /// Pick an agy mode, or "turbo": agy's auto mode plus bridge-side auto-approval of every permission prompt.
+    /// Pick one of the agent's own modes, or (Antigravity only) "turbo": agy's auto mode plus bridge-side
+    /// auto-approval of every permission prompt.
     func choose(mode: String, for s: ChatStore) {
-        let turbo = mode == "turbo"
+        let turbo = mode == "turbo" && hasTurbo(s.agent)
         if turbo != s.autoApprove {
             s.autoApprove = turbo
             Task { _ = try? await link.call("bridge/setAutoApprove", ["sessionId": .string(s.sessionId), "enabled": .bool(turbo), "agent": .string(s.agent)]) }
@@ -671,7 +745,7 @@ final class AppModel {
         } else if s.currentMode != target, s.modes.contains(where: { $0.id == target }) {
             setMode(s, mode: target)
         }
-        if turbo { Haptics.impact(.heavy) } else { Haptics.selection() }
+        if turbo || ModeNames.approvesAll(mode) { Haptics.impact(.heavy) } else { Haptics.selection() }
     }
 
     func setMode(_ s: ChatStore, mode: String) {

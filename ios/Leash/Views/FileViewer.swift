@@ -10,6 +10,8 @@ struct FileViewer: View {
     var agent: String = "agy"
     /// relative paths are taken from this conversation's folder
     var sessionId: String? = nil
+    /// pushed inside another navigation stack (the project browser): Back instead of its own stack and Done
+    var embedded = false
 
     private enum Content { case text(String), preview(URL) }
     @State private var content: Content?
@@ -29,52 +31,59 @@ struct FileViewer: View {
     private var name: String { (parsed.path as NSString).lastPathComponent }
     private var isText: Bool { if case .text = content { return true }; return false }
 
-    var body: some View {
-        NavigationStack {
-            Group {
-                switch content {
-                case .text(let text): textView(text)
-                case .preview(let url): QuickLookView(url: url).ignoresSafeArea(edges: .bottom)
-                case nil:
-                    if let tooLarge {
-                        ContentUnavailableView {
-                            Label("File Too Large", systemImage: "doc")
-                        } description: {
-                            Text(tooLarge)
-                        } actions: {
-                            Button("Copy Path") { UIPasteboard.general.string = parsed.path; Haptics.selection() }
-                        }
-                    } else if let error {
-                        ContentUnavailableView("Can't open file", systemImage: "doc.questionmark", description: Text(error))
-                    } else {
-                        ProgressView()
-                    }
-                }
+    @ViewBuilder var body: some View {
+        if embedded {
+            viewer
+        } else {
+            NavigationStack {
+                viewer.toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
             }
-            .safeAreaInset(edge: .bottom) {
-                if let note { Text(note).font(.caption).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity) }
-            }
-            .navigationTitle(name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                if isText {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { wrap.toggle() } label: { Image(systemName: wrap ? "text.alignleft" : "arrow.left.and.right.text.vertical") }
-                            .accessibilityLabel(wrap ? Text("Don't wrap lines") : Text("Wrap lines"))
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let fileURL {
-                        ShareLink(item: fileURL) { Image(systemName: "square.and.arrow.up") }
-                            .accessibilityLabel(Text("Share"))
-                    } else {
-                        Image(systemName: "square.and.arrow.up").foregroundStyle(.tertiary).accessibilityHidden(true)
-                    }
-                }
-            }
-            .task { await load() }
         }
+    }
+
+    private var viewer: some View {
+        Group {
+            switch content {
+            case .text(let text): textView(text)
+            case .preview(let url): QuickLookView(url: url).ignoresSafeArea(edges: .bottom)
+            case nil:
+                if let tooLarge {
+                    ContentUnavailableView {
+                        Label("File Too Large", systemImage: "doc")
+                    } description: {
+                        Text(tooLarge)
+                    } actions: {
+                        Button("Copy Path") { UIPasteboard.general.string = parsed.path; Haptics.selection() }
+                    }
+                } else if let error {
+                    ContentUnavailableView("Can't open file", systemImage: "doc.questionmark", description: Text(error))
+                } else {
+                    ProgressView()
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let note { Text(note).font(.caption).foregroundStyle(.secondary).padding(8).frame(maxWidth: .infinity) }
+        }
+        .navigationTitle(name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isText {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { wrap.toggle() } label: { Image(systemName: wrap ? "text.alignleft" : "arrow.left.and.right.text.vertical") }
+                        .accessibilityLabel(wrap ? Text("Don't wrap lines") : Text("Wrap lines"))
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if let fileURL {
+                    ShareLink(item: fileURL) { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel(Text("Share"))
+                } else {
+                    Image(systemName: "square.and.arrow.up").foregroundStyle(.tertiary).accessibilityHidden(true)
+                }
+            }
+        }
+        .task { await load() }
     }
 
     private func textView(_ text: String) -> some View {
