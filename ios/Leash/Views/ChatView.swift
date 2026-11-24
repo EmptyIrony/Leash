@@ -305,7 +305,9 @@ struct ChatView: View {
             } description: {
                 Text(verbatim: e)
             } actions: {
+                // attach does nothing while the agent can't be reached
                 Button("Try Again") { Task { await model.attach(store) } }
+                    .disabled(!model.isReady(store.agent))
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 40)
@@ -338,6 +340,7 @@ struct ChatView: View {
                 }
                 .font(.callout)
                 Button("Try Again") { Task { await model.attach(store) } }.font(.callout.weight(.semibold))
+                    .disabled(!model.isReady(store.agent))
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
