@@ -2938,12 +2938,22 @@
         }
       }
     },
-    "Stopped · %@" : {
+    "Stopped: the reply hit its length limit" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已停止 · %@"
+            "value" : "已停止：回复达到长度上限"
+          }
+        }
+      }
+    },
+    "Stopped: too many steps in one turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已停止：这一轮的步骤太多"
           }
         }
       }
@@ -3010,6 +3020,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "这不是拴绳的配对二维码"
+          }
+        }
+      }
+    },
+    "The agent declined to continue" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 拒绝继续"
           }
         }
       }

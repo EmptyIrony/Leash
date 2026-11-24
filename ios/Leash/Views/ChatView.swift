@@ -323,7 +323,7 @@ struct ChatView: View {
             displayRow(item, isFirst: idx == 0)
         }
         if let stop = store.lastStopReason, stop != "end_turn", !store.running {
-            Label("Stopped · \(stop)", systemImage: "stop.circle").font(.caption).foregroundStyle(Theme.textTertiary)
+            Label(Self.stopText(stop), systemImage: "stop.circle").font(.caption).foregroundStyle(Theme.textTertiary)
         }
         if let e = store.loadError, !store.entries.isEmpty {
             // a reload under a transcript already on screen failed: what is shown may be out of date
@@ -538,6 +538,16 @@ struct ChatView: View {
         .foregroundStyle(Theme.textSecondary)
         .lineLimit(1).truncationMode(.tail)
         .padding(.horizontal, 8).padding(.top, 4)
+    }
+
+    /// Why a turn ended early, in words (ACP stop reasons); a failed turn's own notice says what went wrong.
+    static func stopText(_ reason: String) -> String {
+        switch reason {
+        case "max_tokens": return String(localized: "Stopped: the reply hit its length limit")
+        case "max_turn_requests": return String(localized: "Stopped: too many steps in one turn")
+        case "refusal": return String(localized: "The agent declined to continue")
+        default: return String(localized: "Stopped")   // cancelled, error, …
+        }
     }
 
     static func lockText(_ by: String) -> String {
