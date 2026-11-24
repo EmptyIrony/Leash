@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ChatView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.undoManager) private var undoManager
     let store: ChatStore
     var openSession: (String) -> Void = { _ in }
 
@@ -267,6 +268,8 @@ struct ChatView: View {
             }
             .onDisappear {
                 model.unwatch(store)
+                // the undo window may end while no chat is on screen to see it: no shake-to-undo outlives this view
+                undoManager?.removeAllActions(withTarget: store)
                 model.setDraft(draft, for: store.sessionId)
             }
             .onChange(of: scenePhase) { _, phase in if phase != .active { model.setDraft(draft, for: store.sessionId) } }
@@ -446,11 +449,13 @@ struct ChatView: View {
                         .glassEffectTransition(.materialize)
                         .transition(Motion.tray)
                 }
-                if !store.queued.isEmpty {
+                if !store.queued.isEmpty || store.removedQueued != nil {
                     QueueTray(items: store.queued, running: store.running, collapsed: trayVisible, enabled: composerEnabled,
-                              edit: { model.unqueue(store, $0, edit: true); composerFocused = true },
-                              delete: { model.unqueue(store, $0, edit: false); Haptics.selection() },
-                              sendNow: sendQueuedNow)
+                              removed: store.removedQueued,
+                              edit: { model.unqueue(store, $0); composerFocused = true },
+                              delete: removeQueued,
+                              sendNow: sendQueuedNow,
+                              undo: { model.undoRemoveQueued(store); Haptics.selection() })
                         .glassEffectID("queue", in: glassNS)
                         .glassEffectTransition(.materialize)
                         .transition(Motion.tray)
@@ -473,7 +478,28 @@ struct ChatView: View {
             .animation(Motion.layout, value: store.queued)
             .animation(Motion.layout, value: store.sideQuestions.map(\.id))
             .animation(Motion.layout, value: commands.isEmpty)
+            .animation(Motion.disclose, value: store.removedQueued)
         }
+        // the queue moved on (a turn ended or started, the queue went out): what was removed stays removed
+        .onChange(of: store.running) { _, _ in store.forgetRemovedQueued() }
+        .onChange(of: store.turnStartedAt) { _, _ in store.forgetRemovedQueued() }
+        .onChange(of: store.removedQueued) { _, r in
+            if r == nil { undoManager?.removeAllActions(withTarget: store) }
+        }
+    }
+
+    /// One tap removes a queued message; its row offers Undo for a few seconds, and so does shaking the phone.
+    private func removeQueued(_ q: QueuedMessage) {
+        model.removeQueued(store, q)
+        Haptics.selection()
+        AccessibilityNotification.Announcement(String(localized: "Removed")).post()
+        guard let undoManager else { return }
+        let appModel = model
+        undoManager.removeAllActions(withTarget: store)
+        undoManager.registerUndo(withTarget: store) { s in
+            Task { @MainActor in appModel.undoRemoveQueued(s) }
+        }
+        undoManager.setActionName(String(localized: "Remove queued message"))
     }
 
     /// The draft is a bare "/word" being typed: the commands it could start, Leash's own first, then the agent's in

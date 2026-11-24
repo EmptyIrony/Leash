@@ -664,6 +664,37 @@ test('Stop keeps the queue; unqueue takes one back; the next prompt sends the re
   } finally { c.close(); t.done(); }
 });
 
+test('requeue puts a dropped message back where it was, under its old id, and a held queue stays held', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const ns = await c.call('session/new', { cwd: t.home });
+    const sid = ns.sessionId;
+    const p1 = c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'slow' }] });
+    await c.wait(m => m.op === 'turn' && m.running);
+    const a = await c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'first' }] });
+    await c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'second' }] });
+    await c.call('session/cancel', { sessionId: sid });
+    await p1;
+    await c.wait(m => m.op === 'turn' && !m.running);
+    const back = await c.call('bridge/unqueue', { sessionId: sid, id: a.id });
+    const r = await c.call('bridge/requeue', { sessionId: sid, id: a.id, prompt: back.prompt, index: 0 });
+    assert.deepEqual(r, { id: a.id, index: 0 });
+    const qm = await c.wait(m => m.op === 'queue' && m.items.length === 2);
+    assert.deepEqual(qm.items.map(i => [i.id, i.text]), [[a.id, 'first'], [qm.items[1].id, 'second']]);
+    await new Promise(r => setTimeout(r, 100));
+    assert.equal(t.hub.sessions.get(sid).running, false, 'a requeue does not send the held queue');
+    // an id already in the queue gets a fresh one; the index is clamped
+    const dup = await c.call('bridge/requeue', { sessionId: sid, id: a.id, prompt: [{ type: 'text', text: 'again' }], index: 99 });
+    assert.notEqual(dup.id, a.id);
+    assert.equal(dup.index, 2);
+    await assert.rejects(c.call('bridge/requeue', { sessionId: sid, prompt: [] }), e => e.code === -32602);
+    assert.equal((await c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'third' }] })).stopReason, 'end_turn');
+    assert.deepEqual(mockPrompts(c, sid), ['first | second | again | third']);
+  } finally { c.close(); t.done(); }
+});
+
 test('Stop that the agent ignores (turn ends normally) still keeps the queue', async () => {
   const t = await setup();
   const c = new Client(t.port);

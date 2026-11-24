@@ -752,6 +752,7 @@ final class AppModel {
     /// The queue's "Interrupt and Send" (mid-turn) / "Send Now" (after a Stop): send what is queued right away.
     func sendQueued(_ s: ChatStore) {
         guard !s.queued.isEmpty, isReady(s.agent), s.attached else { return }
+        s.forgetRemovedQueued()   // what goes out now is the queue as it stands
         let wasIdle = !s.running
         if wasIdle { s.turnStartedAt = Date() }
         s.running = true
@@ -777,13 +778,12 @@ final class AppModel {
         }
     }
 
-    /// Take a queued message back from the bridge; `edit` puts it into the composer, otherwise it is dropped.
-    func unqueue(_ s: ChatStore, _ q: QueuedMessage, edit: Bool) {
+    /// Take a queued message back from the bridge into the composer, to edit it.
+    func unqueue(_ s: ChatStore, _ q: QueuedMessage) {
         s.queued.removeAll { $0.id == q.id }
         Task {
             do {
                 let r = try await link.call("bridge/unqueue", ["sessionId": .string(s.sessionId), "id": .string(q.id), "agent": .string(s.agent)])
-                guard edit else { return }
                 let blocks = r["prompt"]?.array ?? []
                 // attached files are already on the host: they come back as "[@name](file://…)" links (what Claude Code itself sends)
                 let links = blocks.compactMap(AppModel.linkText)
@@ -795,6 +795,57 @@ final class AppModel {
                 // it went out with the turn that just ended
             } catch {
                 s.composerError = error.localizedDescription
+            }
+        }
+    }
+
+    /// How long a removed queued message can be put back.
+    static let queueUndoWindow: Duration = .seconds(4)
+
+    /// Drop a queued message at once; until the undo window ends it can be put back where it was (`undoRemoveQueued`).
+    func removeQueued(_ s: ChatStore, _ q: QueuedMessage) {
+        let index = s.queued.firstIndex { $0.id == q.id } ?? s.queued.count
+        s.queued.removeAll { $0.id == q.id }
+        let removed = RemovedQueued(message: q, index: index)
+        s.removedQueued = removed
+        s.removedPrompt = Task<[JSON]?, Never> {
+            do {
+                let r = try await link.call("bridge/unqueue", ["sessionId": .string(s.sessionId), "id": .string(q.id), "agent": .string(s.agent)])
+                return r["prompt"]?.array
+            } catch let e as BridgeError where e.code == BridgeError.alreadySent {
+                // it went out with the turn that just ended: nothing to put back
+            } catch {
+                s.composerError = error.localizedDescription
+            }
+            if s.removedQueued == removed { s.forgetRemovedQueued() }
+            return nil
+        }
+        Task {
+            try? await Task.sleep(for: Self.queueUndoWindow)
+            if s.removedQueued == removed { s.forgetRemovedQueued() }
+        }
+    }
+
+    /// Undo of `removeQueued`: the bridge puts the message back at its old place under its old id, so the row
+    /// returns where it was. Undo can come before the removal's answer; it waits for the content.
+    func undoRemoveQueued(_ s: ChatStore) {
+        guard let removed = s.removedQueued, let taken = s.removedPrompt else { return }
+        s.forgetRemovedQueued()
+        let q = removed.message
+        if !s.queued.contains(where: { $0.id == q.id }) { s.queued.insert(q, at: min(removed.index, s.queued.count)) }
+        Task {
+            guard let blocks = await taken.value, !blocks.isEmpty else {
+                // it had already gone out (or the removal failed): nothing to put back
+                s.queued.removeAll { $0.id == q.id }
+                return
+            }
+            do {
+                _ = try await link.call("bridge/requeue", ["sessionId": .string(s.sessionId), "id": .string(q.id), "prompt": .array(blocks),
+                                                          "index": JSON(removed.index), "agent": .string(s.agent)])
+            } catch {
+                s.queued.removeAll { $0.id == q.id }
+                s.composerError = error.localizedDescription
+                Haptics.error()
             }
         }
     }

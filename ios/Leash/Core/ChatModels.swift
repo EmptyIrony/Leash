@@ -611,6 +611,15 @@ struct QueuedMessage: Identifiable, Hashable {
     }
 }
 
+/// A queued message just removed from the queue tray: for a few seconds its row offers Undo (AppModel.removeQueued).
+struct RemovedQueued: Equatable {
+    let message: QueuedMessage
+    /// Where it was in the queue.
+    let index: Int
+    /// Tells a later removal of the same message apart.
+    let token = UUID()
+}
+
 /// A slash command the agent advertises (available_commands_update), or one Leash runs itself (/btw).
 struct AgentCommand: Identifiable, Hashable {
     var id: String { name }
@@ -666,6 +675,14 @@ final class ChatStore {
     var unsentImages: [Data]?
     /// Messages sent mid-turn that wait on the bridge for the turn to end (agents without steering, or "interrupt and send").
     var queued: [QueuedMessage] = []
+    /// The queued message just removed, offered back until the undo window ends or the queue moves on.
+    var removedQueued: RemovedQueued?
+    /// Its content, from the bridge's answer to the removal (nil: it had already gone out, or the removal failed).
+    @ObservationIgnored var removedPrompt: Task<[JSON]?, Never>?
+    func forgetRemovedQueued() {
+        removedQueued = nil
+        removedPrompt = nil
+    }
     /// /btw questions asked on this phone, oldest first; kept until closed (not synced to other devices).
     var sideQuestions: [SideQuestion] = []
     /// Claude Code's /resume list on the computer shows this conversation (nil: not known yet).

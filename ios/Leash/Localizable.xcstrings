@@ -2384,6 +2384,16 @@
         }
       }
     },
+    "Removed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已移除"
+          }
+        }
+      }
+    },
     "Request" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3180,6 +3190,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "开启 Turbo？"
+          }
+        }
+      }
+    },
+    "Undo" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销"
           }
         }
       }

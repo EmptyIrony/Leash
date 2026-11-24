@@ -127,7 +127,7 @@ and Apple Watch app (the watch reaches the Mac through the iPhone app over Watch
 JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
 
 * phone → bridge: `{op:"call", id, method, params}` (ACP methods like `session/new|list|prompt|cancel|set_config_option`,
-  plus `bridge/attach|detach|browse|readFile|restartAgent|shell|btw|unqueue`), `{op:"reply", key, result}` to answer a permission/elicitation.
+  plus `bridge/attach|detach|browse|readFile|restartAgent|shell|btw|unqueue|requeue`), `{op:"reply", key, result}` to answer a permission/elicitation.
 * bridge → phone: `ready`, `result`, `update` (`session/update` with `epoch`+`seq`), `request`/`resolved`
   (permission & questions, broadcast to every device), `turn` (running/idle), `shell` (a "!" command running/done), `agent` (agy process state),
   `queue` (messages waiting for the running turn to end).
@@ -136,7 +136,7 @@ JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
   bridge (`{queued:true, id}`) and sent, merged into one prompt, the moment the turn ends — `running` stays true in between.
   `interrupt:true` queues it and cancels the turn, so it goes out right after (an empty `prompt` sends just the queue). A plain
   `session/cancel` keeps the queue; it goes out ahead of the next prompt, or `bridge/unqueue {sessionId, id}` takes one back
-  (returns its `prompt` blocks). `bridge/attach` returns the `queue`; agent summaries carry `steering`, `turbo` and `btw`.
+  (returns its `prompt` blocks); `bridge/requeue {sessionId, id, prompt, index}` puts it back (the phone's Undo). `bridge/attach` returns the `queue`; agent summaries carry `steering`, `turbo` and `btw`.
 * `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot.
 * `bridge/readFile {path, sessionId?, mode?, maxBytes?}`: text (default, first 512 KB) or `mode: "base64"` (whole file as
   `data`, ≤ 32 MB, else `-32007`); a relative path is taken from the conversation's folder. Reads stay under `$HOME`.

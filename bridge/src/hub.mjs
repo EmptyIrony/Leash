@@ -701,6 +701,7 @@ export class Hub extends EventEmitter {
         return { ok: true };
       }
       case 'bridge/unqueue': return this.unqueue(params);
+      case 'bridge/requeue': return this.requeue(client, params);
       case 'session/set_config_option': {
         const r = await this.requireAgent().call(method, params);
         const s = this.sessions.get(params.sessionId);
@@ -979,6 +980,23 @@ export class Hub extends EventEmitter {
     const [it] = s.queue.splice(i, 1);
     this.#broadcastQueue(s);
     return { id: it.id, prompt: it.blocks };
+  }
+
+  /**
+   * Undo of a dropped queued message: the `prompt` that `unqueue` returned goes back in at `index` (clamped),
+   * under its old `id` while no other message has it. It waits like any queued message (a held queue stays held).
+   */
+  requeue(client, { sessionId, id, prompt, index }) {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new RpcError(-32004, 'attach to the session before queueing');
+    const blocks = Array.isArray(prompt) ? prompt : [];
+    if (!blocks.length) throw new RpcError(-32602, 'prompt required');
+    const item = this.#queueItem(blocks, client);
+    if (typeof id === 'string' && id && !s.queue.some(q => q.id === id)) item.id = id;
+    const at = Number.isInteger(index) ? Math.min(Math.max(index, 0), s.queue.length) : s.queue.length;
+    s.queue.splice(at, 0, item);
+    this.#broadcastQueue(s);
+    return { id: item.id, index: at };
   }
 
   /**
