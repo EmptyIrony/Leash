@@ -464,7 +464,10 @@ struct MarkdownTable: View {
     let rows: [[String]]
     let align: [Int]
     @Environment(\.displayScale) private var displayScale
-    @State private var available: CGFloat = 0
+    /// Starts at the width the last table measured (every transcript table gets the same one), so a lazy row
+    /// scrolled back in lays out at its real height at once instead of re-wrapping after it's measured.
+    @State private var available: CGFloat = MarkdownTable.lastWidth
+    @MainActor private static var lastWidth: CGFloat = 0
 
     // Dynamic Type text styles: body cells .subheadline, header .footnote semibold
     private static var cellFont: UIFont { .preferredFont(forTextStyle: .subheadline) }
@@ -557,7 +560,7 @@ struct MarkdownTable: View {
         .background(Theme.bgRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline, lineWidth: hairline))
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0; Self.lastWidth = $0 }
         .padding(.vertical, 4)
     }
 

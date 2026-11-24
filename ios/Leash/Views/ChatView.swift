@@ -63,6 +63,10 @@ struct ChatView: View {
         var contentHeight: CGFloat
         var bottomInset: CGFloat
         var atEnd: Bool
+        /// The visible area runs past the end: content shrank under a scroll that was at the bottom (a lazy row
+        /// measured shorter than its estimate). The scroll view doesn't pull back on its own, so it reads blank
+        /// until touched.
+        var pastEnd: Bool
     }
 
     // Pinning is geometry-based (no sentinel row): short conversations sit at the top, long ones open at the
@@ -93,10 +97,13 @@ struct ChatView: View {
             // (measured on device: at the bottom, offset 1040 + top 116 + container 620 = content 1776)
             let visibleEnd = g.contentOffset.y + g.contentInsets.top + g.containerSize.height
             return ScrollMetrics(contentHeight: g.contentSize.height, bottomInset: g.contentInsets.bottom,
-                                 atEnd: visibleEnd >= g.contentSize.height - 32)
+                                 atEnd: visibleEnd >= g.contentSize.height - 32,
+                                 pastEnd: visibleEnd > max(g.contentSize.height, g.containerSize.height) + 2)
         } action: { old, new in
             lastAtEnd = new.atEnd
-            if userScrolling {
+            if new.pastEnd && !userScrolling {
+                position.scrollTo(edge: .bottom)
+            } else if userScrolling {
                 if pinned != new.atEnd { pinned = new.atEnd }
             } else if pinned && (new.contentHeight != old.contentHeight || new.bottomInset != old.bottomInset) && !new.atEnd {
                 position.scrollTo(edge: .bottom)

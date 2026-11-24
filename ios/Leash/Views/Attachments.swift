@@ -329,12 +329,16 @@ struct MarkdownImage: View {
     }
 
     var body: some View {
+        // A lazy row scrolled back in starts with fresh @State: read the cache here, not only in .task, so its first
+        // layout already has the image's height (not the 180 pt placeholder, or 0 for a quiet mention) and the
+        // transcript above the viewport doesn't change height under the user's finger.
+        let cache = InlineImageCache.shared
         Group {
-            if let loaded {
-                ImageTile(image: loaded.image, data: loaded.data, name: loaded.name, alt: alt, path: localPath)
+            if let shown = loaded ?? cache.images[key] {
+                ImageTile(image: shown.image, data: shown.data, name: shown.name, alt: alt, path: localPath)
             } else if quiet {
                 Color.clear.frame(height: 0)
-            } else if let failure {
+            } else if let failure = failure ?? cache.failed[key]?.reason {
                 failureRow(failure)
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(uiColor: .secondarySystemFill))
