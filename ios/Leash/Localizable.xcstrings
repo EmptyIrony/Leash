@@ -2820,16 +2820,6 @@
         }
       }
     },
-    "Start one with the compose button." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点新建按钮开始一个对话。"
-          }
-        }
-      }
-    },
     "Starting %@…" : {
       "localizations" : {
         "zh-Hans" : {

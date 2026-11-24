@@ -126,8 +126,15 @@ struct SessionListView: View {
         .scrollEdgeEffectStyle(.soft, for: .top)
         .refreshable { await model.refreshSessions() }
         .overlay {
-            if model.agentReady && model.sessions.isEmpty && !model.sessionsLoading {
-                ContentUnavailableView("No conversations", systemImage: "bubble.left.and.bubble.right", description: Text("Start one with the compose button."))
+            if searching && filtered.isEmpty {
+                ContentUnavailableView.search(text: search)
+            } else if model.agentReady && filtered.isEmpty && !model.sessionsLoading {
+                ContentUnavailableView {
+                    Label("No conversations", systemImage: "bubble.left.and.bubble.right")
+                } actions: {
+                    Button("New conversation") { showNew = true }
+                        .buttonStyle(.glassProminent)
+                }
             }
         }
         .sheet(isPresented: $showQuota) {
@@ -309,6 +316,9 @@ struct FolderSessionsView: View {
         .scrollContentBackground(.hidden)
         .background { SpaceBackground() }
         .refreshable { await model.refreshSessions() }
+        .overlay {
+            if !search.isEmpty && shown.isEmpty { ContentUnavailableView.search(text: search) }
+        }
         .navigationTitle(model.folderTitle(route.folder, agent: route.agent).title)
         .navigationSubtitle(String(localized: "\(all.count) conversations"))
         .searchable(text: $search, prompt: "Search conversations")
