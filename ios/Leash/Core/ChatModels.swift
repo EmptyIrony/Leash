@@ -358,7 +358,6 @@ struct ConfigOption: Identifiable, Hashable {
     }
 
     var currentName: String {
-        if type == "boolean" { return current.bool == true ? String(localized: "On") : String(localized: "Off") }
         let v = current.string ?? ""
         return choices.first { $0.value == v }?.name ?? v
     }
@@ -548,6 +547,7 @@ final class ChatStore {
     var modelOption: ConfigOption? { configOptions.first { $0.category == "model" || $0.id == "model" } }
     var effortOption: ConfigOption? { configOptions.first { $0.category == "thought_level" || $0.id == "thought_level" } }
     var modeOption: ConfigOption? { configOptions.first { $0.category == "mode" || $0.id == "mode" } }
+
     /// Optimistically reflect a choice before the agent confirms it.
     func setLocalConfigValue(_ id: String, _ value: JSON) {
         configOptions = configOptions.map { o in o.id == id ? o.with(current: value) : o }

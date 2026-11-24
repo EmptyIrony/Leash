@@ -48,7 +48,7 @@ struct ChatView: View {
 
     // Split into small pieces so the type checker stays fast.
     var body: some View {
-        lifecycle(chrome(scrollArea))
+        lifecycle(folderActions(chrome(scrollArea)))
     }
 
     /// What pinning needs from the scroll view: content height, bottom inset (composer + trays) and whether the
@@ -126,21 +126,6 @@ struct ChatView: View {
         return base
             .toolbar { ToolbarItem(placement: .topBarTrailing) { moreMenu } }
             .sheet(item: fileSheet) { f in FileViewer(path: f.path, agent: store.agent, sessionId: store.sessionId) }
-            .sheet(isPresented: $showFiles) {
-                if let cwd = store.cwd { ProjectBrowser(root: cwd, agent: store.agent, sessionId: store.sessionId) }
-            }
-            .overlay {
-                if startingNew {
-                    HStack(spacing: 10) { ActivitySpinner(size: 18); Text("Starting…") }
-                        .padding(.horizontal, 18).padding(.vertical, 12)
-                        .glassEffect(.regular, in: .capsule)
-                        .transition(.opacity.animation(Motion.quick))
-                }
-            }
-            .alert("Couldn't start a conversation", isPresented: Binding(get: { newError != nil }, set: { if !$0 { newError = nil } }),
-                   presenting: newError) { _ in
-                Button("OK", role: .cancel) {}
-            } message: { Text($0) }
             .sheet(isPresented: $showQuota) {
                 QuotaSheet()
                     .presentationDetents([.medium, .large])
@@ -162,6 +147,31 @@ struct ChatView: View {
                     Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
                 }
             }
+    }
+
+    /// The folder actions of the ⋯ menu (kept out of `chrome` so neither chain grows too long to type-check).
+    private func folderActions<V: View>(_ content: V) -> some View {
+        content
+            .sheet(isPresented: $showFiles) {
+                if let cwd = store.cwd { ProjectBrowser(root: cwd, agent: store.agent, sessionId: store.sessionId) }
+            }
+            .overlay { startingCapsule }
+            .alert("Couldn't start a conversation", isPresented: showNewError, presenting: newError) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
+    }
+
+    @ViewBuilder private var startingCapsule: some View {
+        if startingNew {
+            HStack(spacing: 10) { ActivitySpinner(size: 18); Text("Starting…") }
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+                .transition(.opacity.animation(Motion.quick))
+        }
+    }
+
+    private var showNewError: Binding<Bool> {
+        Binding(get: { newError != nil }, set: { if !$0 { newError = nil } })
     }
 
     private func enableApproveAll(_ mode: String) {
