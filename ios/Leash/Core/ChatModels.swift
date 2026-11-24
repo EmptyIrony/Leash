@@ -205,12 +205,114 @@ struct TurnStats: Identifiable {
     }
 }
 
+/// A subagent the agent launched (Claude Code's Agent tool), run as a child session (ACP subagents RFD). The bridge
+/// files the child's updates under the root conversation tagged `_meta.leash.subagent`; they land in `entries`.
+@Observable
+final class SubagentItem: Identifiable {
+    let id = UUID()
+    let sessionId: String
+    var title: String?
+    /// The subagent_update `description`: claude-agent-acp puts the agent type there ("Explore", "claude", …).
+    var agentType: String?
+    /// running | idle | requires_action | unknown
+    var state = "running"
+    var stopReason: String?
+    var model: String?
+    /// The child's own transcript: the parent's prompt (as a .user message), thoughts, tools, notes, its reply, nested subagents.
+    var entries: [ChatEntry] = []
+    /// Measured only while watching live (a replay has no timestamps).
+    var startedAt: Date?
+    var endedAt: Date?
+    @ObservationIgnored var planItem: PlanItem?
+    /// Messages this child sent to its own children: their chunks are not part of its prompt.
+    @ObservationIgnored var outgoing: Set<String> = []
+    init(sessionId: String) { self.sessionId = sessionId }
+
+    var isRunning: Bool { state == "running" || state == "requires_action" }
+    var needsAction: Bool { state == "requires_action" }
+    var displayTitle: String { (title?.isEmpty == false ? title : nil) ?? agentType ?? String(localized: "Agent") }
+
+    /// The child's work as one activity group (no user prompt), for the live line and the step count.
+    var activity: ActivityGroup {
+        ActivityGroup(id: id, steps: entries.filter { if case .message(let m) = $0 { return m.role != .user }; if case .tool = $0 { return true }; if case .subagent = $0 { return true }; return false })
+    }
+    var stepCount: Int { let a = activity; return a.visibleTools.count + a.subagents.count }
+
+    /// "Explore · Fable 5.2 · Running git status…" while it runs, "Explore · 42 steps · 1m 3s" once done.
+    var secondaryLine: String {
+        var parts: [String] = []
+        if let t = agentType, !t.isEmpty, t != title { parts.append(t) }
+        if isRunning {
+            if let m = model { parts.append(m) }
+            parts.append(needsAction ? String(localized: "Needs approval") : activity.liveAction)
+        } else {
+            let n = stepCount
+            parts.append(n == 1 ? String(localized: "1 step") : String(localized: "\(n) steps"))
+            if let a = startedAt, let b = endedAt { parts.append(durationText(b.timeIntervalSince(a).rounded())) }
+            if stopReason == "cancelled" { parts.append(String(localized: "Stopped")) }
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// This child and every subagent nested in it (their requests show in its view).
+    var lineage: Set<String> {
+        var ids: Set<String> = [sessionId]
+        for e in entries { if case .subagent(let s) = e { ids.formUnion(s.lineage) } }
+        return ids
+    }
+
+    /// subagent_update: patch semantics (an absent key leaves the value, null clears it).
+    func applyAnnouncement(_ u: JSON, live: Bool) {
+        if let t = u["title"] { title = t.string }
+        if let d = u["description"] { agentType = d.string }
+        if let st = u["state"], let s = st["state"]?.string {
+            let wasRunning = isRunning
+            state = s
+            stopReason = st["stopReason"]?.string
+            if live, wasRunning, !isRunning { endedAt = Date() }
+            if live, !wasRunning, isRunning { startedAt = Date(); endedAt = nil }
+        }
+    }
+
+    func appendText(role: MessageItem.Role, block: JSON, messageId: String?) {
+        if case .message(let last)? = entries.last, last.role == role, last.messageId == messageId,
+           ChatStore.merge(block, type: block["type"]?.string, into: last, synthetic: false) { return }
+        if let item = ChatStore.newMessage(role: role, block: block, messageId: messageId) { entries.append(.message(item)) }
+    }
+
+    /// session_message: the parent's prompt to this child becomes its first (user) message; other directions are skipped.
+    func applySessionMessage(_ u: JSON) {
+        guard let mid = u["messageId"]?.string else { return }
+        if let from = u["senderSessionId"]?.string, from == sessionId { outgoing.insert(mid); return }
+        guard u["recipientSessionId"]?.string == sessionId || u["recipientSessionId"] == nil else { return }
+        guard let blocks = u["content"]?.array else { return }
+        let text = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
+        if let m = prompt(mid) { m.text = text; return }
+        let m = MessageItem(role: .user, text: text, messageId: mid)
+        // the prompt leads the transcript even if some of the child's output came first
+        if let i = entries.firstIndex(where: { if case .message(let x) = $0 { return x.role != .user }; return true }) { entries.insert(.message(m), at: i) }
+        else { entries.append(.message(m)) }
+    }
+
+    func applySessionMessageChunk(_ u: JSON) {
+        guard let mid = u["messageId"]?.string, !outgoing.contains(mid), let block = u["content"] else { return }
+        if let m = prompt(mid) { _ = ChatStore.merge(block, type: block["type"]?.string, into: m, synthetic: false); return }
+        if let m = ChatStore.newMessage(role: .user, block: block, messageId: mid) { entries.append(.message(m)) }
+    }
+
+    private func prompt(_ mid: String) -> MessageItem? {
+        for e in entries { if case .message(let m) = e, m.role == .user, m.messageId == mid { return m } }
+        return nil
+    }
+}
+
 enum ChatEntry: Identifiable {
     case message(MessageItem)
     case tool(ToolItem)
     case plan(PlanItem)
     case notice(NoticeItem)
     case stats(TurnStats)
+    case subagent(SubagentItem)
     var id: UUID {
         switch self {
         case .message(let m): return m.id
@@ -218,6 +320,7 @@ enum ChatEntry: Identifiable {
         case .plan(let p): return p.id
         case .notice(let n): return n.id
         case .stats(let s): return s.id
+        case .subagent(let s): return s.id
         }
     }
 }
@@ -233,6 +336,9 @@ struct ActivityGroup: Identifiable {
     var planEntries: [PlanEntry] = []
 
     var tools: [ToolItem] { steps.compactMap { if case .tool(let t) = $0 { return t }; return nil } }
+    var subagents: [SubagentItem] { steps.compactMap { if case .subagent(let s) = $0 { return s }; return nil } }
+    /// Subagents of this turn still working (background ones outlive the turn).
+    var runningSubagents: [SubagentItem] { subagents.filter(\.isRunning) }
     var visibleTools: [ToolItem] { tools.filter { !$0.isStepsTool } }
 
     var checklist: [ChecklistStep] {
@@ -253,6 +359,8 @@ struct ActivityGroup: Identifiable {
         let edited = editedPaths.isEmpty ? edits.count : editedPaths.count
         let browsed = t.filter { $0.kind == "fetch" }.count
         let other = t.count - explored - ran - edits.count - browsed
+        let agents = subagents.count
+        if agents > 0 { clauses.append(agents == 1 ? String(localized: "ran 1 agent") : String(localized: "ran \(agents) agents")) }
         if explored > 0 { clauses.append(explored == 1 ? String(localized: "explored 1 file") : String(localized: "explored \(explored) files")) }
         if ran > 0 { clauses.append(ran == 1 ? String(localized: "ran 1 command") : String(localized: "ran \(ran) commands")) }
         if edited > 0 { clauses.append(edited == 1 ? String(localized: "edited 1 file") : String(localized: "edited \(edited) files")) }
@@ -286,6 +394,8 @@ struct ActivityGroup: Identifiable {
                 }
             case .message(let m) where m.role == .thought:
                 return String(localized: "Thinking…")
+            case .subagent(let s) where s.isRunning:
+                return s.displayTitle + ": " + (s.needsAction ? String(localized: "Needs approval") : s.activity.liveAction)
             default: break
             }
         }
@@ -474,6 +584,10 @@ final class ChatStore {
     @ObservationIgnored var lastSeq = 0
     @ObservationIgnored private var toolIndex: [String: ToolItem] = [:]
     @ObservationIgnored private var planItem: PlanItem?
+    /// Every subagent of this conversation by child session id, nested ones included (observed: a pushed
+    /// subagent view finds its item again after a reattach rebuilt the transcript).
+    private(set) var subIndex: [String: SubagentItem] = [:]
+    func subagent(_ sessionId: String) -> SubagentItem? { subIndex[sessionId] }
     /// The optimistic bubble's item after the echo adopted it, and how many of the echo's image blocks it already shows.
     @ObservationIgnored private weak var adoptedEcho: MessageItem?
     @ObservationIgnored private var echoImagesToSkip = 0
@@ -517,6 +631,10 @@ final class ChatStore {
             case .tool(let t):
                 demoteAnswer()
                 if group == nil { group = ActivityGroup(id: t.id) }
+                group!.steps.append(e)
+            case .subagent(let s):
+                demoteAnswer()
+                if group == nil { group = ActivityGroup(id: s.id) }
                 group!.steps.append(e)
             case .plan(let p):
                 if group == nil { group = ActivityGroup(id: p.id) }
@@ -581,6 +699,7 @@ final class ChatStore {
         entries = []
         toolIndex = [:]
         planItem = nil
+        subIndex = [:]
         for e in events { apply(e["update"] ?? .null) }
         if pendingEcho != nil { withoutAnimation { pendingEcho = nil } }
         adoptedEcho = nil; echoImagesToSkip = 0
@@ -625,7 +744,7 @@ final class ChatStore {
     }
 
     /// Adds one more block of the same message to `last`; false when the block starts a row of its own.
-    private static func merge(_ block: JSON, type: String?, into last: MessageItem, synthetic: Bool) -> Bool {
+    nonisolated static func merge(_ block: JSON, type: String?, into last: MessageItem, synthetic: Bool) -> Bool {
         if type == "text", let t = block["text"]?.string {
             // Synthetic user blocks are separate prompt parts: join with a newline.
             if synthetic && last.role == .user && !last.text.isEmpty { last.text += "\n" + t } else { last.text += t }
@@ -656,19 +775,26 @@ final class ChatStore {
             if type == "image", last === adoptedEcho, echoImagesToSkip > 0 { echoImagesToSkip -= 1; return }
             if Self.merge(block, type: type, into: last, synthetic: synthetic) { return }
         }
-        let item = MessageItem(role: role, text: "", messageId: messageId)
+        guard let item = Self.newMessage(role: role, block: block, messageId: messageId) else { return }
         item.synthetic = synthetic
-        if type == "text" { item.text = block["text"]?.string ?? "" }
-        else if type == "image", let d = block["data"]?.string, let data = Data(base64Encoded: d) { item.images.append(data) }
-        else if type == "resource_link" || type == "resource", let f = FileRef(block: block) { item.files.append(f) }
-        else if type == "resource" { item.text = block["resource"]?["text"]?.string ?? "" }   // embedded text without a file uri
-        else { return }
         if echo && live {
             // a message nobody here was waiting for (sent at turn end from the queue, or from another device)
             withAnimation(Motion.layout) { entries.append(.message(item)) }
         } else {
             entries.append(.message(item))
         }
+    }
+
+    /// A row for a block that starts a message; nil for a block type a message can't show.
+    nonisolated static func newMessage(role: MessageItem.Role, block: JSON, messageId: String?) -> MessageItem? {
+        let type = block["type"]?.string
+        let item = MessageItem(role: role, text: "", messageId: messageId)
+        if type == "text" { item.text = block["text"]?.string ?? "" }
+        else if type == "image", let d = block["data"]?.string, let data = Data(base64Encoded: d) { item.images.append(data) }
+        else if type == "resource_link" || type == "resource", let f = FileRef(block: block) { item.files.append(f) }
+        else if type == "resource" { item.text = block["resource"]?["text"]?.string ?? "" }   // embedded text without a file uri
+        else { return nil }
+        return item
     }
 
     /// The optimistic bubble's item becomes the transcript row; the echo's text replaces its text (identical unless
@@ -690,8 +816,11 @@ final class ChatStore {
     }
 
     func apply(_ u: JSON, live: Bool = false) {
+        if let child = u["_meta"]?["leash"]?["subagent"]?.string { applyChild(child, u, live: live); return }
         let synthetic = u["_meta"]?["leash"]?["synthetic"]?.bool == true
         switch u["sessionUpdate"]?.string {
+        case "subagent_update":
+            announce(u, in: nil, live: live)
         case "user_message_chunk":
             // The bridge records its own echo of every prompt as synthetic (hub.mjs #echo); only "!" shell entries
             // (synthetic + shell) are not the user's message.
@@ -745,6 +874,54 @@ final class ChatStore {
             if let id = u["toolCallId"]?.string, let t = toolIndex[id] { t.autoApproved = true }
         case "notice":
             entries.append(.notice(NoticeItem(severity: u["severity"]?.string ?? "info", title: u["title"]?.string ?? String(localized: "Notice"), detail: u["description"]?.string)))
+        default:
+            break
+        }
+    }
+
+    /// subagent_update on the root (`parent` nil) or on a child: announces a subagent where it was launched, or updates it.
+    private func announce(_ u: JSON, in parent: SubagentItem?, live: Bool) {
+        guard let cid = u["sessionId"]?.string else { return }
+        let s: SubagentItem
+        if let known = subIndex[cid] { s = known } else {
+            s = SubagentItem(sessionId: cid)
+            subIndex[cid] = s
+            if let parent { parent.entries.append(.subagent(s)) } else { entries.append(.subagent(s)) }
+        }
+        s.applyAnnouncement(u, live: live)
+    }
+
+    /// An update from a subagent's own session goes into its transcript, never the root's state.
+    private func applyChild(_ cid: String, _ u: JSON, live: Bool) {
+        let s: SubagentItem
+        if let known = subIndex[cid] { s = known } else {
+            // a trimmed log can start after the announcement: the first update places it here
+            s = SubagentItem(sessionId: cid)
+            subIndex[cid] = s
+            entries.append(.subagent(s))
+        }
+        switch u["sessionUpdate"]?.string {
+        case "agent_message_chunk": s.appendText(role: .agent, block: u["content"] ?? .null, messageId: u["messageId"]?.string)
+        case "agent_thought_chunk": s.appendText(role: .thought, block: u["content"] ?? .null, messageId: u["messageId"]?.string)
+        case "user_message_chunk": s.appendText(role: .user, block: u["content"] ?? .null, messageId: u["messageId"]?.string)
+        case "session_message": s.applySessionMessage(u)
+        case "session_message_chunk": s.applySessionMessageChunk(u)
+        case "tool_call", "tool_call_update":
+            guard let id = u["toolCallId"]?.string else { return }
+            if let t = toolIndex[id] { t.apply(u); return }
+            let t = ToolItem(toolCallId: id)
+            t.apply(u)
+            toolIndex[id] = t
+            s.entries.append(.tool(t))
+        case "subagent_update":
+            announce(u, in: s, live: live)
+        case "config_option_update":
+            if let m = (u["configOptions"]?.array ?? []).compactMap(ConfigOption.init).first(where: { $0.category == "model" || $0.id == "model" }) { s.model = m.currentName }
+        case "plan":
+            let p = s.planItem ?? { let p = PlanItem(); s.planItem = p; s.entries.append(.plan(p)); return p }()
+            p.entries = (u["entries"]?.array ?? []).map { PlanEntry(content: $0["content"]?.string ?? "", status: $0["status"]?.string ?? "pending", priority: $0["priority"]?.string ?? "medium") }
+        case "notice":
+            s.entries.append(.notice(NoticeItem(severity: u["severity"]?.string ?? "info", title: u["title"]?.string ?? String(localized: "Notice"), detail: u["description"]?.string)))
         default:
             break
         }

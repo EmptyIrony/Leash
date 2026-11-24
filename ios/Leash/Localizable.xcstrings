@@ -1,6 +1,46 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld agents still running" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个 agent 仍在运行"
+          }
+        }
+      }
+    },
+    "Agent needs approval" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 需要批准"
+          }
+        }
+      }
+    },
+    "Agent not loaded" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 未加载"
+          }
+        }
+      }
+    },
+    "Needs approval" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要批准"
+          }
+        }
+      }
+    },
     "New Conversation Here" : {
       "localizations" : {
         "zh-Hans" : {
@@ -67,6 +107,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有收到回答。"
+          }
+        }
+      }
+    },
+    "Prompt" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "提示词"
+          }
+        }
+      }
+    },
+    "ran %lld agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 %lld 个 agent"
+          }
+        }
+      }
+    },
+    "ran 1 agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行了 1 个 agent"
+          }
+        }
+      }
+    },
+    "Show more" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开"
           }
         }
       }
@@ -187,6 +267,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不询问"
+          }
+        }
+      }
+    },
+    "Still running: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在运行：%@"
           }
         }
       }

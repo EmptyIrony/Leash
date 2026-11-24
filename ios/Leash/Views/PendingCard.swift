@@ -8,6 +8,8 @@ struct ApprovalTray: View {
     var index = 1
     var total = 1
     var openFile: (String) -> Void
+    /// A subagent's request names it above the title (off inside that subagent's own view).
+    var showsAgent = true
 
     struct PermOption: Identifiable, Hashable { let id: String; let name: String; let kind: String }
 
@@ -21,6 +23,7 @@ struct ApprovalTray: View {
     var body: some View {
         let t = tool
         VStack(alignment: .leading, spacing: 10) {
+            if showsAgent, let a = request.subagent { SubagentAttribution(agent: a, rootSessionId: request.sessionId) }
             HStack(spacing: 8) {
                 Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention)
                 RequestSwap(current: request.key) {
@@ -298,15 +301,39 @@ final class ElicitationAnswers {
     }
 }
 
+/// "⑂ Design the icon · Explore" above a subagent's request; it opens that subagent's transcript (the tray follows).
+private struct SubagentAttribution: View {
+    let agent: SubagentRef
+    let rootSessionId: String?
+
+    var body: some View {
+        let label = Label {
+            Text(agent.label.isEmpty ? String(localized: "Agent") : agent.label).lineLimit(1).truncationMode(.middle)
+        } icon: {
+            Image(systemName: "arrow.triangle.branch")
+        }
+        .font(.caption)
+        .foregroundStyle(Theme.textSecondary)
+        if let root = rootSessionId {
+            NavigationLink(value: SubagentRoute(root: root, child: agent.sessionId)) { label }
+                .buttonStyle(.pressable(scale: 1))
+        } else {
+            label
+        }
+    }
+}
+
 /// A question from the agent, docked above the composer in the same glass container as the composer.
 /// Like `ApprovalTray`, the glass stays put while the next question replaces this one inside it.
 struct QuestionTray: View {
     let request: PendingRequest
     var index = 1
     var total = 1
+    var showsAgent = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showsAgent, let a = request.subagent { SubagentAttribution(agent: a, rootSessionId: request.sessionId) }
             HStack(spacing: 8) {
                 Image(systemName: "questionmark.bubble.fill").foregroundStyle(Theme.accent)
                 Text("Agent asks").font(.subheadline.weight(.semibold))

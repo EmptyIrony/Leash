@@ -39,12 +39,21 @@ struct SessionSummary: Identifiable, Hashable {
     var folderName: String { (cwd as NSString).lastPathComponent }
 }
 
+/// The subagent a request came from (the bridge files it under the root conversation).
+struct SubagentRef: Hashable {
+    let sessionId: String
+    let title: String?
+    let agentType: String?
+    var label: String { [title, agentType == title ? nil : agentType].compactMap { $0 }.joined(separator: " · ") }
+}
+
 struct PendingRequest: Identifiable, Hashable {
     let key: String
     var agentId: String = "agy"
     let method: String
     let sessionId: String?
     let params: JSON
+    var subagent: SubagentRef?
     var id: String { key }
     var isPermission: Bool { method == "session/request_permission" }
     var toolTitle: String { params["toolCall"]?["title"]?.string ?? params["message"]?.string ?? String(localized: "Needs your input") }
@@ -290,7 +299,10 @@ final class AppModel {
 
     private func addPending(_ p: JSON, notify: Bool) {
         guard let key = p["key"]?.string, let method = p["method"]?.string else { return }
-        let req = PendingRequest(key: key, agentId: p["agentId"]?.string ?? String(key.split(separator: ":").first ?? "agy"), method: method, sessionId: p["sessionId"]?.string, params: p["params"] ?? .null)
+        var req = PendingRequest(key: key, agentId: p["agentId"]?.string ?? String(key.split(separator: ":").first ?? "agy"), method: method, sessionId: p["sessionId"]?.string, params: p["params"] ?? .null)
+        if let sub = p["subagent"], let sid = sub["sessionId"]?.string {
+            req.subagent = SubagentRef(sessionId: sid, title: sub["title"]?.string, agentType: sub["description"]?.string)
+        }
         pending[key] = req
         refreshPendingCounts()
         if notify {
