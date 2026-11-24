@@ -521,6 +521,16 @@ struct QueuedMessage: Identifiable, Hashable {
     }
 }
 
+/// A slash command the agent advertises (available_commands_update), or one Leash runs itself (/btw).
+struct AgentCommand: Identifiable, Hashable {
+    var id: String { name }
+    /// without the slash
+    let name: String
+    let description: String
+    /// what it takes after the name ("pr-number"), when the agent says
+    let hint: String?
+}
+
 /// A /btw side question: answered from the conversation's context by a throwaway fork; never part of the transcript.
 struct SideQuestion: Identifiable, Equatable {
     let id = UUID()
@@ -547,7 +557,7 @@ final class ChatStore {
     var configOptions: [ConfigOption] = []
     var modes: [SessionMode] = []
     var currentMode: String?
-    var commands: [(name: String, description: String)] = []
+    var commands: [AgentCommand] = []
     var usage: (used: Int, size: Int)?
     var autoApprove = false
     var turnStartedAt: Date?
@@ -863,8 +873,10 @@ final class ChatStore {
             if let t = u["title"]?.string { title = t }
         case "available_commands_update":
             commands = (u["availableCommands"]?.array ?? []).compactMap { c in
-                guard let n = c["name"]?.string else { return nil }
-                return (n, c["description"]?.string ?? "")
+                guard let raw = c["name"]?.string else { return nil }
+                let n = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+                guard !n.isEmpty else { return nil }
+                return AgentCommand(name: n, description: c["description"]?.string ?? "", hint: c["input"]?["hint"]?.string)
             }
         case "usage_update":
             if let used = u["used"]?.int, let size = u["size"]?.int { usage = (used, size) }

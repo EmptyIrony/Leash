@@ -44,6 +44,16 @@
         }
       }
     },
+    "Inserts the command" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插入这个命令"
+          }
+        }
+      }
+    },
     "Mark as Read" : {
       "localizations" : {
         "zh-Hans" : {
@@ -60,6 +70,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标为未读"
+          }
+        }
+      }
+    },
+    "question" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "问题"
           }
         }
       }

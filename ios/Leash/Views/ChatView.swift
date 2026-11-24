@@ -362,6 +362,7 @@ struct ChatView: View {
     private var trayVisible: Bool { !permissionRequests.isEmpty || !questionRequests.isEmpty }
 
     @ViewBuilder private var bottomControls: some View {
+        let commands = paletteMatches
         GlassEffectContainer(spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 if let req = permissionRequests.first {
@@ -394,6 +395,13 @@ struct ChatView: View {
                         .glassEffectTransition(.materialize)
                         .transition(Motion.tray)
                 }
+                if !commands.isEmpty {
+                    CommandPalette(items: commands, compact: trayVisible || !store.queued.isEmpty || !store.sideQuestions.isEmpty,
+                                   pick: pickCommand)
+                        .glassEffectID("commands", in: glassNS)
+                        .glassEffectTransition(.materialize)
+                        .transition(Motion.tray)
+                }
                 slab
                 if !trayVisible { chipRow.transition(Motion.tray) }
             }
@@ -404,7 +412,46 @@ struct ChatView: View {
             .animation(Motion.layout, value: questionRequests.first?.key)
             .animation(Motion.layout, value: store.queued)
             .animation(Motion.layout, value: store.sideQuestions.map(\.id))
+            .animation(Motion.layout, value: commands.isEmpty)
         }
+    }
+
+    /// The draft is a bare "/word" being typed: the commands it could start, Leash's own first, then the agent's in
+    /// the order it lists them.
+    private var paletteMatches: [AgentCommand] {
+        guard composerFocused, draft.hasPrefix("/"), !draft.contains(where: \.isWhitespace) else { return [] }
+        let q = draft.dropFirst().lowercased()
+        var all: [AgentCommand] = []
+        if model.asksSideQuestions(store.agent) {
+            all.append(AgentCommand(name: "btw", description: String(localized: "Side question · not added to the conversation"), hint: String(localized: "question")))
+        }
+        // mid-turn a message is steered into the turn or queued, not run as a command
+        if !store.running { all += store.commands.filter { $0.name.lowercased() != "btw" } }
+        return q.isEmpty ? all : all.filter { $0.name.lowercased().hasPrefix(q) }
+    }
+
+    private func pickCommand(_ c: AgentCommand) {
+        draft = "/" + c.name + " "
+        composerFocused = true
+        Haptics.selection()
+    }
+
+    /// A command was picked (or typed) and takes something: what, where shell mode says where it runs.
+    private var pickedCommand: AgentCommand? {
+        guard !isBtw, draft.hasPrefix("/"), let space = draft.firstIndex(where: \.isWhitespace) else { return nil }
+        let name = draft[draft.index(after: draft.startIndex)..<space]
+        return store.commands.first { $0.name == name && !($0.hint ?? "").isEmpty }
+    }
+
+    private func commandStatus(_ c: AgentCommand) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "slash.circle")
+            Text(verbatim: "/" + c.name + " · " + (c.hint ?? ""))
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(Theme.textSecondary)
+        .lineLimit(1).truncationMode(.tail)
+        .padding(.horizontal, 8).padding(.top, 4)
     }
 
     static func lockText(_ by: String) -> String {
@@ -441,6 +488,7 @@ struct ChatView: View {
         VStack(alignment: .leading, spacing: 8) {
             if isShell { shellStatus.transition(Motion.reveal) }
             if isBtw { btwStatus.transition(Motion.reveal) }
+            if let c = pickedCommand { commandStatus(c).transition(Motion.reveal) }
             if (!images.isEmpty || !files.isEmpty) && !isShell && !isBtw {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -495,6 +543,7 @@ struct ChatView: View {
         .opacity(composerEnabled ? 1 : 0.5)
         .animation(Motion.quick, value: isShell)
         .animation(Motion.quick, value: isBtw)
+        .animation(Motion.quick, value: pickedCommand?.name)
         .photosPicker(isPresented: $showPhotoPicker, selection: $pickerItems, maxSelectionCount: 4, matching: .images)
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let r = PendingFile.load(result)
