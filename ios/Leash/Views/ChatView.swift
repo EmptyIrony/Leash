@@ -471,9 +471,12 @@ struct ChatView: View {
                     .textInputAutocapitalization(isShell ? .never : .sentences)
                     .keyboardType(isShell ? .asciiCapable : .default)
                     .focused($composerFocused)
-                    // one line is exactly as tall as the 34 pt buttons, so the row is centred; more lines grow upward
-                    // with the buttons staying on the last line (the HStack is bottom-aligned)
-                    .padding(.vertical, 6)
+                    // one line is exactly as tall as the 34 pt buttons; more lines grow upward with the buttons staying
+                    // on the last line (the HStack is bottom-aligned). The line box reserves descender room, so the
+                    // glyphs sit ~1.5 pt above its centre: the padding is shifted down by that to centre them optically
+                    // on the + and send circles.
+                    .padding(.top, 7.5)
+                    .padding(.bottom, 4.5)
                     .frame(minHeight: 34)
                     .disabled(!composerEnabled)
                     .onKeyPress(.return, phases: .down) { press in
