@@ -105,6 +105,54 @@ export function compactEvents(events) {
   return out;
 }
 
+/**
+ * The phone takes a frame whole and gives up on the connection past 64 MB (URLSessionWebSocketTask's
+ * maximumMessageSize), and a conversation's history with its subagents can run past 150 MB of screenshots.
+ * An attach result stays under this.
+ */
+export const SNAPSHOT_BUDGET = 24 * 1024 * 1024;
+const LONG_TEXT = 16 * 1024;
+const kb = n => Math.max(1, Math.round(n / 1024)) + ' KB';
+const isTool = u => u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'tool_call_update';
+
+/**
+ * Events that fit in `budget` bytes of JSON: past it, the oldest weight goes first. Pictures in tool output become a
+ * line saying so, then long tool output is cut, then pictures the user sent; history that still does not fit is
+ * dropped from the start. Returns copies; the log itself keeps everything.
+ */
+export function fitSnapshot(events, budget = SNAPSHOT_BUDGET) {
+  const size = e => Buffer.byteLength(JSON.stringify(e));
+  const sizes = events.map(size);
+  let total = sizes.reduce((a, b) => a + b, 0);
+  if (total <= budget) return events;
+  const out = events.slice();
+  const pass = rewrite => {
+    for (let i = 0; i < out.length && total > budget; i++) {
+      const update = rewrite(out[i].update);
+      if (!update) continue;
+      out[i] = { ...out[i], update };
+      const n = size(out[i]);
+      total -= sizes[i] - n; sizes[i] = n;
+    }
+  };
+  const blocks = map => u => {
+    if (!isTool(u) || !Array.isArray(u.content)) return null;
+    let changed = false;
+    const content = u.content.map(b => { const r = map(b); if (r) changed = true; return r ?? b; });
+    return changed ? { ...u, content } : null;
+  };
+  const note = text => ({ type: 'content', content: { type: 'text', text } });
+  pass(blocks(b => b?.type === 'content' && b.content?.type === 'image'
+    ? note(`[picture not sent to the phone (${kb(String(b.content.data ?? '').length * 3 / 4)}): the conversation is too long]`) : null));
+  pass(blocks(b => b?.type === 'content' && b.content?.type === 'text' && b.content.text?.length > LONG_TEXT
+    ? note(b.content.text.slice(0, LONG_TEXT) + `\n… [${kb(Buffer.byteLength(b.content.text.slice(LONG_TEXT)))} more not sent to the phone]`) : null));
+  pass(u => u?.sessionUpdate === 'user_message_chunk' && u.content?.type === 'image'
+    ? { ...u, content: { type: 'text', text: `[picture not sent to the phone (${kb(String(u.content.data ?? '').length * 3 / 4)})]` } } : null);
+  let drop = 0;
+  while (total > budget && drop < out.length - 1) total -= sizes[drop++];
+  return drop ? out.slice(drop) : out;
+}
+
 /** The child session a recorded update came from (the bridge tags subagent updates it files under their root). */
 const subagentOf = u => u?._meta?.leash?.subagent ?? null;
 
@@ -117,6 +165,8 @@ const childBusy = c => ['running', 'requires_action'].includes(c?.state?.state);
 export function normalizeUpdate(u) {
   const k = u?.sessionUpdate;
   if (k !== 'tool_call' && k !== 'tool_call_update') return u;
+  // Claude Code's result again (screenshots included): the phone reads rawOutput only when there is no content
+  if (Array.isArray(u.content) && u.content.length && u.rawOutput != null) { const { rawOutput: _, ...rest } = u; u = rest; }
   const toolName = u.name ?? u._meta?.claudeCode?.toolName;
   if (toolName === 'REPL' && u.rawInput && typeof u.rawInput === 'object') {
     const out = { ...u };
@@ -769,10 +819,10 @@ export class Hub extends EventEmitter {
     let reset, events;
     if (epoch && epoch === s.epoch && sinceSeq >= firstSeq - 1 && sinceSeq <= s.seq) {
       reset = false;
-      events = s.events.filter(e => e.seq > sinceSeq);
+      events = fitSnapshot(s.events.filter(e => e.seq > sinceSeq));
     } else {
       reset = true;
-      events = compactEvents(s.events);
+      events = fitSnapshot(compactEvents(s.events));
     }
     this.#subscribe(client, s);
     s.lastActive = Date.now();

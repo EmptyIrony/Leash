@@ -40,7 +40,13 @@ export function createServer({ hub, token, log = console.log }) {
   wss.on('connection', (ws, req) => {
     const remote = req.socket.remoteAddress;
     const name = req.headers['x-leash-client'] || 'client';
-    const send = msg => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
+    const send = msg => {
+      if (ws.readyState !== ws.OPEN) return;
+      const data = JSON.stringify(msg);
+      // the phone drops the connection on a frame past 64 MB (URLSessionWebSocketTask's maximumMessageSize)
+      if (data.length > 8 * 1024 * 1024) log(`${remote} (${name}): ${(data.length / 1048576).toFixed(1)} MB frame (${msg.op}${msg.id != null ? ' #' + msg.id : ''})`);
+      ws.send(data);
+    };
     const client = hub.addClient(send, { remote, name });
     log(`client #${client.id} connected from ${remote} (${name})`);
     // last time the app itself spoke while on screen (its 15 s pings or a message): notify.mjs treats ~25 s of silence

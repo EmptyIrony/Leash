@@ -5,7 +5,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { Hub, compactEvents, normalizeUpdate } from '../src/hub.mjs';
+import { Hub, compactEvents, normalizeUpdate, fitSnapshot } from '../src/hub.mjs';
 import { QuotaPoller, normalizeQuota } from '../src/quota.mjs';
 import { Router } from '../src/router.mjs';
 import { createServer } from '../src/server.mjs';
@@ -355,6 +355,37 @@ test('compactEvents merges by messageId only', () => {
   const c = compactEvents(ev);
   assert.equal(c.length, 2); assert.equal(c[1].update.content.text, 'yz'); assert.equal(c[1].seq, 3);
   assert.equal(ev[1].update.content.text, 'y', 'input not mutated');
+});
+
+
+test('normalizeUpdate drops rawOutput a tool call also has as content', () => {
+  const img = { type: 'content', content: { type: 'image', mimeType: 'image/png', data: 'AAAA' } };
+  const u = normalizeUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 't', title: 'Poll', content: [img], rawOutput: [img.content] });
+  assert.equal(u.rawOutput, undefined); assert.deepEqual(u.content, [img]);
+  const bare = normalizeUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 't', title: 'Bash', rawOutput: 'out' });
+  assert.equal(bare.rawOutput, 'out', 'kept when it is all there is');
+});
+
+test('fitSnapshot keeps an image-heavy history under the budget, oldest pictures first', () => {
+  const pic = 'A'.repeat(400_000);
+  const ev = [];
+  for (let i = 1; i <= 100; i++) ev.push({ seq: i, update: { sessionUpdate: 'tool_call', toolCallId: 't' + i, title: 'Poll', status: 'completed',
+    content: [{ type: 'content', content: { type: 'text', text: 'shot ' + i } }, { type: 'content', content: { type: 'image', mimeType: 'image/png', data: pic } }] } });
+  ev.push({ seq: 101, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done' } } });
+  const budget = 10_000_000;
+  const out = fitSnapshot(ev, budget);
+  assert.ok(Buffer.byteLength(JSON.stringify(out)) <= budget);
+  assert.equal(out.length, ev.length, 'no history dropped');
+  assert.equal(out[0].update.content[1].content.type, 'text', 'oldest picture replaced');
+  assert.match(out[0].update.content[1].content.text, /not sent to the phone/);
+  assert.equal(out[99].update.content[1].content.type, 'image', 'newest picture kept');
+  assert.equal(ev[0].update.content[1].content.type, 'image', 'input not mutated');
+  assert.equal(fitSnapshot(ev.slice(-3), budget).length, 3);
+  assert.equal(fitSnapshot(ev.slice(-3), budget)[0], ev[98], 'small histories pass through untouched');
+  // nothing left to shrink: the start goes
+  const texts = Array.from({ length: 50 }, (_, i) => ({ seq: i + 1, update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + i, content: { type: 'text', text: 'x'.repeat(100_000) } } }));
+  const cut = fitSnapshot(texts, 1_000_000);
+  assert.ok(Buffer.byteLength(JSON.stringify(cut)) <= 1_000_000); assert.equal(cut.at(-1).seq, 50);
 });
 
 
