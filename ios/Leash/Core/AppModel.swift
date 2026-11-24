@@ -31,6 +31,9 @@ struct SessionSummary: Identifiable, Hashable {
     var pendingCount: Int
     /// open in another client right now ("cli", "claude-desktop", …); such sessions can't be opened here
     var lockedBy: String? = nil
+    /// how the bridge's last turn here ended, and when (newer bridges; the Live Activity fills in a turn it missed)
+    var lastStopReason: String? = nil
+    var turnEndedAt: Date? = nil
 
     var displayTitle: String {
         if let t = title, !t.isEmpty { return t }
@@ -67,9 +70,19 @@ struct BrowseResult {
     let files: [String]
 }
 
+/// A conversation to bring on screen (a Bark tap, the Live Activity): RootView routes to it.
+struct OpenRequest: Equatable {
+    let id = UUID()
+    let sessionId: String
+}
+
 @Observable
 @MainActor
 final class AppModel {
+    /// One model for the process: Live Activity buttons and the watch can start the app in the background with no
+    /// scene, and need it from launch (LeashApp.init).
+    static let shared = AppModel()
+
     // persisted connection settings
     var host: String = "" { didSet { UserDefaults.standard.set(host, forKey: "host") } }
     var port: Int = 8787 { didSet { UserDefaults.standard.set(port, forKey: "port") } }
@@ -99,6 +112,15 @@ final class AppModel {
     var quotaError: String? { quotaErrors["agy"] }
 
     @ObservationIgnored private var stores: [String: ChatStore] = [:]
+    /// a conversation RootView should show (consumed there)
+    var openRequest: OpenRequest?
+    /// the app's scene is in the foreground (false while launched in the background for an intent or the watch)
+    @ObservationIgnored var sceneActive = false
+    /// when each running turn began, also for conversations without a store (watch, Live Activity)
+    @ObservationIgnored var turnStarts: [String: Date] = [:]
+    @ObservationIgnored private(set) var liveActivity: LiveActivityController!
+    @ObservationIgnored var backgroundJobs = 0
+    @ObservationIgnored var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     let link = BridgeConnection()
     @ObservationIgnored private var nextCursor: String?
 
@@ -124,8 +146,10 @@ final class AppModel {
             guard let self else { return }
             if case .failed = s, self.connection != s { Haptics.error() }   // e.g. token rejected
             self.connection = s
+            WatchRelay.shared.setNeedsPush()
         }
         link.onMessage = { [weak self] m in self?.handle(m) }
+        liveActivity = LiveActivityController(model: self)
         if isConfigured { reconfigure() }
     }
 
@@ -190,6 +214,8 @@ final class AppModel {
             pending = [:]
             for p in m["pending"]?.array ?? [] { addPending(p, notify: false) }
             running = Set((m["running"]?.array ?? []).compactMap { $0.string })
+            turnStarts = turnStarts.filter { running.contains($0.key) }
+            liveActivity.reconcile()
             Task { await refreshSessions() }
             Task { await refreshQuota() }
             for s in stores.values where s.attached { Task { await attach(s) } }
@@ -217,15 +243,21 @@ final class AppModel {
                 return
             }
             store.ingest(seq: m["seq"]?.int ?? 0, update: m["update"] ?? .null, live: true)
+            liveActivity.setNeedsUpdate()
+            return   // frequent; nothing the watch shows
         case "request":
             addPending(m, notify: true)
         case "resolved":
             if let k = m["key"]?.string { pending.removeValue(forKey: k) }
             refreshPendingCounts()
+            liveActivity.setNeedsUpdate(immediate: true)
         case "turn":
             guard let sid = m["sessionId"]?.string else { return }
             let isRunning = m["running"]?.bool == true
             if isRunning { running.insert(sid) } else { running.remove(sid) }
+            let startedAt = m["startedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
+            if isRunning { turnStarts[sid] = startedAt ?? turnStarts[sid] ?? Date() } else { turnStarts[sid] = nil }
+            defer { liveActivity.turnChanged(sid, running: isRunning, stopReason: m["stopReason"]?.string, startedAt: startedAt) }
             if let s = stores[sid] {
                 if let ms = m["startedAt"]?.double { s.turnStartedAt = Date(timeIntervalSince1970: ms / 1000) }
                 else if isRunning && !s.running { s.turnStartedAt = Date() }
@@ -242,6 +274,7 @@ final class AppModel {
                 withAnimation(Motion.layout) { sessions[i].title = t }
             }
             if let s = stores[sid], let t = m["title"]?.string { s.title = t }
+            liveActivity.setNeedsUpdate()
         case "queue":
             if let sid = m["sessionId"]?.string, let s = stores[sid] { s.queued = QueuedMessage.list(m["items"]) }
         case "shell":
@@ -273,6 +306,7 @@ final class AppModel {
         default:
             break
         }
+        WatchRelay.shared.setNeedsPush()
     }
 
     static func agentInfo(_ a: JSON) -> AgentInfo? {
@@ -308,6 +342,9 @@ final class AppModel {
         if notify {
             lastAttention = req
             if req.sessionId != visibleSessionId { Haptics.warning() }
+            liveActivity.requestArrived(req)
+        } else {
+            liveActivity.setNeedsUpdate()
         }
     }
 
@@ -354,6 +391,8 @@ final class AppModel {
             // the first load just appears; later ones move rows to their new places
             if sessions.isEmpty { sessions = next } else if next != sessions { withAnimation(Motion.layout) { sessions = next } }
             sessionsError = nil
+            liveActivity.sessionsRefreshed()
+            WatchRelay.shared.setNeedsPush()
         } catch {
             sessionsError = error.localizedDescription
         }
@@ -367,8 +406,13 @@ final class AppModel {
         let d = j["updatedAt"]?.string.flatMap { iso.date(from: $0) ?? isoNoFrac.date(from: $0) }
         return SessionSummary(id: id, agent: j["_leash"]?["agent"]?.string ?? "agy", cwd: j["cwd"]?.string ?? "", title: j["title"]?.string, updatedAt: d,
                               running: j["_leash"]?["running"]?.bool ?? false, pendingCount: j["_leash"]?["pending"]?.int ?? 0,
-                              lockedBy: j["_leash"]?["lockedBy"]?.string)
+                              lockedBy: j["_leash"]?["lockedBy"]?.string,
+                              lastStopReason: j["_leash"]?["stopReason"]?.string,
+                              turnEndedAt: j["_leash"]?["turnEndedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
     }
+
+    /// The store for a conversation only if one exists (no side effects).
+    func existingStore(_ id: String) -> ChatStore? { stores[id] }
 
     func store(for id: String) -> ChatStore {
         if let s = stores[id] { return s }
@@ -413,6 +457,7 @@ final class AppModel {
             s.cwd = r["cwd"]?.string ?? s.cwd
             if let t = r["title"]?.string { s.title = t }
             s.running = r["running"]?.bool ?? false
+            if !s.running, let reason = r["lastStopReason"]?.string { s.lastStopReason = reason }
             if let ms = r["turnStartedAt"]?.double { s.turnStartedAt = Date(timeIntervalSince1970: ms / 1000) }
             if s.running { running.insert(s.sessionId) } else { running.remove(s.sessionId) }
             s.setConfigOptions(r["configOptions"])
@@ -505,6 +550,7 @@ final class AppModel {
         }
         s.running = true
         running.insert(s.sessionId)
+        if wasIdle { liveActivity.turnStarted(s) }
         Task {
             do {
                 var params: [String: JSON] = ["sessionId": .string(s.sessionId), "prompt": .array(blocks), "agent": .string(s.agent)]
@@ -518,7 +564,7 @@ final class AppModel {
             } catch let e as BridgeError where e.code == BridgeError.lockedElsewhere {
                 // opened on the computer meanwhile: nothing was sent; the bubble goes back toward the composer
                 withAnimation(Motion.layout) { dropEcho(s, echoID) }
-                s.running = false; running.remove(s.sessionId)
+                s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId)
                 s.lockedBy = e.holder ?? "other"
                 s.attached = false
                 s.unsentDraft = restore
@@ -527,20 +573,23 @@ final class AppModel {
             } catch let e as BridgeError where e.code == BridgeError.changedElsewhere && !retried {
                 // the conversation moved on elsewhere since we loaded it: reload the transcript, then send on top of it
                 withAnimation(Motion.layout) { dropEcho(s, echoID) }
-                s.running = false; running.remove(s.sessionId)
+                s.running = false; running.remove(s.sessionId)   // the Live Activity keeps following it through the retry
                 await attach(s)
                 if s.attached && s.lockedBy == nil {
                     withAnimation(Motion.layout) { send(s, text: text, images: images, attachments: attachments, interrupt: interrupt, retried: true) }
-                } else if s.lockedBy != nil {
-                    s.unsentDraft = restore
-                    if !images.isEmpty { s.unsentImages = images }
+                } else {
+                    liveActivity.turnAborted(s.sessionId)
+                    if s.lockedBy != nil {
+                        s.unsentDraft = restore
+                        if !images.isEmpty { s.unsentImages = images }
+                    }
                 }
             } catch {
                 // still waiting on its echo: the bridge refused it before any turn started, so nothing was sent
                 // (after the echo, the error is the turn failing; the bridge logs that as a notice)
                 if let echoID, s.pendingEcho?.id == echoID {
                     withAnimation(Motion.layout) { dropEcho(s, echoID) }
-                    if wasIdle { s.running = false; running.remove(s.sessionId) }
+                    if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
                     s.unsentDraft = restore
                     if !images.isEmpty { s.unsentImages = images }
                 }
@@ -623,6 +672,7 @@ final class AppModel {
         if wasIdle { s.turnStartedAt = Date() }
         s.running = true
         running.insert(s.sessionId)
+        if wasIdle { liveActivity.turnStarted(s) }
         Task {
             do {
                 _ = try await link.call("session/prompt", ["sessionId": .string(s.sessionId), "prompt": .array([]), "interrupt": .bool(true), "agent": .string(s.agent)], timeout: nil)
@@ -630,13 +680,13 @@ final class AppModel {
                 // connection dropped; the bridge still sends it and we resync on reconnect
             } catch let e as BridgeError where e.code == BridgeError.lockedElsewhere {
                 // opened on the computer meanwhile: nothing was sent, the queue stays on the bridge
-                if wasIdle { s.running = false; running.remove(s.sessionId) }
+                if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
                 s.lockedBy = e.holder ?? "other"
                 s.attached = false
                 Haptics.error()
             } catch {
                 // refused before any turn started (changed elsewhere, agent down, …): no turn op will clear it
-                if wasIdle { s.running = false; running.remove(s.sessionId) }
+                if wasIdle { s.running = false; running.remove(s.sessionId); liveActivity.turnAborted(s.sessionId) }
                 s.error = error.localizedDescription
                 Haptics.error()
             }

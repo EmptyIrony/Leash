@@ -603,6 +603,12 @@ export class Hub extends EventEmitter {
       case 'bridge/shell': return this.shell(client, params);
       case 'bridge/btw': return this.btw(params);
       case 'bridge/agentLog': return { lines: this.stderrTail.slice() };
+      case 'bridge/noticed': {
+        // a phone alerted about this request itself (Live Activity alert): Bark need not push it as well
+        const p = this.pending.get(params.key);
+        if (p) p.noticedAt = Date.now();
+        return { ok: !!p };
+      }
       case 'bridge/quota': {
         if (!this.quota) return { quota: null, error: 'quota disabled' };
         try { return { quota: await this.quota.refresh({ maxAgeMs: params.force ? 0 : 120000 }) }; }
@@ -682,7 +688,9 @@ export class Hub extends EventEmitter {
       sessions: list.map(it => {
         const s = this.sessions.get(it.sessionId);
         const h = heldBy.get(it.sessionId);
-        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length } };
+        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length,
+          // how this bridge's last turn in it ended (the phone's Live Activity fills in a turn it missed)
+          stopReason: s?.running ? null : s?.lastStopReason ?? null, turnEndedAt: s?.running ? null : s?.turnEndedAt ?? null } };
       }),
     };
   }

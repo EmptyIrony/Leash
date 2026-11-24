@@ -45,7 +45,9 @@ node src/index.mjs bark                              # test again;  `bark off` r
 
 Restart the bridge afterwards. Pushes go out only while no Leash client is on screen (the app pings every 15 s;
 ~25 s of silence counts as away; a request answered within that grace period is not pushed). A Stop you pressed
-yourself is not pushed. Tapping a notification opens Leash. Options in the `bark` block of `~/.leash/config.json`:
+yourself is not pushed. Tapping a notification opens that conversation (`leash://session?id=…&agent=…`) when titles may be
+pushed (`detail`, on with encryption), otherwise just Leash; a `url` in the `bark` block overrides both. A request the phone
+already alerted about itself (a Live Activity alert, `bridge/noticed`) is not pushed again. Options in the `bark` block of `~/.leash/config.json`:
 `server` (self-hosted bark-server, default `https://api.day.app`), `when: "always"`, `attention` / `turnEnd: false`,
 `sound`, `lang: "en"`, and `detail` (conversation and tool titles in the text).
 
@@ -113,7 +115,10 @@ Held = presence lock by a process outside our own `agy acp` tree **and** busy. R
 
 ## iPhone
 
-Open `ios/Leash.xcodeproj`, pick your signing team, run on the device, then Settings → *Scan pairing QR code*.
+Open `ios/Leash.xcodeproj`, pick your signing team for each target (Leash, LeashLiveActivity, LeashWatch; a free
+personal team works, profiles last 7 days), run on the device, then Settings → *Scan pairing QR code*. The bundle IDs
+derive from one build setting, `LEASH_BUNDLE_ID`. See `HANDOFF-personal-cert.md` for the Live Activity, Dynamic Island
+and Apple Watch app (the watch reaches the Mac through the iPhone app over WatchConnectivity).
 
 ## Bridge protocol (v1)
 
@@ -133,6 +138,8 @@ JSON text frames on `ws://<mac>:8787/ws` with `Authorization: Bearer <token>`.
 * `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot.
 * `bridge/readFile {path, sessionId?, mode?, maxBytes?}`: text (default, first 512 KB) or `mode: "base64"` (whole file as
   `data`, ≤ 32 MB, else `-32007`); a relative path is taken from the conversation's folder. Reads stay under `$HOME`.
+* `bridge/noticed {key}`: the phone alerted about this pending request itself (Live Activity), so Bark skips it.
+* `{op:"reply", id, key, result}`: with an `id` the bridge answers `{op:"result", id, result:{ok:true}}` (or an error, -32002 when already resolved).
 * `bridge/upload {sessionId, name, data}`: stores a phone file (≤ 25 MB, base64) on the agent's host, returns `{path, uri, name, size, mimeType}`.
 
 ## Files

@@ -44,7 +44,8 @@ test('barkSettings: off unless a key is set; defaults', () => {
   for (const raw of [undefined, null, 'x', 42, {}, { key: '' }, { key: 5 }]) assert.equal(barkSettings(raw), null);
   const s = barkSettings({ key: ' k ', server: 'https://bark.example/' });
   assert.equal(s.key, 'k'); assert.equal(s.server, 'https://bark.example');
-  assert.equal(s.always, false); assert.equal(s.detail, false); assert.equal(s.url, 'leash://open');
+  assert.equal(s.always, false); assert.equal(s.detail, false); assert.equal(s.url, null);
+  assert.equal(barkSettings({ key: 'k', url: 'leash://custom' }).url, 'leash://custom');
   assert.equal(barkSettings({ key: 'k' }).server, 'https://api.day.app');
 });
 
@@ -77,7 +78,7 @@ test('payload carries the tap URL and, with detail, the titles', async () => {
   const r2 = [];
   ask(r.hub);
   await sleep(5);
-  assert.equal(r2[0].url, 'leash://open');
+  assert.equal(r2[0].url, 'leash://session?id=s1&agent=claude');
   assert.equal(r2[0].body, 'Fix the parser · rm -rf build');
 });
 
@@ -200,7 +201,7 @@ test('encrypted push: the request carries only device key, ciphertext and a fres
   assert.notEqual(m.iv, r.sent[1].iv);
   assert.ok(!JSON.stringify(m).includes('rm -rf'));
   const inner = JSON.parse(decrypt(m.ciphertext, key, m.iv));
-  assert.deepEqual(inner, { title: 'Claude Code 需要批准', body: 'Fix the parser · rm -rf build', level: 'timeSensitive', group: 'Claude Code', url: 'leash://open' });
+  assert.deepEqual(inner, { title: 'Claude Code 需要批准', body: 'Fix the parser · rm -rf build', level: 'timeSensitive', group: 'Claude Code', url: 'leash://session?id=s1&agent=claude' });
 });
 
 test('server stamps client.lastSeen on WebSocket pings', async () => {
@@ -219,5 +220,60 @@ test('server stamps client.lastSeen on WebSocket pings', async () => {
     ws.ping();
     await sleep(30);
     assert.ok(c.lastSeen > before);
+  } finally { ws.close(); hub.stop(); server.close(); }
+});
+
+test('tap URL: the conversation with detail, the app without; a configured url always wins', async () => {
+  const plain = rig();
+  ask(plain.hub); endTurn(plain.hub);
+  await sleep(10);
+  assert.deepEqual(plain.sent.map(m => m.url), ['leash://open', 'leash://open']);
+  const detail = rig({ bark: { detail: true } });
+  ask(detail.hub); endTurn(detail.hub);
+  await sleep(10);
+  assert.deepEqual(detail.sent.map(m => m.url), ['leash://session?id=s1&agent=claude', 'leash://session?id=s1&agent=claude']);
+  const fixed = rig({ bark: { detail: true, url: 'leash://open' } });
+  ask(fixed.hub);
+  await sleep(5);
+  assert.equal(fixed.sent[0].url, 'leash://open');
+  assert.equal(await detail.n.test(), true);
+  assert.equal(detail.sent.at(-1).url, 'leash://open');
+});
+
+test('a request the phone alerted about itself (bridge/noticed) is not pushed again', async () => {
+  const r = rig({ clients: [{ lastSeen: Date.now() }] });
+  const p = ask(r.hub);
+  p.noticedAt = Date.now();
+  await sleep(AWAY + 30);
+  assert.equal(r.sent.length, 0);
+});
+
+test('bridge/noticed marks the pending request on the hub that owns its key', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-noticed-'));
+  const mk = (id) => new Hub({ id, label: id, agentCommand: process.execPath, agentArgs: [path.join(here, 'mock-agent.mjs')], log: () => {}, home, idleCloseMs: 0 });
+  const agy = mk('agy'), claude = mk('claude');
+  const { Router } = await import('../src/router.mjs');
+  const router = new Router({ hubs: [agy, claude] });
+  try {
+    claude.pending.set('claude:r1', { key: 'claude:r1', method: 'session/request_permission', sessionId: 's1', params: {} });
+    assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { key: 'claude:r1' }), { ok: true });
+    assert.ok(claude.pending.get('claude:r1').noticedAt > 0);
+    assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { key: 'claude:r9' }), { ok: false });
+    assert.deepEqual(await router.handleCall(null, 'bridge/noticed', { key: 'nope' }), { ok: false });
+  } finally { agy.stop(); claude.stop(); }
+});
+
+test('a reply with an id is answered with that id (-32002 once already resolved)', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-reply-'));
+  const hub = new Hub({ agentCommand: process.execPath, agentArgs: [path.join(here, 'mock-agent.mjs')], log: () => {}, home, idleCloseMs: 0 });
+  const server = createServer({ hub, token: 'tok', log: () => {} });
+  const srv = await server.listen('127.0.0.1', 0);
+  const ws = new WebSocket(`ws://127.0.0.1:${srv.address().port}/ws`, { headers: { authorization: 'Bearer tok' } });
+  try {
+    await new Promise((res, rej) => { ws.once('open', res); ws.once('error', rej); });
+    const got = new Promise(res => ws.on('message', d => { const m = JSON.parse(String(d)); if (m.op === 'result' && m.id === 7) res(m); }));
+    ws.send(JSON.stringify({ op: 'reply', id: 7, key: 'agy:r404', result: { outcome: { outcome: 'cancelled' } } }));
+    const m = await got;
+    assert.equal(m.error.code, -32002);
   } finally { ws.close(); hub.stop(); server.close(); }
 });

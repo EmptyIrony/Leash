@@ -45,7 +45,9 @@ export function barkSettings(raw) {
     attention: raw.attention !== false,
     turnEnd: raw.turnEnd !== false,
     sound: typeof raw.sound === 'string' && raw.sound ? raw.sound : null,
-    url: typeof raw.url === 'string' ? raw.url : 'leash://open',
+    // tap target: a fixed `url` from the config wins; otherwise the conversation (leash://session?…) when titles are
+    // allowed in pushes (detail), else just the app (leash://open). Older apps treat any of these as "open the app".
+    url: typeof raw.url === 'string' ? raw.url : null,
     text: TEXT[raw.lang] ?? TEXT.zh,
   };
 }
@@ -132,7 +134,18 @@ export class BarkNotifier {
       const parts = [this.#sessionName(hub, p.sessionId), p.params?.toolCall?.title ?? p.params?.message ?? ''].filter(Boolean);
       if (parts.length) body = parts.join(' · ');
     }
-    this.#whenAway(() => { this.push({ title, body, level: 'timeSensitive', group: label }); }, () => hub.pending?.has?.(p.key) ?? true);
+    // still waiting, and the phone did not alert about it itself (bridge/noticed: a Live Activity alert)
+    const still = () => { const m = hub.pending; if (!m?.get) return true; const q = m.get(p.key); return !!q && !q.noticedAt; };
+    this.#whenAway(() => { this.push({ title, body, level: 'timeSensitive', group: label, url: this.#link(hub, p.sessionId) }); }, still);
+  }
+
+  /** leash://session?id=…&agent=… for a push about one conversation (only when titles may be pushed). */
+  #link(hub, sessionId) {
+    if (!this.s.detail || !sessionId) return null;
+    const u = new URL('leash://session');
+    u.searchParams.set('id', String(sessionId));
+    u.searchParams.set('agent', String(hub.id ?? ''));
+    return u.toString();
   }
 
   #turnEnd(hub, s) {
@@ -149,16 +162,16 @@ export class BarkNotifier {
         const name = this.s.detail ? this.#sessionName(hub, s.sessionId) : '';
         const extra = reason && !['end_turn', 'error'].includes(reason) ? reason : '';
         const body = [name, extra, took].filter(Boolean).join(' · ') || t.open;
-        this.#whenAway(() => { this.push({ title, body, level: 'active', group: label }); }, () => !s.running);
+        this.#whenAway(() => { this.push({ title, body, level: 'active', group: label, url: this.#link(hub, s.sessionId) }); }, () => !s.running);
       } catch (e) { this.log('bark: ' + e.message); }
     }, 0);
     timer.unref?.();
   }
 
   /** POST one notification. Resolves true/false, never rejects; never logs the key or server. */
-  async push({ title, body, level = 'active', group = 'Leash' }) {
-    const fields = { title, body, level, group };
-    if (this.s.url) fields.url = this.s.url;
+  async push({ title, body, level = 'active', group = 'Leash', url = null }) {
+    const fields = { title, body, level, group, url: this.s.url ?? url ?? 'leash://open' };
+    if (!fields.url) delete fields.url;
     if (this.s.sound) fields.sound = this.s.sound;
     let payload;
     if (this.s.encrypt) {

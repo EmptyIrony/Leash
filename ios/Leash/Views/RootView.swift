@@ -30,6 +30,24 @@ struct RootView: View {
             .presentationDetents([.medium, .large])
         }
         .onAppear { if !model.isConfigured { showSettings = true } }
+        .onChange(of: model.openRequest, initial: true) { _, request in
+            guard let request else { return }
+            model.openRequest = nil
+            route(to: request.sessionId)
+        }
+    }
+
+    /// A Bark tap or the Live Activity: show that conversation with the list under it, so Back always leads to the
+    /// list and repeated taps never deepen the stack.
+    private func route(to id: String) {
+        showSettings = false
+        showNew = false
+        guard model.visibleSessionId != id else { return }
+        if path.isEmpty {
+            path.append(id)
+        } else {
+            withAnimation { path = NavigationPath([id]) }
+        }
     }
 }
 
