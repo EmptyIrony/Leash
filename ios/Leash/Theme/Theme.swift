@@ -212,6 +212,9 @@ struct ActivitySpinner: View {
 /// The band is painted source-atop onto the content's own pixels: masking with a second copy of the content laid it
 /// out again, and a middle-truncated or mid-transition line came out different there, leaving ghost glyphs.
 struct Shimmer: ViewModifier {
+    /// Half accent, half ink: the band carries the live glyph's hue across the words.
+    static let glint = Theme.accent.mix(with: Theme.textPrimary, by: 0.5)
+
     var active = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -223,7 +226,7 @@ struct Shimmer: ViewModifier {
                     let t = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
                     GeometryReader { g in
                         let band = max(g.size.width * 0.45, 60)
-                        LinearGradient(colors: [.clear, Theme.textPrimary.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing)
+                        LinearGradient(colors: [.clear, Shimmer.glint.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing)
                             .frame(width: band)
                             .offset(x: -band + (g.size.width + band * 2) * t)
                     }
