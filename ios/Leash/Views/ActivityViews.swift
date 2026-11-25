@@ -9,6 +9,12 @@ struct ActivityRow: View {
     var turnStartedAt: Date?
     var openFile: (String) -> Void
     @State private var showChecklist = false
+    /// Width of the live "Working · 12s" line: the shimmer's span runs from the glyph across it.
+    @State private var workingWidth: CGFloat = 0
+
+    /// The glyph column and the gap after it: where the header's words start, seen from the glyph's leading edge.
+    private static let glyphColumn: CGFloat = 18
+    private static let glyphSpacing: CGFloat = 8
 
     private var expanded: Bool { store.expandedGroups.contains(group.id) }
     /// A live turn not opened in full lays its messages and runs out below the header (ChatStore.liveTimeline), with
@@ -25,8 +31,8 @@ struct ActivityRow: View {
                     if expanded { store.expandedGroups.remove(group.id) } else { store.expandedGroups.insert(group.id) }
                 }
             } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    leadingGlyph.frame(width: 18)
+                HStack(alignment: .firstTextBaseline, spacing: Self.glyphSpacing) {
+                    leadingGlyph.frame(width: Self.glyphColumn)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 4) {
                             headerText
@@ -87,18 +93,24 @@ struct ActivityRow: View {
     }
 
     @ViewBuilder private var leadingGlyph: some View {
-        if blocked { Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention).font(.footnote).symbolEffect(.pulse, options: .repeating).transition(Motion.pop) }
-        // one moving signal per row: the shimmering header (a spinner instead when Reduce Motion is on)
-        else if group.live && reduceMotion { ActivitySpinner(size: 14).accessibilityHidden(true).transition(Motion.pop) }
-        // one Image for live and done, so the live marker morphs into the end-state symbol in place
-        else {
-            Image(systemName: glyphName)
-                .font(glyphFont)
-                .foregroundStyle(glyphColor)
-                .contentTransition(glyphSwap)
-                .transition(Motion.pop)
-                .accessibilityLabel(glyphLabel ?? Text(verbatim: ""))
-                .accessibilityHidden(glyphLabel == nil)
+        ZStack {
+            if blocked { Image(systemName: "hand.raised.fill").foregroundStyle(Theme.attention).font(.footnote).symbolEffect(.pulse, options: .repeating).transition(Motion.pop) }
+            // one moving signal per row: the dots only catch the header's shimmer band as it enters, no clock of their own
+            else if group.live {
+                LiveDots(textWidth: workingWidth, textInset: Self.glyphColumn + Self.glyphSpacing, columnWidth: Self.glyphColumn)
+                    .font(glyphFont)
+                    .transition(Motion.swap)
+            }
+            // working → done: the dots blur away and the end-state ring resolves with the summary line
+            else {
+                Image(systemName: glyphName)
+                    .font(glyphFont)
+                    .foregroundStyle(glyphColor)
+                    .contentTransition(glyphSwap)
+                    .transition(doneTransition)
+                    .accessibilityLabel(glyphLabel ?? Text(verbatim: ""))
+                    .accessibilityHidden(glyphLabel == nil)
+            }
         }
     }
 
@@ -111,18 +123,16 @@ struct ActivityRow: View {
     }
 
     private var glyphName: String {
-        if group.live { return "smallcircle.filled.circle" }   // the same "in progress" marker as the checklist
         if group.failedCount > 0 { return "exclamationmark.circle" }
         if group.stats?.stopReason == "cancelled" { return "stop.circle" }
         return "checkmark.circle"
     }
 
     private var glyphColor: Color {
-        if group.live { return Theme.accent }
-        return group.failedCount > 0 ? Theme.attention : Theme.textTertiary
+        group.failedCount > 0 ? Theme.attention : Theme.textTertiary
     }
 
-    private var glyphFont: Font { .footnote }   // one weight, so the ring doesn't change stroke in the swap
+    private var glyphFont: Font { .footnote }   // the dots' box and every end-state ring share one size
 
     private var glyphSwap: ContentTransition { reduceMotion ? .opacity : .symbolEffect(.replace) }
 
@@ -154,7 +164,8 @@ struct ActivityRow: View {
                 Text("Working")
             }
         }
-        .shimmer(!blocked)
+        .shimmer(!blocked, leadingInset: Self.glyphColumn + Self.glyphSpacing)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { workingWidth = $0 }
     }
 
     @ViewBuilder private var doneText: some View {

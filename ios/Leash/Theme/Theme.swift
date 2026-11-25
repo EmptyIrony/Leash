@@ -214,21 +214,30 @@ struct ActivitySpinner: View {
 struct Shimmer: ViewModifier {
     /// Half accent, half ink: the band carries the live glyph's hue across the words.
     static let glint = Theme.accent.mix(with: Theme.textPrimary, by: 0.5)
+    static let period = 2.0
+
+    /// The band at `date` in a span `span` wide: its leading edge (0 = the span's leading edge) and its width.
+    /// Everything that catches the band reads it from here, on the same clock, so it is one band wherever it lands.
+    static func band(span: CGFloat, at date: Date) -> (lead: CGFloat, width: CGFloat) {
+        let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
+        let width = max(span * 0.45, 60)
+        return (-width + (span + width * 2) * t, width)
+    }
 
     var active = true
+    /// Where this content starts inside the span the band crosses: `LiveDots` before the words shares the sweep.
+    var leadingInset: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         if active && !reduceMotion {
             content.overlay {
                 TimelineView(.animation) { tl in
-                    let period = 2.0
-                    let t = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
                     GeometryReader { g in
-                        let band = max(g.size.width * 0.45, 60)
+                        let band = Shimmer.band(span: leadingInset + g.size.width, at: tl.date)
                         LinearGradient(colors: [.clear, Shimmer.glint.opacity(0.9), .clear], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: band)
-                            .offset(x: -band + (g.size.width + band * 2) * t)
+                            .frame(width: band.width)
+                            .offset(x: band.lead - leadingInset)
                     }
                 }
                 .blendMode(.sourceAtop)
@@ -242,7 +251,60 @@ struct Shimmer: ViewModifier {
 }
 
 extension View {
-    func shimmer(_ active: Bool = true) -> some View { modifier(Shimmer(active: active)) }
+    func shimmer(_ active: Bool = true, leadingInset: CGFloat = 0) -> some View {
+        modifier(Shimmer(active: active, leadingInset: leadingInset))
+    }
+}
+
+/// A live turn's glyph: 21 accent dots (a 5×5 grid without its corners, round like the rings it hands off to)
+/// that swell as the header's shimmer band passes over them on its way into the words. No clock of its own: it reads
+/// `Shimmer.band` on the same span, so glyph and words carry one band of light. With Reduce Motion the band is off;
+/// the whole glyph only breathes in opacity on the same period. Boxed and baseline-aligned as the symbol it stands in
+/// for, so the row never reflows; sized by the environment's font.
+struct LiveDots: View {
+    /// Width of the words the band crosses after the glyph, and where they start, from the glyph column's leading edge.
+    var textWidth: CGFloat
+    var textInset: CGFloat
+    /// The column the glyph is centred in (the band's span starts at its leading edge).
+    var columnWidth: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Image(systemName: "smallcircle.filled.circle")
+            .hidden()
+            .overlay {
+                TimelineView(.animation) { tl in
+                    Canvas { ctx, size in draw(&ctx, size: size, date: tl.date) }
+                }
+            }
+            .accessibilityHidden(true)   // the header already says "Working"
+    }
+
+    private func draw(_ ctx: inout GraphicsContext, size: CGSize, date: Date) {
+        let pitch = min(size.width, size.height) / 5
+        let origin = CGPoint(x: (size.width - pitch * 5) / 2, y: (size.height - pitch * 5) / 2)
+        let pad = (columnWidth - size.width) / 2          // the canvas's leading edge inside the column
+        let base = contrast == .increased ? 0.7 : 0.5
+        let band = Shimmer.band(span: textInset + textWidth, at: date)
+        // Reduce Motion: no sweep, one opacity breath for the whole glyph
+        let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Shimmer.period) / Shimmer.period
+        let breath = max(base, 0.55) + (1 - max(base, 0.55)) * (0.5 - 0.5 * cos(2 * .pi * t))
+        for row in 0..<5 {
+            for col in 0..<5 where !((row == 0 || row == 4) && (col == 0 || col == 4)) {
+                let c = CGPoint(x: origin.x + (CGFloat(col) + 0.5) * pitch, y: origin.y + (CGFloat(row) + 0.5) * pitch)
+                var v = 0.0                                // how lit: the band's own triangle, 0 at its edges, 1 mid-band
+                if !reduceMotion {
+                    let u = Double((pad + c.x - band.lead) / band.width)
+                    v = max(0, 1 - abs(2 * u - 1))
+                }
+                let d = pitch * (0.5 + 0.29 * v)          // 1.4pt → 2.2pt at a 2.8pt pitch: dots never touch
+                let opacity = reduceMotion ? breath : base + (1 - base) * v
+                ctx.fill(Path(ellipseIn: CGRect(x: c.x - d / 2, y: c.y - d / 2, width: d, height: d)),
+                         with: .color(Theme.accent.opacity(opacity)))
+            }
+        }
+    }
 }
 
 /// Small progress ring (quota, context, steps).
