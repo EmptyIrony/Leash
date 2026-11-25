@@ -442,6 +442,13 @@ struct ChatView: View {
                         .glassEffectTransition(.materialize)
                         .transition(Motion.tray)
                 }
+                let agents = store.runningSubagents
+                if !agents.isEmpty {
+                    SubagentsTray(agents: agents, rootSessionId: store.sessionId, collapsed: trayVisible)
+                        .glassEffectID("subagents", in: glassNS)
+                        .glassEffectTransition(.materialize)
+                        .transition(Motion.tray)
+                }
                 if let side = store.sideQuestions.first {
                     SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
                                      close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
@@ -480,6 +487,7 @@ struct ChatView: View {
             .animation(Motion.layout, value: questionRequests.first?.key)
             .animation(Motion.layout, value: store.queued)
             .animation(Motion.layout, value: store.sideQuestions.map(\.id))
+            .animation(Motion.layout, value: store.runningSubagents.isEmpty)
             .animation(Motion.layout, value: commands.isEmpty)
             .animation(Motion.disclose, value: store.removedQueued)
         }

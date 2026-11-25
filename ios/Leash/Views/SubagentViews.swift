@@ -51,6 +51,48 @@ struct SubagentStepRow: View {
     }
 }
 
+/// Subagents still working, docked above the composer: seen without scrolling back to the turn that launched them
+/// (the main agent's reply can be long). Each row opens that agent's transcript.
+struct SubagentsTray: View {
+    let agents: [SubagentItem]
+    let rootSessionId: String
+    /// An approval or question tray is showing: just the header line.
+    var collapsed = false
+
+    private let shown = 3
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            header
+            if !collapsed {
+                ForEach(agents.prefix(shown)) { a in
+                    SubagentStepRow(item: a, rootSessionId: rootSessionId).transition(Motion.reveal)
+                }
+                if agents.count > shown {
+                    Text("+\(agents.count - shown) more").font(.footnote).foregroundStyle(Theme.textSecondary)
+                        .padding(.leading, 30).padding(.vertical, 4)
+                }
+            }
+        }
+        .padding(.leading, 8).padding(.trailing, 14).padding(.vertical, 8)
+        .glassEffect(.regular, in: .rect(cornerRadius: Theme.Radius.tray))
+        .animation(Motion.layout, value: agents.map(\.sessionId))
+        .animation(Motion.disclose, value: collapsed)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            ActivitySpinner(size: 11).frame(width: 16)
+            Text("\(agents.count) agents still running").font(.subheadline.weight(.semibold))
+                .contentTransition(.numericText())
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 6)
+        .frame(minHeight: 28)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// A subagent's own transcript, pushed from its row: the parent's prompt as a quote, its steps (flat, already
 /// open), its reply. Requests from it (or agents it launched) are answered here too.
 struct SubagentView: View {

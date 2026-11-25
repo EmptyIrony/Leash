@@ -342,6 +342,13 @@ export class Hub extends EventEmitter {
     for (const s of this.sessions.values()) {
       s.loaded = false; s.loading = null;
       if (s.running) { s.running = false; s.lastStopReason = 'agent_exited'; this.#broadcastTurn(s, { error: 'agent exited' }); }
+      else if (s.endPending) {
+        s.endPending = false;
+        s.lastStopReason = 'agent_exited';
+        s.turnEndedAt = Date.now();
+        this.emit('turn_end', s);
+        this.#broadcastTurn(s, { error: 'agent exited' });
+      }
     }
     this.setAgentState('down');
     if (this.stopping) return;
@@ -488,7 +495,8 @@ export class Hub extends EventEmitter {
       bridge: { version: BRIDGE_VERSION, protocol: BRIDGE_PROTOCOL, hostname: os.hostname(), home: this.home, platform: process.platform },
       agent: { state: this.agentState, error: this.agentError, info: this.agentInfo },
       pending: [...this.pending.values()].map(p => this.pendingMsg(p)),
-      running: [...this.sessions.values()].filter(s => s.running).map(s => s.sessionId),
+      // a turn waiting on its background subagents counts as running
+      running: [...this.sessions.values()].filter(s => this.#busy(s)).map(s => s.sessionId),
       quota: this.quota?.latest ?? null,
     };
   }
@@ -514,20 +522,41 @@ export class Hub extends EventEmitter {
     for (const c of s.subscribers) c.send(msg);
   }
 
-  /** A prompt is in flight, or a subagent it started is still working (background subagents outlive the turn). */
-  #busy(s) {
-    if (s.running) return true;
-    for (const c of this.children.values()) if (c.root === s.sessionId && childBusy(c)) return true;
-    return false;
+  /** Subagents of `s` still working. Only ones heard live count: a load's replay can end on a stale "running". */
+  #subagentsRunning(s) {
+    let n = 0;
+    for (const c of this.children.values()) if (c.root === s.sessionId && c.live && childBusy(c)) n++;
+    return n;
   }
+
+  /** A prompt is in flight, or a subagent it started is still working (background subagents outlive the turn). */
+  #busy(s) { return s.running || this.#subagentsRunning(s) > 0; }
 
   /** subagent_update on `parentId` (a root or itself a child) announces or updates a child session. */
   #trackSubagent(parentId, u) {
     if (u.sessionUpdate !== 'subagent_update' || typeof u.sessionId !== 'string') return;
     const root = this.children.get(parentId)?.root ?? parentId;
-    const c = this.children.get(u.sessionId) ?? { root, parent: parentId, title: null, description: null, state: null };
+    const s = this.sessions.get(root);
+    const before = s ? this.#subagentsRunning(s) : 0;
+    const c = this.children.get(u.sessionId) ?? { root, parent: parentId, title: null, description: null, state: null, live: false };
     for (const k of ['title', 'description', 'state']) if (u[k] !== undefined) c[k] = u[k];
+    if (!s?.loading) c.live = true;
     this.children.set(u.sessionId, c);
+    if (s && !s.loading && this.#subagentsRunning(s) !== before) this.#subagentsChanged(s);
+  }
+
+  /**
+   * Phones see a turn as over once its prompt has returned and its last subagent has finished: the parent often
+   * ends its prompt only to wait for background subagents.
+   */
+  #subagentsChanged(s) {
+    if (s.endPending && !s.running && !this.#subagentsRunning(s)) {
+      s.endPending = false;
+      s.turnEndedAt = Date.now();
+      if (this.lockOwnWrites) s.extBaseline = Date.now() + 3000;
+      this.emit('turn_end', s);
+    }
+    this.#broadcastTurn(s);
   }
 
   /** A child session's update goes into its root's log, tagged with the child id; it never touches the root's state. */
@@ -635,8 +664,11 @@ export class Hub extends EventEmitter {
     }
   }
 
+  /** `running`: a prompt is in flight; `subagents`: how many of its subagents still work (the turn isn't over). */
   #broadcastTurn(s, extra = {}) {
-    this.broadcast({ op: 'turn', sessionId: s.sessionId, running: s.running, stopReason: s.running ? null : s.lastStopReason, startedAt: s.running ? s.turnStart || null : null, ...extra });
+    const subagents = this.#subagentsRunning(s);
+    const busy = s.running || subagents > 0;
+    this.broadcast({ op: 'turn', sessionId: s.sessionId, running: s.running, subagents, stopReason: busy ? null : s.lastStopReason, startedAt: busy ? s.turnStart || null : null, ...extra });
   }
 
   // ---------------------------------------------------------------- phone -> bridge calls
@@ -750,9 +782,11 @@ export class Hub extends EventEmitter {
       sessions: list.map(it => {
         const s = this.sessions.get(it.sessionId);
         const h = heldBy.get(it.sessionId);
-        return { ...it, _leash: { agent: this.id, running: !!s?.running, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length,
+        const subagents = s ? this.#subagentsRunning(s) : 0;
+        const busy = !!s?.running || subagents > 0;
+        return { ...it, _leash: { agent: this.id, running: !!s?.running, subagents, loaded: !!s?.loaded, lockedBy: h ? h.entrypoint || 'other' : null, pending: [...this.pending.values()].filter(p => p.sessionId === it.sessionId).length,
           // how this bridge's last turn in it ended (the phone's Live Activity fills in a turn it missed)
-          stopReason: s?.running ? null : s?.lastStopReason ?? null, turnEndedAt: s?.running ? null : s?.turnEndedAt ?? null } };
+          stopReason: busy ? null : s?.lastStopReason ?? null, turnEndedAt: busy ? null : s?.turnEndedAt ?? null } };
       }),
     };
   }
@@ -829,7 +863,7 @@ export class Hub extends EventEmitter {
     s.lastActive = Date.now();
     return {
       sessionId, cwd: s.cwd, epoch: s.epoch, lastSeq: s.seq, reset, events,
-      running: s.running, lastStopReason: s.lastStopReason, turnStartedAt: s.running ? s.turnStart || null : null,
+      running: s.running, subagents: this.#subagentsRunning(s), lastStopReason: s.lastStopReason, turnStartedAt: this.#busy(s) ? s.turnStart || null : null,
       configOptions: s.configOptions, modes: s.modes, title: s.title, autoApprove: s.autoApprove, queue: this.queueSummary(s),
       availableCommands: s.commands ?? null,
       pending: [...this.pending.values()].filter(p => p.sessionId === sessionId).map(p => this.pendingMsg(p)),
@@ -937,7 +971,7 @@ export class Hub extends EventEmitter {
     }
     s.inflight = (s.inflight ?? 0) + 1;
     s.running = true;
-    if (!wasRunning) { s.turnStart = Date.now(); s.turnFirstOutput = 0; s.lastStopReason = null; this.#broadcastTurn(s); }
+    if (!wasRunning) { s.turnStart = Date.now(); s.turnFirstOutput = 0; s.lastStopReason = null; s.endPending = false; this.#broadcastTurn(s); }
     try {
       const r = await agent.call('session/prompt', { ...params, sessionId: s.sessionId, prompt });
       s.lastStopReason = r?.stopReason ?? 'end_turn';
@@ -954,10 +988,12 @@ export class Hub extends EventEmitter {
         s.inflight = 0;
         s.turnEndedAt = Date.now();
         if (this.lockOwnWrites) s.extBaseline = Date.now() + 3000;   // our own turn just wrote the shared status DB
-        this.emit('turn_end', s);
         // Queued messages go out right away (running stays true, no idle blip); a plain Stop or a failure keeps them.
         const flush = s.queue.length && this.agent === agent && this.agentState === 'ready' && s.loaded
           && s.lastStopReason !== 'error' && !s.holdQueue && (s.lastStopReason !== 'cancelled' || s.flushAfterCancel);
+        // background subagents still working: the turn ends with the last of them (#subagentsChanged)
+        s.endPending = !flush && this.#subagentsRunning(s) > 0;
+        if (!s.endPending) this.emit('turn_end', s);
         s.flushAfterCancel = false;
         s.holdQueue = false;
         if (flush) {

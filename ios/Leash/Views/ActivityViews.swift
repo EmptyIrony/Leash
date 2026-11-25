@@ -177,24 +177,13 @@ struct ActivityRow: View {
     }
 
     /// The live line cross-fades when the agent moves to its next action.
-    @ViewBuilder private var subLine: some View {
-        let agents = blocked || group.live ? [] : group.runningSubagents
-        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (agents.isEmpty ? (group.summary.isEmpty ? " " : group.summary + "  ›") : Self.agentsLine(agents)))
-        HStack(spacing: 6) {
-            // a background subagent outlives the turn: the header stays "Worked for …", the sub-line says it still runs
-            if !agents.isEmpty && !agents.contains(where: \.needsAction) { ActivitySpinner(size: 11).transition(Motion.pop) }
-            ZStack(alignment: .leading) {
-                Text(line).id(line).transition(Motion.swap)
-            }
-            .foregroundStyle(blocked || agents.contains(where: \.needsAction) ? Theme.attention : (group.live || !agents.isEmpty ? Theme.textSecondary : Theme.textTertiary))
+    private var subLine: some View {
+        let line: String = blocked ? String(localized: "Waiting for your approval") : (group.live ? group.liveAction : (group.summary.isEmpty ? " " : group.summary + "  ›"))
+        return ZStack(alignment: .leading) {
+            Text(line).id(line).transition(Motion.swap)
         }
+        .foregroundStyle(blocked ? Theme.attention : (group.live ? Theme.textSecondary : Theme.textTertiary))
         .animation(Motion.quick, value: line)
-    }
-
-    private static func agentsLine(_ agents: [SubagentItem]) -> String {
-        if agents.contains(where: \.needsAction) { return String(localized: "Agent needs approval") + "  ›" }
-        if agents.count == 1 { return String(localized: "Still running: \(agents[0].displayTitle)") + "  ›" }
-        return String(localized: "\(agents.count) agents still running") + "  ›"
     }
 }
 

@@ -99,6 +99,8 @@ async function prompt(m, p, r) {
         update(sid, { sessionUpdate: 'agent_message_chunk', messageId: 'shared', content: { type: 'text', text: 'parent done' } });
         // "bg": a background subagent that is still working when the parent's prompt returns
         if (!text.includes('bg')) update(sid, { sessionUpdate: 'subagent_update', sessionId: c, state: { state: 'idle', stopReason: 'end_turn' } });
+        // "bgend": that background subagent finishes a moment after the prompt returned
+        if (text.includes('bgend')) setTimeout(() => update(sid, { sessionUpdate: 'subagent_update', sessionId: c, state: { state: 'idle', stopReason: 'end_turn' } }), 300);
       }
       if (text.includes('stubborn')) await sleep(300);   // ignores cancel and ends normally
       if (text.includes('slow')) { for (let i = 0; i < 40 && !cancelled.has(sid); i++) await sleep(25); if (cancelled.has(sid)) return r({ stopReason: 'cancelled' }); }

@@ -999,3 +999,33 @@ test('subagents: child sessions file under the root, tagged; their requests show
     assert.deepEqual(await t.hub.closeIdleSessions(Date.now() + 60000), [sid]);
   } finally { c.close(); t.done(); }
 });
+
+test('subagents: a turn whose prompt returned while a background subagent works ends with that subagent', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const ns = await c.call('session/new', { cwd: path.join(t.home, 'proj') });
+    const sid = ns.sessionId;
+    const ends = [];
+    t.hub.on('turn_end', s => ends.push(s.sessionId));
+    const promptP = c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'delegate bgend' }] });
+    const req = await c.wait(m => m.op === 'request' && m.method === 'session/request_permission');
+    c.reply(req.key, { outcome: { outcome: 'selected', optionId: 'allow' } });
+    await promptP;
+    const waiting = await c.wait(m => m.op === 'turn' && m.sessionId === sid && m.running === false);
+    assert.equal(waiting.subagents, 1);
+    assert.equal(waiting.stopReason, null, 'not over yet');
+    assert.ok(waiting.startedAt);
+    assert.deepEqual(ends, [], 'no turn_end (Bark) while the subagent works');
+    assert.deepEqual(t.hub.info().running, [sid]);
+    const snap = await c.call('bridge/attach', { sessionId: sid });
+    assert.equal(snap.running, false);
+    assert.equal(snap.subagents, 1);
+    const done = await c.wait(m => m.op === 'turn' && m.sessionId === sid && m.running === false && m.subagents === 0);
+    assert.equal(done.stopReason, 'end_turn');
+    assert.equal(done.startedAt, null);
+    assert.deepEqual(ends, [sid]);
+    assert.deepEqual(t.hub.info().running, []);
+  } finally { c.close(); t.done(); }
+});

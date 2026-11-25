@@ -353,8 +353,6 @@ struct ActivityGroup: Identifiable {
 
     var tools: [ToolItem] { steps.compactMap { if case .tool(let t) = $0 { return t }; return nil } }
     var subagents: [SubagentItem] { steps.compactMap { if case .subagent(let s) = $0 { return s }; return nil } }
-    /// Subagents of this turn still working (background ones outlive the turn).
-    var runningSubagents: [SubagentItem] { subagents.filter(\.isRunning) }
     var visibleTools: [ToolItem] { tools.filter { !$0.isStepsTool } }
 
     var checklist: [ChecklistStep] {
@@ -710,6 +708,8 @@ final class ChatStore {
     /// subagent view finds its item again after a reattach rebuilt the transcript).
     private(set) var subIndex: [String: SubagentItem] = [:]
     func subagent(_ sessionId: String) -> SubagentItem? { subIndex[sessionId] }
+    /// Subagents the main agent launched that still work, in launch order (nested ones show in their parent's view).
+    var runningSubagents: [SubagentItem] { entries.compactMap { if case .subagent(let s) = $0, s.isRunning { return s }; return nil } }
     /// The optimistic bubble's item after the echo adopted it, and how many of the echo's image blocks it already shows.
     @ObservationIgnored private weak var adoptedEcho: MessageItem?
     @ObservationIgnored private var echoImagesToSkip = 0

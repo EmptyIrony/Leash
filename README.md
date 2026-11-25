@@ -98,7 +98,10 @@ Mac bridge ──zsh -c 'source ~/.zshrc; ubuntu …/bridge/remote/run-acp.sh'�
   updates under the root conversation with `_meta.leash.subagent = <child id>`, files a child's permission / question
   requests under the root too (`request.subagent = {sessionId, title, description}`), and drops child updates that would
   touch root state (commands, usage, mode, title). A background subagent can keep working after the prompt returns; the
-  root then counts as busy, so the idle and lock sweeps don't close it.
+  root then counts as busy, so the idle and lock sweeps don't close it, and the turn isn't over: `turn` broadcasts carry
+  `subagents` (how many still work, next to `running` for the prompt), `turn_end` (Bark) waits for the last one, and the
+  phone keeps the conversation's spinner, Live Activity and turn-end notification going until then. The chat docks the
+  running subagents above the composer.
 * **Busy-elsewhere lock**: a conversation that Claude Code is *running a turn in* (terminal or Claude desktop app;
   session-file `status` other than `idle`) cannot be opened or prompted from the phone (error `-32020`, lock icon in
   the list); merely having it open there does not lock it. `helper.mjs locks` reads Claude Code's

@@ -273,16 +273,19 @@ final class AppModel {
             liveActivity.setNeedsUpdate(immediate: true)
         case "turn":
             guard let sid = m["sessionId"]?.string else { return }
+            // `running`: a prompt is in flight; with subagents still working the turn isn't over (the list, the
+            // Live Activity and notifications wait for them), though the conversation takes a new message as usual
             let isRunning = m["running"]?.bool == true
-            let wasRunning = running.contains(sid)
+            let isBusy = isRunning || (m["subagents"]?.int ?? 0) > 0
+            let wasBusy = running.contains(sid)
             let began = turnStarts[sid] ?? stores[sid]?.turnStartedAt
-            if isRunning { running.insert(sid) } else { running.remove(sid) }
-            if wasRunning && !isRunning && !sceneActive {
+            if isBusy { running.insert(sid) } else { running.remove(sid) }
+            if wasBusy && !isBusy && !sceneActive {
                 turnEndedOffScreen(sid, agent: m["agentId"]?.string, stopReason: m["stopReason"]?.string, began: began)
             }
             let startedAt = m["startedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) }
-            if isRunning { turnStarts[sid] = startedAt ?? turnStarts[sid] ?? Date() } else { turnStarts[sid] = nil }
-            defer { liveActivity.turnChanged(sid, running: isRunning, stopReason: m["stopReason"]?.string, startedAt: startedAt) }
+            if isBusy { turnStarts[sid] = startedAt ?? turnStarts[sid] ?? Date() } else { turnStarts[sid] = nil }
+            defer { liveActivity.turnChanged(sid, running: isBusy, stopReason: m["stopReason"]?.string, startedAt: startedAt) }
             if let s = stores[sid] {
                 if let ms = m["startedAt"]?.double { s.turnStartedAt = Date(timeIntervalSince1970: ms / 1000) }
                 else if isRunning && !s.running { s.turnStartedAt = Date() }
@@ -292,12 +295,12 @@ final class AppModel {
             }
             if let i = sessions.firstIndex(where: { $0.id == sid }) {
                 var row = sessions[i]
-                row.running = isRunning
+                row.running = isBusy
                 // as session/list would say it: the unread dot appears without waiting for the next refresh
-                if wasRunning && !isRunning { row.turnEndedAt = Date(); row.lastStopReason = m["stopReason"]?.string }
+                if wasBusy && !isBusy { row.turnEndedAt = Date(); row.lastStopReason = m["stopReason"]?.string }
                 if row != sessions[i] { withAnimation(Motion.layout) { sessions[i] = row } }
             }
-            if wasRunning && !isRunning && sceneActive && visibleSessionId == sid { markSeen(sid) }
+            if wasBusy && !isBusy && sceneActive && visibleSessionId == sid { markSeen(sid) }
         case "session_info":
             guard let sid = m["sessionId"]?.string else { return }
             if let i = sessions.firstIndex(where: { $0.id == sid }), let t = m["title"]?.string, sessions[i].title != t {
@@ -439,7 +442,8 @@ final class AppModel {
         guard let id = j["sessionId"]?.string else { return nil }
         let d = j["updatedAt"]?.string.flatMap { iso.date(from: $0) ?? isoNoFrac.date(from: $0) }
         return SessionSummary(id: id, agent: j["_leash"]?["agent"]?.string ?? "agy", cwd: j["cwd"]?.string ?? "", title: j["title"]?.string, updatedAt: d,
-                              running: j["_leash"]?["running"]?.bool ?? false, pendingCount: j["_leash"]?["pending"]?.int ?? 0,
+                              running: j["_leash"]?["running"]?.bool == true || (j["_leash"]?["subagents"]?.int ?? 0) > 0,
+                              pendingCount: j["_leash"]?["pending"]?.int ?? 0,
                               lockedBy: j["_leash"]?["lockedBy"]?.string,
                               lastStopReason: j["_leash"]?["stopReason"]?.string,
                               turnEndedAt: j["_leash"]?["turnEndedAt"]?.double.map { Date(timeIntervalSince1970: $0 / 1000) })
@@ -518,7 +522,7 @@ final class AppModel {
             s.running = r["running"]?.bool ?? false
             if !s.running, let reason = r["lastStopReason"]?.string { s.lastStopReason = reason }
             if let ms = r["turnStartedAt"]?.double { s.turnStartedAt = Date(timeIntervalSince1970: ms / 1000) }
-            if s.running { running.insert(s.sessionId) } else { running.remove(s.sessionId) }
+            if s.running || (r["subagents"]?.int ?? 0) > 0 { running.insert(s.sessionId) } else { running.remove(s.sessionId) }
             s.setConfigOptions(r["configOptions"])
             s.setModes(r["modes"])
             s.setCommands(r["availableCommands"])
