@@ -28,11 +28,11 @@ final class TailnetController {
         get { requested && TailnetNode.isAvailable }
         set { requested = newValue; if newValue { logoutNote = nil } }
     }
-    private var requested: Bool { didSet { UserDefaults.standard.set(requested, forKey: "tailnetEnabled") } }
+    private var requested = false { didSet { UserDefaults.standard.set(requested, forKey: "tailnetEnabled") } }
     /// Tailscale auth key (tskey-auth-…). Not kept in UserDefaults if the Keychain refuses it.
-    var authKey: String { didSet { Keychain.set("tailnetAuthKey", authKey, fallback: false) } }
+    var authKey = "" { didSet { Keychain.set("tailnetAuthKey", authKey, fallback: false) } }
     /// Empty for Tailscale's own control server; a Headscale URL otherwise.
-    var controlURL: String { didSet { Keychain.set("tailnetControlURL", controlURL) } }
+    var controlURL = "" { didSet { Keychain.set("tailnetControlURL", controlURL) } }
     private(set) var status: Status = .off
     /// Control could not be told about a log out (the local state is gone anyway).
     private(set) var logoutNote: String?
@@ -95,18 +95,20 @@ final class TailnetController {
     /// Logs the node out of the tailnet, deletes its saved state and key, and switches the feature off.
     func logout() async {
         stop()
+        // off and keyless before the first await: the bridge connection's retry must not start the node again
+        let url = trimmedURL
+        authKey = ""
+        enabled = false
         var note: String?
         if TailnetNode.isAvailable {
             do {
                 // Logout needs a started node; the saved identity is enough, no key.
                 try await TailnetNode.start(stateDir: try Self.stateDirectory().path, authKey: "",
-                                            controlURL: trimmedURL, hostname: Self.hostname)
+                                            controlURL: url, hostname: Self.hostname)
                 try await TailnetNode.logout()
             } catch { note = error.localizedDescription }
             TailnetNode.stop()
         }
-        authKey = ""
-        enabled = false
         status = .off
         logoutNote = note
     }

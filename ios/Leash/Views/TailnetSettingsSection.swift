@@ -7,6 +7,7 @@ struct TailnetSettingsSection: View {
     @State private var url = ""
     @State private var showAdvanced = false
     @State private var confirmLogout = false
+    @State private var loaded = false
 
     private var tailnet: TailnetController { model.tailnet }
 
@@ -68,6 +69,8 @@ struct TailnetSettingsSection: View {
             }
         }
         .onAppear {
+            guard !loaded else { return }   // a Section can appear again while rows come and go; don't reset what is being typed
+            loaded = true
             key = tailnet.authKey
             url = tailnet.controlURL
             showAdvanced = !url.isEmpty
