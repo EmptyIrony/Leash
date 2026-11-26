@@ -15,8 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.leash.personal.ui.theme.LeashPalette
-import dev.leash.personal.ui.theme.PaletteColor
 
 private fun PaletteColor.color(dark: Boolean): Color =
     if (dark) Color(0xFF000000 or this.dark).copy(alpha = darkAlpha) else Color(0xFF000000 or light).copy(alpha = lightAlpha)

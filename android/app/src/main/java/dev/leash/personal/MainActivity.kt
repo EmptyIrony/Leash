@@ -13,7 +13,6 @@ import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.LeashLink
 import dev.leash.personal.ui.LeashRoot
 import dev.leash.personal.ui.design.LeashDesignTheme
-import dev.leash.personal.ui.theme.LeashLegacyColors
 
 class MainActivity : ComponentActivity() {
     private val model: AppModel get() = (application as LeashApplication).model
@@ -35,9 +34,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleLink(intent)
         setContent {
             LeashDesignTheme {
-                LeashLegacyColors {
-                    LeashRoot(model)
-                }
+                LeashRoot(model)
             }
         }
     }

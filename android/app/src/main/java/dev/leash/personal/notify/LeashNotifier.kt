@@ -137,6 +137,7 @@ class LeashNotifier(private val context: Context) {
         if (content == null) {
             return NotificationCompat.Builder(context, BACKGROUND)
                 .setSmallIcon(R.drawable.ic_stat_leash)
+        .setColor(context.getColor(R.color.leash_accent))
                 .setContentTitle(context.getString(R.string.notif_connected_title))
                 .setContentText(context.getString(R.string.notif_connected_text))
                 .setContentIntent(open(null, "ongoing"))
@@ -146,6 +147,7 @@ class LeashNotifier(private val context: Context) {
         }
         val b = NotificationCompat.Builder(context, BACKGROUND)
             .setSmallIcon(R.drawable.ic_stat_leash)
+        .setColor(context.getColor(R.color.leash_accent))
             .setContentTitle(content.title)
             .setContentText(content.text)
             .setSubText(if (content.others > 0) context.getString(R.string.notif_others, content.others) else null)
@@ -166,6 +168,7 @@ class LeashNotifier(private val context: Context) {
 
     private fun base(channel: String, title: String, text: String?, url: String?, tag: String) = NotificationCompat.Builder(context, channel)
         .setSmallIcon(R.drawable.ic_stat_leash)
+        .setColor(context.getColor(R.color.leash_accent))
         .setContentTitle(title)
         .setContentText(text)
         .setContentIntent(open(url, tag))

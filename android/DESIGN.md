@@ -4,8 +4,8 @@ The iOS app is the reference. This document says what makes it feel good, and ho
 without turning Android into a fake iPhone: the **look** is Leash's own (palette, type rhythm, shapes, glass, motion),
 the **behaviour** is Android's (back gesture, insets, IME, TalkBack, notifications, overscroll, long-press menus).
 
-Code lives in `dev.leash.personal.ui.design` (theme, tokens, shapes, motion, haptics, components). The old
-`ui/theme` stays until D2 switches every screen over; nothing here changes an existing screen by itself.
+Code lives in `dev.leash.personal.ui.design` (palette, theme, tokens, shapes, motion, haptics, components); every
+screen uses it (D2 removed the old `ui/theme`).
 A debug-only **Design catalog** activity (`src/debug`) shows every component in light and dark.
 
 References: iOS screenshots `.shots/IMG_5521–5524.JPG` (1206 × 2622 px = 402 × 874 pt at 3 px/pt; list, chat,
@@ -42,7 +42,7 @@ ripples, Roboto at Material sizes, no glass, no floating chrome. Structure and d
 
 ## 2. Colour
 
-Values are `LeashPalette` (shared with iOS; `ui/theme/LeashPalette.kt` stays the single source). Derived tokens
+Values are `LeashPalette` (shared with iOS; `ui/design/LeashPalette.kt` is the single source). Derived tokens
 (alphas over the role) are named so D2 never invents an alpha.
 
 | Token | Light | Dark | Use |

@@ -1,3 +1,5 @@
 <resources>
     <color name="leash_bg_base">#07080D</color>
+    <!-- notifications' accent (the palette accent) -->
+    <color name="leash_accent">#8088FF</color>
 </resources>

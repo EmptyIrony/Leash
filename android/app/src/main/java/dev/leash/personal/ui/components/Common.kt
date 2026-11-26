@@ -5,14 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
@@ -22,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
 import dev.leash.personal.core.AppState
 import dev.leash.personal.core.LinkState
-import dev.leash.personal.ui.theme.LeashTheme
+import dev.leash.personal.ui.design.Leash
 
 /** Which family a model belongs to (drives the icon and the picker's grouping). */
 enum class Provider {
@@ -45,8 +41,8 @@ fun ProviderIcon(provider: Provider, size: Dp = 16.dp, modifier: Modifier = Modi
     when (provider) {
         Provider.Gemini -> Image(painterResource(R.drawable.provider_gemini), null, modifier.size(size))
         Provider.Anthropic -> Image(painterResource(R.drawable.provider_claude), null, modifier.size(size))
-        Provider.OpenAI -> Image(painterResource(R.drawable.provider_openai), null, modifier.size(size), colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground))
-        Provider.Other -> Box(modifier.size(size).background(MaterialTheme.colorScheme.outline, CircleShape))
+        Provider.OpenAI -> Image(painterResource(R.drawable.provider_openai), null, modifier.size(size), colorFilter = ColorFilter.tint(Leash.colors.textPrimary))
+        Provider.Other -> Box(modifier.size(size).background(Leash.colors.textTertiary, CircleShape))
     }
 }
 
@@ -55,10 +51,6 @@ fun ProviderIcon(provider: Provider, size: Dp = 16.dp, modifier: Modifier = Modi
 fun AgentIcon(agent: String, size: Dp = 16.dp, modifier: Modifier = Modifier) =
     ProviderIcon(if (agent == "claude") Provider.Anthropic else Provider.Gemini, size, modifier)
 
-@Composable
-fun ActivitySpinner(size: Dp = 16.dp, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
-    CircularProgressIndicator(modifier.size(size), color = color, strokeWidth = (size.value / 8f).coerceAtLeast(1.5f).dp)
-}
 
 /** Every row that shows a mutable transcript item reads this: core items change in place and only the store's version moves. */
 val LocalChatVersion = compositionLocalOf { 0L }
@@ -105,26 +97,12 @@ fun connectionStatus(s: AppState): ConnectionStatus {
 
 @Composable
 fun StatusKind.color(): Color {
-    val c = LeashTheme.colors
+    val c = Leash.colors
     return when (this) {
         StatusKind.Ok -> c.success
         StatusKind.Warn -> c.attention
-        StatusKind.Bad -> MaterialTheme.colorScheme.error
+        StatusKind.Bad -> c.danger
         StatusKind.Idle -> c.textTertiary
     }
 }
 
-/** A small status dot. */
-@Composable
-fun StatusDot(color: Color, size: Dp = 8.dp, modifier: Modifier = Modifier) {
-    Box(modifier.size(size).background(color, CircleShape))
-}
-
-/** Pulses its content's opacity: the "working" state, kept subtle. */
-@Composable
-fun Modifier.pulse(on: Boolean): Modifier {
-    if (!on) return this
-    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
-    val a by t.animateFloat(0.55f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing), androidx.compose.animation.core.RepeatMode.Reverse), label = "pulseAlpha")
-    return this.alpha(a)
-}

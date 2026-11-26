@@ -1,4 +1,4 @@
-package dev.leash.personal.ui.theme
+package dev.leash.personal.ui.design
 
 /**
  * Leash's colours, ported from ios/SharedDesign/LeashPalette.swift ("Orbit": a dark instrument panel floating over
