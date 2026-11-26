@@ -245,6 +245,20 @@ fun LeashDialog(
     }
 }
 
+/** A transient message above the dock (Material's snackbar host, Leash's look): a solid panel capsule. */
+@Composable
+fun LeashSnackbar(text: String, modifier: Modifier = Modifier) {
+    val c = Leash.colors
+    Box(modifier.fillMaxWidth().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text, style = Leash.type.subheadline, color = c.textPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.floatingShadow(LeashShapes.capsule, panel = true).clip(LeashShapes.capsule).background(c.panel)
+                .border(BorderStroke(androidx.compose.ui.unit.Dp.Hairline, c.hairline), LeashShapes.capsule)
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+        )
+    }
+}
+
 /** The large title block that scrolls with a list's content: largeTitle + footnote subtitle, 16 dp from the start. */
 @Composable
 fun LargeTitle(title: String, modifier: Modifier = Modifier, subtitle: String? = null) {
@@ -354,7 +368,10 @@ fun LeashMenu(
     )
 }
 
-/** A menu item: body text with the outline glyph at the end (iOS order); destructive items in danger. */
+/**
+ * A menu item: body text with the outline glyph at the end (iOS order); destructive items in danger. In a pick-one
+ * menu ([checkable]) the current item carries a leading check, the others keep its space.
+ */
 @Composable
 fun LeashMenuItem(
     text: String,
@@ -363,18 +380,21 @@ fun LeashMenuItem(
     destructive: Boolean = false,
     enabled: Boolean = true,
     supporting: String? = null,
+    checkable: Boolean = false,
+    checked: Boolean = false,
 ) {
     val c = Leash.colors
-    val ink = if (destructive) c.danger else c.textPrimary
+    val ink = if (!enabled) c.textTertiary else if (destructive) c.danger else c.textPrimary
     DropdownMenuItem(
         text = {
             Column {
                 Text(text, style = Leash.type.body, color = ink)
-                if (supporting != null) Text(supporting, style = Leash.type.footnote, color = c.textSecondary)
+                if (supporting != null) Text(supporting, style = Leash.type.footnote, color = if (enabled) c.textSecondary else c.textTertiary)
             }
         },
         onClick = onClick,
         enabled = enabled,
+        leadingIcon = if (checkable) ({ Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { if (checked) Icon(LeashIcons.check, null, Modifier.size(18.dp), tint = c.accent) } }) else null,
         trailingIcon = icon?.let { { Icon(it, null, Modifier.size(20.dp), tint = ink) } },
         colors = MenuDefaults.itemColors(textColor = ink, trailingIconColor = ink, disabledTextColor = c.textTertiary, disabledTrailingIconColor = c.textTertiary),
         modifier = Modifier.padding(horizontal = 4.dp),

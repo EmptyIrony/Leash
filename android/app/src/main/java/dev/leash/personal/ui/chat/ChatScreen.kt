@@ -3,7 +3,6 @@ package dev.leash.personal.ui.chat
 import android.content.ClipData
 import android.content.Context
 import android.view.accessibility.AccessibilityManager
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,32 +21,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.PanTool
-import androidx.compose.material.icons.filled.StopCircle
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -64,16 +41,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,11 +60,38 @@ import dev.leash.personal.core.ChatStore
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.DisplayItem
 import dev.leash.personal.core.Haptic
-import dev.leash.personal.ui.components.ActivitySpinner
 import dev.leash.personal.ui.components.AgentIcon
 import dev.leash.personal.ui.components.LocalChatVersion
-import dev.leash.personal.ui.theme.LeashRadius
-import dev.leash.personal.ui.theme.LeashTheme
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.GlassScope
+import dev.leash.personal.ui.design.GlassSource
+import dev.leash.personal.ui.design.Leash
+import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LocalReduceMotion
+import dev.leash.personal.ui.design.Motion
+import dev.leash.personal.ui.design.SpaceBackground
+import dev.leash.personal.ui.design.semibold
+import dev.leash.personal.ui.design.softBottomEdge
+import dev.leash.personal.ui.design.components.BackButton
+import dev.leash.personal.ui.design.components.Banner
+import dev.leash.personal.ui.design.components.ButtonSize
+import dev.leash.personal.ui.design.components.ButtonStyle
+import dev.leash.personal.ui.design.components.GlassCircleButton
+import dev.leash.personal.ui.design.components.LeashButton
+import dev.leash.personal.ui.design.components.LeashMenu
+import dev.leash.personal.ui.design.components.LeashMenuItem
+import dev.leash.personal.ui.design.components.LeashSnackbar
+import dev.leash.personal.ui.design.components.LoadingState
+import dev.leash.personal.ui.design.components.RaisedCard
+import dev.leash.personal.ui.design.components.ScrollToBottomButton
+import dev.leash.personal.ui.design.components.TopBar
+import dev.leash.personal.ui.newsession.StartingCapsule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
@@ -102,7 +102,6 @@ import kotlinx.coroutines.launch
  * the command palette), the composer and the selector chips (ios ChatView). It stays attached while on screen, keeps
  * following the newest output until you scroll up, and shows load, locked and stop states.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     model: AppModel,
@@ -286,189 +285,167 @@ fun ChatScreen(
         }
     }
 
+    // the dock (trays, composer, chips) floats over the transcript; the list leaves room for it and follows its height
+    var dockPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val dockHeight = with(density) { dockPx.toDp() }
+    LaunchedEffect(dockPx) { if (pinned && items.isNotEmpty()) listState.scrollToItem(items.lastIndex, scrollOffset = 1_000_000) }
+    val c = Leash.colors
+    val reduced = LocalReduceMotion.current
+    val others = state.pending.values.filter { it.sessionId != sessionId }.sortedBy { it.key }.mapNotNull { it.sessionId }.distinct()
+    val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 } }
+
     CompositionLocalProvider(
         LocalChatVersion provides version,
         LocalOpenFile provides { scope.launch { snackbar.showSnackbar(laterText) } },
     ) {
-        Scaffold(
-            modifier = Modifier.imePadding(),
-            containerColor = Color.Transparent,
-            snackbarHost = { SnackbarHost(snackbar) },
-            topBar = {
-                TopAppBar(
-                    navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
-                    title = {
-                        Column {
-                            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.StartEllipsis)
+        GlassScope(Modifier.fillMaxSize()) {
+            GlassSource(Modifier.fillMaxSize()) {
+                SpaceBackground()
+                LazyColumn(
+                    Modifier.fillMaxSize(), state = listState,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topBarSpace() + if (others.isNotEmpty()) 52.dp else 0.dp, bottom = dockHeight + 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (loading) item("loading") {
+                        LoadingState(stringResource(R.string.loading_conversation), Modifier.fillMaxWidth().padding(top = 96.dp), delayMs = 0)
+                    } else if (loadError != null && empty) item("load-error") {
+                        LoadError(loadError, enabled = agentReady) { scope.launch { model.attach(store) } }
+                    } else if (attached && empty && !running) item("empty") {
+                        Column(Modifier.fillMaxWidth().padding(top = 120.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            AgentIcon(agent, 32.dp)
+                            Text(stringResource(if (agent == "claude") R.string.ask_claude else R.string.ask_agent), style = Leash.type.title3, color = c.textPrimary)
+                            cwd?.let { Text(state.shortPath(it, agent), style = Leash.type.mono, color = c.textSecondary) }
                         }
-                    },
+                    }
+                    itemsIndexed(items, key = { _, it -> it.id }) { idx, item ->
+                        DisplayRow(item, idx == 0, store, blocked) { child -> onOpenSubagent(sessionId, child) }
+                    }
+                    if (sendingSlow && echoId != null) item("sending") {
+                        Text(stringResource(R.string.sending), Modifier.fillMaxWidth(), style = Leash.type.caption, color = c.textTertiary, textAlign = TextAlign.End)
+                    }
+                    if (stopReason != null && stopReason != "end_turn" && !running) item("stop") {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(LeashIcons.stopped, null, Modifier.size(16.dp), tint = c.textTertiary)
+                            Text(stopText(stopReason), style = Leash.type.footnote, color = c.textSecondary)
+                        }
+                    }
+                    if (loadError != null && !empty) item("load-error-inline") { LoadError(loadError, enabled = agentReady) { scope.launch { model.attach(store) } } }
+                    if (lockedBy != null) item("locked") {
+                        RaisedCard(Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(LeashIcons.locked, null, Modifier.size(18.dp), tint = c.textSecondary)
+                                Text(lockText(lockedBy), style = Leash.type.subheadline, color = c.textPrimary)
+                            }
+                            LeashButton(stringResource(R.string.retry), { scope.launch { model.attach(store) } }, style = ButtonStyle.Plain)
+                        }
+                    }
+                }
+            }
+
+            // top: the floating bar, and under it the other conversations that wait on you
+            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+                TopBar(
+                    title = title,
+                    subtitle = subtitle.ifEmpty { null },
+                    edgeVisible = scrolled || items.isNotEmpty(),
+                    navigation = { BackButton(stringResource(R.string.back), onBack) },
                     actions = {
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.more_options)) }
-                            DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.new_conversation_here)) },
+                            GlassCircleButton(LeashIcons.more, stringResource(R.string.more_options), { menu = true }, tint = c.accentControl)
+                            LeashMenu(menu, { menu = false }) {
+                                LeashMenuItem(
+                                    stringResource(R.string.new_conversation_here), { menu = false; startNewHere() }, icon = LeashIcons.squareAndPencil,
                                     enabled = cwd != null && !startingNew && agentReady,
-                                    onClick = { menu = false; startNewHere() },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.browse_files)) },
+                                LeashMenuItem(
+                                    stringResource(R.string.browse_files), { menu = false; cwd?.let { onBrowseFiles(agent, it) } }, icon = LeashIcons.folder,
                                     enabled = cwd != null && state.isConnected,
-                                    onClick = { menu = false; cwd?.let { onBrowseFiles(agent, it) } },
                                 )
-                                if (cwd != null) DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.copy_folder_path)) },
-                                    onClick = { menu = false; scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("path", cwd))); buzz(Haptic.Selection) } },
+                                if (cwd != null) LeashMenuItem(
+                                    stringResource(R.string.copy_folder_path),
+                                    { menu = false; scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("path", cwd))); buzz(Haptic.Selection) } },
+                                    icon = LeashIcons.copy,
                                 )
                                 if (state.hasCliList(agent)) {
                                     val listed = store.listedInCli == true
-                                    DropdownMenuItem(
-                                        text = {
-                                            Column {
-                                                Text(stringResource(R.string.show_on_computer))
-                                                Text(stringResource(if (listed) R.string.show_on_computer_done else R.string.show_on_computer_todo), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        },
+                                    LeashMenuItem(
+                                        stringResource(R.string.show_on_computer), { menu = false; showOnComputer() }, icon = LeashIcons.computer,
                                         enabled = !listed && !showingInCli && state.isConnected,
-                                        onClick = { menu = false; showOnComputer() },
+                                        supporting = stringResource(if (listed) R.string.show_on_computer_done else R.string.show_on_computer_todo),
                                     )
                                 }
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 )
-            },
-            bottomBar = {
+                AnimatedVisibility(others.isNotEmpty(), enter = Motion.bannerEnter(reduced), exit = Motion.bannerExit(reduced)) {
+                    Banner(
+                        if (others.size > 1) pluralText(R.plurals.others_need_you, others.size) else stringResource(R.string.another_needs_approval),
+                        { others.firstOrNull()?.let(onOpenChat) },
+                        Modifier.padding(horizontal = 16.dp).offset(y = (-20).dp),
+                    )
+                }
+            }
+
+            // bottom: the dock rides the keyboard; content keeps scrolling under it, faded
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
+                Box(Modifier.matchParentSize().softBottomEdge())
                 Column(
-                    Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 6.dp),
+                    Modifier.fillMaxWidth().imePadding().windowInsetsPadding(WindowInsets.navigationBars).padding(top = 10.dp, bottom = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    RequestStack(model, pending, showsAgent = { true }, onOpenSubagent = onOpenSubagent)
-                    if (subagents.isNotEmpty()) SubagentsTray(subagents, collapsed = trayVisible) { child -> onOpenSubagent(sessionId, child) }
-                    if (queued.isNotEmpty() || removedQueued != null) QueueTray(
-                        items = queued, rows = queueRows(queued, removedQueued), running = running, collapsed = trayVisible, enabled = composerEnabled,
-                        edit = { q -> model.unqueue(store, q); focusRequester.requestFocus() },
-                        delete = { q -> model.removeQueued(store, q); buzz(Haptic.Selection) },
-                        sendNow = ::sendQueuedNow,
-                        undo = { model.undoRemoveQueued(store); buzz(Haptic.Selection) },
-                    )
-                    if (commands.isNotEmpty()) CommandPalette(commands, compact = trayVisible || queued.isNotEmpty()) { c ->
-                        val t = "/" + c.name + " "
-                        draft = TextFieldValue(t, TextRange(t.length))
-                        focusRequester.requestFocus()
-                        buzz(Haptic.Selection)
+                    Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RequestStack(model, pending, showsAgent = { true }, onOpenSubagent = onOpenSubagent)
+                        if (subagents.isNotEmpty()) SubagentsTray(subagents, collapsed = trayVisible) { child -> onOpenSubagent(sessionId, child) }
+                        if (queued.isNotEmpty() || removedQueued != null) QueueTray(
+                            items = queued, rows = queueRows(queued, removedQueued), running = running, collapsed = trayVisible, enabled = composerEnabled,
+                            edit = { q -> model.unqueue(store, q); focusRequester.requestFocus() },
+                            delete = { q -> model.removeQueued(store, q); buzz(Haptic.Selection) },
+                            sendNow = ::sendQueuedNow,
+                            undo = { model.undoRemoveQueued(store); buzz(Haptic.Selection) },
+                        )
+                        if (commands.isNotEmpty()) CommandPalette(commands, compact = trayVisible || queued.isNotEmpty()) { cmd ->
+                            val t = "/" + cmd.name + " "
+                            draft = TextFieldValue(t, TextRange(t.length))
+                            focusRequester.requestFocus()
+                            buzz(Haptic.Selection)
+                        }
+                        ComposerSlab(
+                            value = draft, onValueChange = { draft = it }, placeholder = placeholder, enabled = composerEnabled, running = running, canSend = canSend,
+                            error = composerError, commandStatus = pickedCommand, focusRequester = focusRequester, onFocusChanged = { composerFocused = it },
+                            onSend = { sendDraft(false) }, onStop = ::stopTurn, onInterruptAndSend = { sendDraft(true) },
+                            onDismissError = { store.composerError = null },
+                        )
                     }
-                    ComposerSlab(
-                        value = draft, onValueChange = { draft = it }, placeholder = placeholder, enabled = composerEnabled, running = running, canSend = canSend,
-                        error = composerError, commandStatus = pickedCommand, focusRequester = focusRequester, onFocusChanged = { composerFocused = it },
-                        onSend = { sendDraft(false) }, onStop = ::stopTurn, onInterruptAndSend = { sendDraft(true) },
-                        onDismissError = { store.composerError = null },
-                    )
-                    if (!trayVisible) ChipRow(model, store, composerEnabled)
-                }
-            },
-        ) { padding ->
-            Column(Modifier.padding(padding).fillMaxSize()) {
-                OtherSessionsBanner(state.pending.values.filter { it.sessionId != sessionId }.sortedBy { it.key }.mapNotNull { it.sessionId }.distinct(), onOpenChat)
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    LazyColumn(
-                        Modifier.fillMaxSize(), state = listState,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        if (loading) item("loading") {
-                            Row(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                ActivitySpinner(18.dp); Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.loading_conversation), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } else if (loadError != null && empty) item("load-error") {
-                            LoadError(loadError, enabled = agentReady) { scope.launch { model.attach(store) } }
-                        } else if (attached && empty && !running) item("empty") {
-                            Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                AgentIcon(agent, 28.dp)
-                                Text(stringResource(if (agent == "claude") R.string.ask_claude else R.string.ask_agent), style = MaterialTheme.typography.titleMedium)
-                                cwd?.let { Text(state.shortPath(it, agent), style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = LeashTheme.colors.textTertiary) }
-                            }
-                        }
-                        itemsIndexed(items, key = { _, it -> it.id }) { idx, item ->
-                            DisplayRow(item, idx == 0, store, blocked) { child -> onOpenSubagent(sessionId, child) }
-                        }
-                        if (sendingSlow && echoId != null) item("sending") {
-                            Text(stringResource(R.string.sending), Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodySmall, color = LeashTheme.colors.textTertiary, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                        }
-                        if (stopReason != null && stopReason != "end_turn" && !running) item("stop") {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.StopCircle, null, Modifier.size(16.dp), tint = LeashTheme.colors.textTertiary)
-                                Spacer(Modifier.width(6.dp))
-                                Text(stopText(stopReason), style = MaterialTheme.typography.bodySmall, color = LeashTheme.colors.textTertiary)
-                            }
-                        }
-                        if (loadError != null && !empty) item("load-error-inline") { LoadError(loadError, enabled = agentReady) { scope.launch { model.attach(store) } } }
-                        if (lockedBy != null) item("locked") {
-                            Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Row(verticalAlignment = Alignment.Top) {
-                                        Icon(Icons.Filled.Lock, null, Modifier.size(18.dp))
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(lockText(lockedBy), style = MaterialTheme.typography.bodyMedium)
-                                    }
-                                    TextButton(onClick = { scope.launch { model.attach(store) } }) { Text(stringResource(R.string.retry), fontWeight = FontWeight.SemiBold) }
-                                }
-                            }
-                        }
-                    }
-                    if (!pinned && listState.canScrollForward) SmallFloatingActionButton(
-                        onClick = { pinned = true },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) { Icon(Icons.Filled.ArrowDownward, stringResource(R.string.scroll_to_bottom)) }
-                    if (startingNew) Surface(Modifier.align(Alignment.Center), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 6.dp) {
-                        Row(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ActivitySpinner(18.dp); Text(stringResource(R.string.starting))
-                        }
-                    }
+                    AnimatedVisibility(!trayVisible, enter = Motion.layoutEnter(reduced), exit = Motion.layoutExit(reduced)) { ChipRow(model, store, composerEnabled) }
                 }
             }
+
+            AnimatedVisibility(
+                !pinned && listState.canScrollForward,
+                Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = dockHeight + 8.dp),
+                enter = Motion.popEnter(reduced), exit = Motion.popExit(reduced),
+            ) { ScrollToBottomButton(stringResource(R.string.scroll_to_bottom), { pinned = true }) }
+            if (startingNew) StartingCapsule(Modifier.align(Alignment.Center))
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = dockHeight + 8.dp)) { data -> LeashSnackbar(data.visuals.message) }
         }
     }
 }
 
-/** Other conversations waiting on you, above the transcript; it opens the first (ios otherSessionsBanner). */
-@Composable
-private fun OtherSessionsBanner(sessionIds: List<String>, open: (String) -> Unit) {
-    val first = sessionIds.firstOrNull() ?: return
-    val attention = LeashTheme.colors.attention
-    Surface(
-        onClick = { open(first) },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = CircleShape, color = attention.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh),
-    ) {
-        Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Filled.PanTool, null, Modifier.size(16.dp), tint = attention)
-            Text(
-                if (sessionIds.size > 1) pluralText(R.plurals.others_need_you, sessionIds.size) else stringResource(R.string.another_needs_approval),
-                Modifier.weight(1f), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = LeashTheme.colors.textTertiary)
-        }
-    }
-}
-
+/** Couldn't load the transcript: a raised card with the reason and Try again. */
 @Composable
 private fun LoadError(message: String, enabled: Boolean, onRetry: () -> Unit) {
-    Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Icon(Icons.Filled.ErrorOutline, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.width(10.dp))
-                Column {
-                    Text(stringResource(R.string.couldnt_load_conversation), style = MaterialTheme.typography.titleSmall)
-                    Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+    val c = Leash.colors
+    RaisedCard(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(LeashIcons.failed, null, Modifier.size(18.dp), tint = c.danger)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.couldnt_load_conversation), style = Leash.type.subheadline.semibold(), color = c.textPrimary)
+                Text(message, style = Leash.type.footnote, color = c.textSecondary)
             }
-            Button(onClick = onRetry, enabled = enabled) { Text(stringResource(R.string.try_again)) }
         }
+        LeashButton(stringResource(R.string.try_again), onRetry, style = ButtonStyle.Tinted, size = ButtonSize.Small, enabled = enabled)
     }
 }
 

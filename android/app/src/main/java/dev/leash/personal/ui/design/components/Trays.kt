@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.ui.design.Leash
@@ -136,20 +137,37 @@ fun QueueHeader(title: String, actionLabel: String, onAction: () -> Unit, modifi
     }
 }
 
-/** A queued message: tap to edit (back into the composer), × to remove (48 dp target). */
+/**
+ * A queued message: tap to edit (back into the composer), × to remove (48 dp target), long-press for [menu] (a
+ * LeashMenu anchored to the row). [icons] mark attachments.
+ */
 @Composable
-fun QueueRow(text: String, onEdit: () -> Unit, onRemove: () -> Unit, removeLabel: String, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun QueueRow(
+    text: String,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+    removeLabel: String,
+    modifier: Modifier = Modifier,
+    icons: List<ImageVector> = emptyList(),
+    enabled: Boolean = true,
+    editLabel: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    menu: @Composable () -> Unit = {},
+) {
     val c = Leash.colors
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Row(
-            Modifier.weight(1f).pressable(scale = PressScale.Row, onClick = onEdit).heightIn(min = 44.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (icon != null) Icon(icon, null, Modifier.size(16.dp), tint = c.textSecondary)
-            Text(text, style = Leash.type.callout, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.weight(1f)) {
+            Row(
+                Modifier.fillMaxWidth().pressable(enabled, scale = PressScale.Row, onClickLabel = editLabel, onLongClick = onLongClick, onClick = onEdit).heightIn(min = 44.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                icons.forEach { Icon(it, null, Modifier.size(16.dp), tint = c.textSecondary) }
+                Text(text, style = Leash.type.callout, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            menu()
         }
-        Box(Modifier.size(44.dp).pressable(onClickLabel = removeLabel, onClick = onRemove), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(44.dp).pressable(enabled, onClickLabel = removeLabel, onClick = onRemove), contentAlignment = Alignment.Center) {
             Icon(LeashIcons.close, removeLabel, Modifier.size(14.dp), tint = c.textSecondary)
         }
     }
@@ -187,6 +205,66 @@ fun ComposerSlab(
     above: (@Composable ColumnScope.() -> Unit)? = null,
     action: @Composable RowScope.() -> Unit,
 ) {
+    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading = true, above = above, action = action) { style, cursor, keyboard ->
+        BasicTextField(
+            value = value, onValueChange = onValueChange, enabled = enabled, textStyle = style, cursorBrush = cursor, maxLines = 8,
+            keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner -> SlabPlaceholder(value.isEmpty(), placeholder, style, inner) },
+        )
+    }
+}
+
+/**
+ * The composer slab over a [TextFieldValue] (the app's composer: selection, cursor moves when a queued message comes
+ * back). [fieldModifier] carries focus, key handling and semantics; [showLeading] = false hides the leading control
+ * until it has something to do.
+ */
+@Composable
+fun ComposerSlab(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    fieldModifier: Modifier = Modifier,
+    mode: ComposerMode = ComposerMode.Normal,
+    enabled: Boolean = true,
+    blur: Boolean = false,
+    showLeading: Boolean = true,
+    leadingLabel: String = "",
+    onLeading: () -> Unit = {},
+    above: (@Composable ColumnScope.() -> Unit)? = null,
+    action: @Composable RowScope.() -> Unit,
+) {
+    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading, above, action) { style, cursor, keyboard ->
+        BasicTextField(
+            value = value, onValueChange = onValueChange, enabled = enabled, textStyle = style, cursorBrush = cursor, maxLines = 8,
+            keyboardOptions = keyboard, modifier = fieldModifier.fillMaxWidth(),
+            decorationBox = { inner -> SlabPlaceholder(value.text.isEmpty(), placeholder, style, inner) },
+        )
+    }
+}
+
+@Composable
+private fun SlabPlaceholder(empty: Boolean, placeholder: String, style: androidx.compose.ui.text.TextStyle, inner: @Composable () -> Unit) {
+    Box(contentAlignment = Alignment.CenterStart) {
+        if (empty) Text(placeholder, style = style.copy(color = Leash.colors.textSecondary), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        inner()
+    }
+}
+
+@Composable
+private fun SlabFrame(
+    modifier: Modifier,
+    mode: ComposerMode,
+    enabled: Boolean,
+    blur: Boolean,
+    leadingLabel: String,
+    onLeading: () -> Unit,
+    showLeading: Boolean,
+    above: (@Composable ColumnScope.() -> Unit)?,
+    action: @Composable RowScope.() -> Unit,
+    field: @Composable (androidx.compose.ui.text.TextStyle, androidx.compose.ui.graphics.Brush, KeyboardOptions) -> Unit,
+) {
     val c = Leash.colors
     val tint = when (mode) {
         ComposerMode.Shell -> c.shell.copy(alpha = 0.16f)
@@ -195,6 +273,10 @@ fun ComposerSlab(
     }
     val textStyle = (if (mode == ComposerMode.Shell) Leash.type.mono.copy(fontSize = Leash.type.body.fontSize, lineHeight = Leash.type.body.lineHeight) else Leash.type.body)
         .copy(color = c.textPrimary)
+    val keyboard = KeyboardOptions(
+        capitalization = if (mode == ComposerMode.Shell) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
+        autoCorrectEnabled = mode != ComposerMode.Shell,
+    )
     Column(
         modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).glass(LeashShapes.composer, tint = tint, blur = blur)
             .animateContentSize(Motion.quick()).heightIn(min = 48.dp).padding(horizontal = 6.dp, vertical = 4.dp),
@@ -202,33 +284,19 @@ fun ComposerSlab(
     ) {
         above?.invoke(this)
         Row(verticalAlignment = Alignment.Bottom) {
-            val (icon, ink) = when (mode) {
-                ComposerMode.Shell -> LeashIcons.terminal to c.shell
-                ComposerMode.SideQuestion -> LeashIcons.sideQuestion to c.accent
-                ComposerMode.Normal -> LeashIcons.plus to c.textSecondary
+            if (showLeading) {
+                val (icon, ink) = when (mode) {
+                    ComposerMode.Shell -> LeashIcons.terminal to c.shell
+                    ComposerMode.SideQuestion -> LeashIcons.sideQuestion to c.accent
+                    ComposerMode.Normal -> LeashIcons.plus to c.textSecondary
+                }
+                Box(Modifier.size(40.dp).pressable(enabled, onClickLabel = leadingLabel, onClick = onLeading), contentAlignment = Alignment.Center) {
+                    Icon(icon, leadingLabel, Modifier.size(22.dp), tint = ink)
+                }
             }
-            Box(Modifier.size(40.dp).pressable(enabled, onClickLabel = leadingLabel, onClick = onLeading), contentAlignment = Alignment.Center) {
-                Icon(icon, leadingLabel, Modifier.size(22.dp), tint = ink)
+            Box(Modifier.weight(1f).padding(top = 9.dp, bottom = 9.dp, start = if (showLeading) 2.dp else 12.dp)) {
+                field(textStyle, SolidColor(if (mode == ComposerMode.Shell) c.shell else c.accent), keyboard)
             }
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                textStyle = textStyle,
-                cursorBrush = SolidColor(if (mode == ComposerMode.Shell) c.shell else c.accent),
-                maxLines = 8,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = if (mode == ComposerMode.Shell) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
-                    autoCorrectEnabled = mode != ComposerMode.Shell,
-                ),
-                modifier = Modifier.weight(1f).padding(top = 9.dp, bottom = 9.dp, start = 2.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (value.isEmpty()) Text(placeholder, style = textStyle.copy(color = c.textSecondary), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        inner()
-                    }
-                },
-            )
             Row(verticalAlignment = Alignment.CenterVertically, content = action)
         }
     }
@@ -236,10 +304,10 @@ fun ComposerSlab(
 
 /** A status line inside the composer slab (shell cwd, side-question note, error with dismiss). */
 @Composable
-fun ComposerStatus(text: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null, dismissLabel: String = "") {
+fun ComposerStatus(text: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null, dismissLabel: String = "", maxLines: Int = 1) {
     Row(modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(14.dp), tint = color)
-        Text(text, style = Leash.type.caption.medium(), color = if (onDismiss != null) Leash.colors.textPrimary else color, maxLines = 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f))
+        Text(text, style = Leash.type.caption.medium(), color = if (onDismiss != null) Leash.colors.textPrimary else color, maxLines = maxLines, overflow = if (maxLines == 1) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         if (onDismiss != null) {
             Box(Modifier.size(32.dp).pressable(onClickLabel = dismissLabel, onClick = onDismiss), contentAlignment = Alignment.Center) {
                 Icon(LeashIcons.close, dismissLabel, Modifier.size(12.dp), tint = Leash.colors.textSecondary)
