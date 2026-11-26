@@ -96,7 +96,7 @@
 - Relative times follow the system language (the emulator is Chinese); a bridge timestamp ahead of the phone's clock is clamped to "now".
 
 
-## Phase D1: Design system — done, emulator check pending
+## Phase D1: Design system — implemented, built, unit-tested; never run on a device
 
 Branch `android-design` (worktree `/config/workspace/Leash-design`), not merged: D2 starts after 2b lands.
 
@@ -137,12 +137,15 @@ Branch `android-design` (worktree `/config/workspace/Leash-design`), not merged:
 - On the shared Windows host the Kotlin compile **daemon** hung twice (no output for 30 min, nothing packaged) while the
   other workspace was building. `-Pkotlin.compiler.execution.strategy=in-process` fixed it (compile 87 s, assemble 40 s);
   pass it on every build/test of this workspace. Never abort an `android_build` call client-side (it leaves Gradle running).
+  Unknown whether the two hung runs (one aborted client-side, one ended by the 30 min MCP idle timeout) were cleaned
+  up on the host; a leftover Kotlin daemon in the `leash-design` workspace is possible.
 
 ### Verified
 - `android_build` assembleDebug (`project=leash-design`, `-PleashIdSuffix=.design`): BUILD SUCCESSFUL.
 - `android_test` unit: 183 tests, 0 failures.
-- Emulator: NOT verified yet. The shared emulator went offline (`adb devices`: offline) during the install and stayed
-  offline for 15+ min; nothing was installed or screenshotted. Next step: install with `-PleashIdSuffix=.design` and
+- Emulator: NOT verified. The shared emulator went offline at ~05:20 UTC (both the container relay and the Windows
+  host's own adb report `device offline`) and was still offline at 05:56; nothing was installed, launched or
+  screenshotted, so no component has been seen rendered. Next step: install with `-PleashIdSuffix=.design` and
   screenshot every catalog page in light and dark.
 
 ### What D2 must do

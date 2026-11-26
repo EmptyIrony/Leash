@@ -104,7 +104,10 @@ fun LeashButton(
     }
 }
 
-/** A glass circle (toolbar 44 dp in a 48 dp target, list bottom actions 52, scroll-to-bottom 36). */
+/**
+ * A glass circle (toolbar 44 dp in a 48 dp target, list bottom actions 52, scroll-to-bottom 36). It sits inside a
+ * blurred band (top edge, bottom dock), so it draws tint and rim only unless [blur] is set (the blur budget, §6).
+ */
 @Composable
 fun GlassCircleButton(
     icon: ImageVector,
@@ -114,7 +117,7 @@ fun GlassCircleButton(
     size: Dp = 44.dp,
     tint: Color = Leash.colors.textPrimary,
     enabled: Boolean = true,
-    blur: Boolean = true,
+    blur: Boolean = false,
     badge: (@Composable () -> Unit)? = null,
 ) {
     Box(

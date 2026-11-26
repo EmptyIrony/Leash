@@ -67,33 +67,42 @@ fun TopBar(
     val c = Leash.colors
     Box(modifier.fillMaxWidth()) {
         // the edge reaches 24 dp below the bar
-        Box(Modifier.matchParentSize().padding(bottom = 0.dp).softTopEdge())
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp).padding(top = 4.dp, bottom = 28.dp).height(48.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.width(if (titleAlign == TitleAlign.Center) 104.dp else 56.dp), contentAlignment = Alignment.CenterStart) { navigation?.invoke() }
-            Column(
-                Modifier.weight(1f).padding(horizontal = 4.dp),
-                horizontalAlignment = if (titleAlign == TitleAlign.Center) Alignment.CenterHorizontally else Alignment.Start,
+        Box(Modifier.matchParentSize().softTopEdge())
+        val titleBlock: @Composable () -> Unit = {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = title != null && titleVisible,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
             ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = title != null && titleVisible,
-                    enter = androidx.compose.animation.fadeIn(),
-                    exit = androidx.compose.animation.fadeOut(),
-                ) {
-                    Column(horizontalAlignment = if (titleAlign == TitleAlign.Center) Alignment.CenterHorizontally else Alignment.Start) {
-                        Text(title.orEmpty(), style = Leash.type.headline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (subtitle != null) Text(subtitle, style = Leash.type.footnote, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                Column(horizontalAlignment = if (titleAlign == TitleAlign.Center) Alignment.CenterHorizontally else Alignment.Start) {
+                    Text(title.orEmpty(), style = Leash.type.headline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (subtitle != null) Text(subtitle, style = Leash.type.footnote, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Row(
-                Modifier.width(if (titleAlign == TitleAlign.Center) 104.dp else androidx.compose.ui.unit.Dp.Unspecified),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-                content = actions,
-            )
+        }
+        // side slots size to their content; a centred title gets the width left between the wider slot and its mirror
+        androidx.compose.ui.layout.Layout(
+            contents = listOf<@Composable () -> Unit>({ navigation?.invoke() }, titleBlock, { Row(verticalAlignment = Alignment.CenterVertically, content = actions) }),
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp).padding(top = 4.dp, bottom = 28.dp).height(48.dp),
+        ) { (navM, titleM, actM), constraints ->
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val nav = navM.firstOrNull()?.measure(loose)
+            val act = actM.firstOrNull()?.measure(loose)
+            val navW = nav?.width ?: 0
+            val actW = act?.width ?: 0
+            val gap = 4.dp.roundToPx()
+            val w = constraints.maxWidth
+            val h = constraints.maxHeight
+            val titleMax = if (titleAlign == TitleAlign.Center) (w - 2 * (maxOf(navW, actW) + gap)) else (w - navW - actW - 2 * gap)
+            val t = titleM.firstOrNull()?.measure(loose.copy(maxWidth = titleMax.coerceAtLeast(0)))
+            layout(w, h) {
+                nav?.placeRelative(0, (h - nav.height) / 2)
+                act?.placeRelative(w - actW, (h - act.height) / 2)
+                if (t != null) {
+                    val x = if (titleAlign == TitleAlign.Center) (w - t.width) / 2 else navW + gap
+                    t.placeRelative(x, (h - t.height) / 2)
+                }
+            }
         }
     }
 }

@@ -51,7 +51,19 @@ fun GlassScope(modifier: Modifier = Modifier, content: @Composable BoxScope.() -
     }
 }
 
-/** Marks content that glass in the same [GlassScope] blurs (the scrolling transcript, the list). */
+/**
+ * The content glass blurs (the scrolling transcript, the list). Glass *inside* it can't blur its own source, so it is
+ * given no state there and draws its solid fallback.
+ */
+@Composable
+fun GlassSource(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(modifier.glassSource()) {
+        val scope = this
+        CompositionLocalProvider(LocalGlassState provides null) { scope.content() }
+    }
+}
+
+/** Marks content that glass in the same [GlassScope] blurs; prefer [GlassSource], which also stops glass inside it from blurring. */
 @Composable
 fun Modifier.glassSource(): Modifier {
     val state = LocalGlassState.current ?: return this

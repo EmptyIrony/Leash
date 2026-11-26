@@ -47,7 +47,7 @@ import dev.leash.personal.ui.design.LeashShapes
 import dev.leash.personal.ui.design.RingGauge
 import dev.leash.personal.ui.design.SpaceBackground
 import dev.leash.personal.ui.design.components.*
-import dev.leash.personal.ui.design.glassSource
+import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.semibold
 import dev.leash.personal.ui.design.softBottomEdge
 
@@ -103,7 +103,7 @@ fun ChatPage() {
     val c = Leash.colors
     var draft by remember { mutableStateOf("") }
     GlassScope(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().glassSource()) {
+        GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 64.dp, bottom = 190.dp),
@@ -190,7 +190,7 @@ fun TraysPage() {
     var choice by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf("!ls -la") }
     GlassScope(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().glassSource()) {
+        GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             Column(Modifier.fillMaxSize().statusBarsPadding().padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Prose("Content under the dock scrolls on to the screen bottom, faded and blurred, so nothing sharp shows between the slab and the chips. ", "rm -rf build", " needs approval.")

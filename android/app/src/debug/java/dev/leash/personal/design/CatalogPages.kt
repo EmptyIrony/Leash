@@ -52,7 +52,7 @@ import dev.leash.personal.ui.design.SpaceBackground
 import dev.leash.personal.ui.design.Spinner
 import dev.leash.personal.ui.design.components.*
 import dev.leash.personal.ui.design.glass
-import dev.leash.personal.ui.design.glassSource
+import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.medium
 import dev.leash.personal.ui.design.semibold
 import dev.leash.personal.ui.design.softBottomEdge
@@ -67,7 +67,7 @@ private fun Page(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     GlassScope(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().glassSource()) {
+        GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 72.dp, bottom = if (bottom != null) 150.dp else 32.dp).navigationBarsPadding(),
@@ -244,7 +244,7 @@ fun ListPage() {
     val c = Leash.colors
     var seg by remember { mutableIntStateOf(1) }
     GlassScope(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().glassSource()) {
+        GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 60.dp, bottom = 120.dp),
