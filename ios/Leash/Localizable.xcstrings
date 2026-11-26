@@ -586,12 +586,12 @@
     "8787" : {
 
     },
-    "A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. With Update in Background on, Leash keeps running until the turn ends (it plays silence, which uses some battery); otherwise it updates only while Leash is open and says when it may be out of date. The watch app reaches your Mac through this iPhone." : {
+    "A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. With Update in Background on, Leash keeps running until the turn ends (it plays silence, which uses some battery); otherwise it updates only while Leash is open and says when it may be out of date. The watch app reaches the bridge through this iPhone." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从这台 iPhone 发起的对话在 agent 工作时会显示在锁定屏幕、灵动岛和 Apple Watch 上。打开“后台更新”后，拴绳会在后台一直运行到这一轮结束（靠播放无声音频，会多耗一些电）；关闭时只在拴绳打开期间更新，可能过时时会标明。手表 App 通过这台 iPhone 连接你的 Mac。"
+            "value" : "从这台 iPhone 发起的对话在 agent 工作时会显示在锁定屏幕、灵动岛和 Apple Watch 上。打开“后台更新”后，拴绳会在后台一直运行到这一轮结束（靠播放无声音频，会多耗一些电）；关闭时只在拴绳打开期间更新，可能过时时会标明。手表 App 通过这台 iPhone 连接 Bridge。"
           }
         }
       }
@@ -940,12 +940,12 @@
         }
       }
     },
-    "Browse the Mac…" : {
+    "Browse the bridge…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "浏览 Mac…"
+            "value" : "浏览 Bridge…"
           }
         }
       }
@@ -1232,12 +1232,12 @@
         }
       }
     },
-    "Couldn't reach your Mac" : {
+    "Couldn't reach the bridge" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "连不上你的 Mac"
+            "value" : "连不上 Bridge"
           }
         }
       }
@@ -1452,12 +1452,12 @@
         }
       }
     },
-    "Every command and edit the agent asks for in this conversation will be approved automatically on your Mac." : {
+    "Every command and edit the agent asks for in this conversation will be approved automatically on the computer running the bridge." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这个对话里 agent 请求的所有命令和编辑，都会在你的 Mac 上被自动批准。"
+            "value" : "这个对话里 agent 请求的所有命令和编辑，都会在运行 Bridge 的电脑上被自动批准。"
           }
         }
       }
@@ -1786,22 +1786,22 @@
         }
       }
     },
-    "Mac" : {
+    "Bridge" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mac"
+            "value" : "Bridge"
           }
         }
       }
     },
-    "Mac offline…" : {
+    "Bridge offline…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mac 离线…"
+            "value" : "Bridge 离线…"
           }
         }
       }
@@ -2038,12 +2038,12 @@
         }
       }
     },
-    "On the Mac run  node ~/workspace/Leash/bridge/src/index.mjs pair" : {
+    "On the computer running the bridge, run  node ~/workspace/Leash/bridge/src/index.mjs pair" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 上运行  node ~/workspace/Leash/bridge/src/index.mjs pair"
+            "value" : "在运行 Bridge 的电脑上执行  node ~/workspace/Leash/bridge/src/index.mjs pair"
           }
         }
       }
@@ -2138,12 +2138,12 @@
         }
       }
     },
-    "Pair with your Mac" : {
+    "Pair with the bridge" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "与 Mac 配对"
+            "value" : "与 Bridge 配对"
           }
         }
       }
@@ -2473,13 +2473,13 @@
         }
       }
     },
-    "Restart agy on the Mac" : {
+    "Restart agy on the bridge" : {
       "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Mac 上重启 agy"
+            "value" : "在 Bridge 上重启 agy"
           }
         }
       }
@@ -2514,12 +2514,12 @@
         }
       }
     },
-    "Run the bridge on your Mac, then scan its QR code." : {
+    "Start the bridge, then scan its QR code." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "先在 Mac 上运行 Bridge，再扫描它显示的二维码。"
+            "value" : "先启动 Bridge，再扫描它显示的二维码。"
           }
         }
       }
@@ -3002,12 +3002,12 @@
         }
       }
     },
-    "Tailscale name or IP" : {
+    "Host name or IP" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tailscale 名称或 IP"
+            "value" : "主机名或 IP"
           }
         }
       }
@@ -3052,12 +3052,12 @@
         }
       }
     },
-    "The Mac sent no file data" : {
+    "The bridge sent no file data" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mac 没有返回文件内容"
+            "value" : "Bridge 没有返回文件内容"
           }
         }
       }

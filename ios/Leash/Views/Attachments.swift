@@ -164,7 +164,7 @@ extension AppModel {
         if let sessionId { p["sessionId"] = .string(sessionId) }
         let r = try await link.call("bridge/readFile", .object(p), timeout: 180)
         guard let b64 = r["data"]?.string, let data = Data(base64Encoded: b64) else {
-            throw BridgeError(code: -3, message: String(localized: "The Mac sent no file data"))
+            throw BridgeError(code: -3, message: String(localized: "The bridge sent no file data"))
         }
         return FetchedFile(path: r["path"]?.string ?? path, data: data, mimeType: r["mimeType"]?.string, binary: r["binary"]?.bool ?? true)
     }

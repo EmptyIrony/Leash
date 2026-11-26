@@ -34,12 +34,12 @@ struct SettingsView: View {
                     Button { pasteLink() } label: { Label("Paste pairing link", systemImage: "doc.on.clipboard") }
                     if let pasteError { Text(pasteError).font(.caption).foregroundStyle(.red) }
                 } header: { Text("Pair") } footer: {
-                    Text("On the Mac run  node ~/workspace/Leash/bridge/src/index.mjs pair")
+                    Text("On the computer running the bridge, run  node ~/workspace/Leash/bridge/src/index.mjs pair")
                 }
 
-                Section("Mac") {
+                Section("Bridge") {
                     LabeledContent("Address") {
-                        TextField("Tailscale name or IP", text: $host)
+                        TextField("Host name or IP", text: $host)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                             .multilineTextAlignment(.trailing)
                     }
@@ -74,7 +74,7 @@ struct SettingsView: View {
                         Text(WatchRelay.shared.watchAppInstalled ? "Leash installed" : "Not installed")
                     }
                 } header: { Text("Lock Screen & Watch") } footer: {
-                    Text("A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. With Update in Background on, Leash keeps running until the turn ends (it plays silence, which uses some battery); otherwise it updates only while Leash is open and says when it may be out of date. The watch app reaches your Mac through this iPhone.")
+                    Text("A conversation you start here shows on the Lock Screen, in the Dynamic Island and on Apple Watch while the agent works. With Update in Background on, Leash keeps running until the turn ends (it plays silence, which uses some battery); otherwise it updates only while Leash is open and says when it may be out of date. The watch app reaches the bridge through this iPhone.")
                 }
                 .onChange(of: liveActivities) { _, on in if !on { model.liveActivity.stopAll() } }
                 .onChange(of: backgroundUpdates) { model.liveActivity.syncKeepAlive() }

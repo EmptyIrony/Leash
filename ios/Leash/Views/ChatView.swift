@@ -184,7 +184,7 @@ struct ChatView: View {
                 if mode == "bypassPermissions" {
                     Text("Claude Code will run every command and edit in this conversation without asking you first.")
                 } else {
-                    Text("Every command and edit the agent asks for in this conversation will be approved automatically on your Mac.")
+                    Text("Every command and edit the agent asks for in this conversation will be approved automatically on the computer running the bridge.")
                 }
             }
     }
@@ -766,7 +766,7 @@ struct ChatView: View {
     }
 
     private var placeholder: String {
-        if !model.isReady(store.agent) { return model.isConnected ? String(localized: "\(model.agentLabel(store.agent)) is not running") : String(localized: "Mac offline…") }
+        if !model.isReady(store.agent) { return model.isConnected ? String(localized: "\(model.agentLabel(store.agent)) is not running") : String(localized: "Bridge offline…") }
         if store.running { return model.steers(store.agent) ? String(localized: "Steer the agent…") : String(localized: "Queue a message…") }
         return store.agent == "claude" ? String(localized: "Ask Claude…") : String(localized: "Ask Antigravity…")
     }

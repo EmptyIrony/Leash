@@ -38,13 +38,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Scan the pairing QR code shown by the bridge on your Mac."
+            "value" : "Scan the pairing QR code shown by the bridge."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "扫描 Mac 上 Bridge 显示的配对二维码。"
+            "value" : "扫描 Bridge 显示的配对二维码。"
           }
         }
       }
@@ -56,13 +56,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Connect to the Leash bridge running on your Mac."
+            "value" : "Connect to the Leash bridge."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "连接运行在你 Mac 上的拴绳 Bridge。"
+            "value" : "连接拴绳 Bridge。"
           }
         }
       }

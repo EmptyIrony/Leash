@@ -105,7 +105,7 @@ final class LocalNotifier: NSObject {
     /// An answer from a notification didn't reach the Mac.
     func answerFailed(unreachable: Bool, url: String?) {
         let c = UNMutableNotificationContent()
-        c.title = unreachable ? String(localized: "Couldn't reach your Mac") : String(localized: "Couldn't send your answer")
+        c.title = unreachable ? String(localized: "Couldn't reach the bridge") : String(localized: "Couldn't send your answer")
         c.body = String(localized: "Open Leash to answer.")
         if let url { c.userInfo = ["url": url] }
         c.sound = .default

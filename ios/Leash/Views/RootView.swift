@@ -56,11 +56,11 @@ struct RootView: View {
     }
 }
 
-/// Connection status for toolbars: Mac glyph + a 7pt status dot.
+/// Connection status for toolbars: bridge glyph + a 7pt status dot.
 struct ConnectionDot: View {
     @Environment(AppModel.self) private var model
     var body: some View {
-        Image(systemName: "macbook")
+        Image(systemName: "server.rack")
             .foregroundStyle(Theme.textPrimary)
             .overlay(alignment: .bottomTrailing) {
                 Circle().fill(model.statusColor).frame(width: 7, height: 7)
@@ -99,7 +99,7 @@ extension AppModel {
         }
     }
     var statusText: String {
-        let mac = macName.isEmpty ? "Mac" : macName
+        let mac = macName.isEmpty ? "Bridge" : macName
         switch connection {
         case .connected:
             if agents.count > 1 {

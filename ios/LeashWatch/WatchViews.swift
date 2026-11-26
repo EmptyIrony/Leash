@@ -15,7 +15,7 @@ enum WatchTheme {
     static func message(for failure: WatchFailure?) -> LocalizedStringKey {
         switch failure {
         case nil: return "Couldn't reach your iPhone."
-        case .macUnreachable?: return "Your iPhone couldn't reach the Mac."
+        case .macUnreachable?: return "Your iPhone couldn't reach the bridge."
         case .alreadyAnswered?: return "Already answered."
         case .locked?: return "This conversation is busy on your computer."
         case .changedElsewhere?: return "The conversation changed elsewhere. Try again."
@@ -94,8 +94,8 @@ struct WatchRootView: View {
         if !model.reachable { return ("iPhone not reachable", "iphone.slash") }
         switch model.snapshot.link {
         case .notPaired: return ("Pair Leash on your iPhone first", "qrcode")
-        case .offline: return ("Mac not connected", "wifi.exclamationmark")
-        case .connecting: return ("Connecting to your Mac…", "arrow.triangle.2.circlepath")
+        case .offline: return ("Bridge not connected", "wifi.exclamationmark")
+        case .connecting: return ("Connecting to the bridge…", "arrow.triangle.2.circlepath")
         case .connected: return nil
         }
     }

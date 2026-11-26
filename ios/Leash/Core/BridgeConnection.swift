@@ -10,7 +10,7 @@ struct BridgeError: LocalizedError {
     static let changedElsewhere = -32021
     /// bridge/unqueue: the queued message already went out
     static let alreadySent = -32024
-    static let notConnected = BridgeError(code: -1, message: "Not connected to the Mac")
+    static let notConnected = BridgeError(code: -1, message: "Not connected to the bridge")
     static let timeout = BridgeError(code: -2, message: "Request timed out")
 }
 
@@ -58,14 +58,14 @@ final class BridgeConnection: NSObject {
         guard let url = comps.url, !token.isEmpty, !host.isEmpty else {
             endpoint = nil
             disconnect()
-            state = .failed("Set the Mac address and token in Settings")
+            state = .failed("Set the bridge address and token in Settings")
             return
         }
         endpoint = (url, token)
     }
 
     func connect() {
-        guard let endpoint else { state = .failed("Set the Mac address and token in Settings"); return }
+        guard let endpoint else { state = .failed("Set the bridge address and token in Settings"); return }
         retryTask?.cancel(); retryTask = nil
         teardown(reason: nil)
         generation += 1
@@ -85,7 +85,7 @@ final class BridgeConnection: NSObject {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             await MainActor.run {
                 guard let self, gen == self.generation, self.state == .connecting, self.task === t else { return }
-                self.handleFailure(t, error: BridgeError(code: -4, message: "Mac did not answer (is the bridge running and Tailscale up?)"), gen: gen)
+                self.handleFailure(t, error: BridgeError(code: -4, message: "The bridge did not answer (is it running and reachable?)"), gen: gen)
             }
         }
     }
@@ -141,7 +141,7 @@ final class BridgeConnection: NSObject {
         let status = (t.response as? HTTPURLResponse)?.statusCode
         teardown(reason: error.localizedDescription)
         if status == 401 {
-            state = .failed("Token rejected by the Mac (401). Re-pair in Settings.")
+            state = .failed("Token rejected by the bridge (401). Re-pair in Settings.")
             return
         }
         let delay = retryDelay

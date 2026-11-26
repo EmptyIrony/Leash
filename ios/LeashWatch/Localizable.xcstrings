@@ -11,12 +11,12 @@
         }
       }
     },
-    "Your iPhone couldn't reach the Mac." : {
+    "Your iPhone couldn't reach the bridge." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "iPhone 连不上 Mac。"
+            "value" : "iPhone 连不上 Bridge。"
           }
         }
       }
@@ -141,22 +141,22 @@
         }
       }
     },
-    "Mac not connected" : {
+    "Bridge not connected" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未连接 Mac"
+            "value" : "未连接 Bridge"
           }
         }
       }
     },
-    "Connecting to your Mac…" : {
+    "Connecting to the bridge…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在连接 Mac…"
+            "value" : "正在连接 Bridge…"
           }
         }
       }

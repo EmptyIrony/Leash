@@ -231,8 +231,8 @@ struct SessionListView: View {
     @ViewBuilder private var statusCard: some View {
         if !model.isConfigured {
             Section {
-                Button { showSettings = true } label: { Label("Pair with your Mac", systemImage: "qrcode.viewfinder") }
-            } footer: { Text("Run the bridge on your Mac, then scan its QR code.") }
+                Button { showSettings = true } label: { Label("Pair with the bridge", systemImage: "qrcode.viewfinder") }
+            } footer: { Text("Start the bridge, then scan its QR code.") }
                 .listRowBackground(Theme.bgRaised)
         } else if case .failed(let msg) = model.connection {
             Section { Label(msg, systemImage: "exclamationmark.triangle").foregroundStyle(Theme.danger) }

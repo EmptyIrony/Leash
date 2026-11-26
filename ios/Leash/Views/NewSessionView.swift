@@ -37,7 +37,7 @@ struct NewSessionView: View {
                 }
                 Section {
                     NavigationLink { FolderBrowser(path: nil, agent: agent, pick: start) } label: {
-                        Label(agent == "agy" ? "Browse the Mac…" : "Browse \(model.agentLabel(agent)) host…", systemImage: "folder.badge.gearshape")
+                        Label(agent == "agy" ? "Browse the bridge…" : "Browse \(model.agentLabel(agent)) host…", systemImage: "folder.badge.gearshape")
                     }
                 }
             }
