@@ -94,3 +94,69 @@
 - Predictive back uses the NavHost defaults (fade + slide); not checked frame by frame.
 - Material icon deprecation warnings (AutoMirrored variants of CallSplit, DriveFileMove, InsertDriveFile) are left for a cleanup.
 - Relative times follow the system language (the emulator is Chinese); a bridge timestamp ahead of the phone's clock is clamped to "now".
+
+
+## Phase D1: Design system — done, emulator check pending
+
+Branch `android-design` (worktree `/config/workspace/Leash-design`), not merged: D2 starts after 2b lands.
+
+### What exists
+- `android/DESIGN.md`: what makes the iOS app feel good and the Android translation (colour tokens light/dark incl. the
+  derived alphas, type scale, spacing, continuous-corner shapes, glass and its blur budget, elevation, motion springs,
+  haptics, iconography, every component, native behaviour, app icon), reviewed by Fable (review log at the end).
+- `ui/design` (new package, nothing existing uses it yet): `ContinuousShape` + pure `SquircleGeometry` (figma-squircle
+  curve, smoothing 0.6, per-corner radii, RTL), `LeashShapes`/`LeashRadius`, `Tokens.kt` (`LeashDesignColors` incl.
+  `accentControl` = iOS's AccentColor asset, `LeashTypography`, `LeashSpacing`, `Leash.colors`/`Leash.type`),
+  `Motion.kt` (the four iOS springs converted exactly, transitions, `LocalReduceMotion`), `Indication.kt`
+  (`LeashIndication` press-scale + dim instead of ripples, `Modifier.pressable`), `Haptics.kt` (touch vs event haptics,
+  Warning waveform), `Glass.kt` (Haze 1.7.1 backdrop blur on API 32+, solid fallback, rim, `dropShadow`, soft top and
+  bottom edges, `GlassScope`/`glassSource`), `Background.kt` (space gradient, glow, iOS's seeded starfield), `Live.kt`
+  (shimmer band + LiveDots on one frame clock with a fixed-phase option, ring gauge, thin spinner), `Icons.kt`
+  (`LeashIcons` by iOS meaning, outline/rounded Material glyphs + a square.and.pencil vector), `Theme.kt`
+  (`LeashDesignTheme`: tokens, ripple off, indication, Material scheme mapped from the tokens, system-bar icons).
+- `ui/design/components`: buttons (prominent/tinted/destructive/plain × L/R/S), glass circle buttons, the morphing send /
+  stop circle + secondary stop, segmented control, M3 switch in Leash colours, composer chips, status pill, unread dot,
+  needs-you badge, banner; grouped list (section header/footer, card, row with 1 px inset separators), session row,
+  draft text, show-all, value/field/toggle rows; top bar (transparent, soft edge, centred or start title), large title,
+  back button, bottom actions, scroll-to-bottom, `LeashSheet`, `LeashMenu`; user/shell/command bubbles, activity header
+  (live dots + shimmer, done/failed/stopped/blocked), step rows + rail, diff block, code block, raised card + header,
+  changes row, stats line; tray shell/header/command preview/actions (≤ 2 across, else stacked), option row, queue
+  header/row/removed row, composer slab (normal/shell/side question) + status line + chip row; empty, loading, skeleton.
+- Debug-only `DesignCatalogActivity` (`src/debug`, own manifest): pages index, colors, type, shapes, controls, list,
+  settings, chat, activity, trays, states, sheet, icon; extras `page`, `theme` (light/dark), `phase` (pins the live band).
+  Launch: `adb shell am start -n dev.leash.personal.design/dev.leash.personal.design.DesignCatalogActivity --es page chat --es theme dark --ef phase 0.4`
+  (without the suffix: `dev.leash.personal/...`).
+- Real app icon: `drawable/ic_launcher_background|foreground|monochrome.xml` generated from `design/icon/*.svg`
+  (3.5 dp per pixel inside the safe circle, merged same-colour paths, half-pixel indigo shadow; themed-icon layer with
+  three alpha levels); `mipmap-anydpi` adaptive icons use them. The old placeholder colour is gone.
+- Build: `applicationIdSuffix` from `-PleashIdSuffix` in the debug build type (a second debug app beside the main one);
+  `dev.chrisbanes.haze:haze:1.7.1` (the newest that keeps compileSdk 36 / activity 1.11; 1.7.2+ and 2.x need SDK 37).
+- Unit tests: `DesignMathTest` (squircle construction sums/clamps/continuity, SwiftUI spring conversion, live band).
+
+### Toolchain finding
+- On the shared Windows host the Kotlin compile **daemon** hung twice (no output for 30 min, nothing packaged) while the
+  other workspace was building. `-Pkotlin.compiler.execution.strategy=in-process` fixed it (compile 87 s, assemble 40 s);
+  pass it on every build/test of this workspace. Never abort an `android_build` call client-side (it leaves Gradle running).
+
+### Verified
+- `android_build` assembleDebug (`project=leash-design`, `-PleashIdSuffix=.design`): BUILD SUCCESSFUL.
+- `android_test` unit: 183 tests, 0 failures.
+- Emulator: NOT verified yet. The shared emulator went offline (`adb devices`: offline) during the install and stayed
+  offline for 15+ min; nothing was installed or screenshotted. Next step: install with `-PleashIdSuffix=.design` and
+  screenshot every catalog page in light and dark.
+
+### What D2 must do
+- Wrap the app in `LeashDesignTheme` (replacing `ui/theme`'s `LeashTheme`, then delete `ui/theme/Theme.kt`; keep
+  `LeashPalette.kt`), and reskin screen by screen against `.shots`: list (large title, segmented control, grouped
+  sections, session rows, bottom glass actions instead of the FAB), chat (top bar, `GlassScope` with the transcript as
+  `glassSource`, bubbles, activity header with LiveDots + shimmer instead of the pulse, steps, diff/code blocks, bottom
+  dock with composer slab + chips + trays and the soft bottom edge), subagent, settings (sheet-like grouped rows,
+  `FieldRow` instead of outlined fields, M3 switch in Leash colours), new conversation, folder browser, scanner.
+- Replace every Material default still visible: `TopAppBar`, `ExtendedFloatingActionButton`, `SegmentedButton`,
+  `OutlinedTextField`, `OutlinedButton`/`TextButton`/`Button`, `Surface` cards, `AlertDialog` styling, `SearchBar`,
+  pull-to-refresh indicator, filled `Icons.Filled.*` (use `LeashIcons`), ripples (theme provides none).
+- Navigation transitions: push slide + fade, platform predictive-back pop (DESIGN.md §7); `isNavigationBarContrastEnforced = false`.
+- Window/splash background per theme in `res/values*/themes.xml` (no white flash).
+- Haptics: map `AppHooks.haptic` to `HapticsPlayer` (touch vs event); phase 3 adds the `VIBRATE` permission.
+- Copy the `applicationIdSuffix` line and the Haze dependency when merging (they are part of this branch).
+- Check every screen at font scale 1.3 and 2.0 and in dark mode; finish with a Fable review of light + dark screenshots.
