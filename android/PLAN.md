@@ -18,6 +18,9 @@ implementation; the bridge protocol in `README.md` ("Bridge protocol (v1)" and t
   Stage files explicitly (`git add android ...`), never `git add -A`/`.`.
 - Commit on `main` after each coherent step (small commits, imperative subject prefixed `android:`, English, ending with
   the line `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never push.
+- Wording: the app connects to "the bridge", not "the Mac" (the bridge is Node and can run on any host). Never say "Mac"
+  in UI strings, errors or settings ("Connect to bridge", "Bridge address", "Not connected to the bridge"); fix any
+  already-written "Mac" wording when touching that code.
 - No backward-compat shims (personal project). Code, comments and docs in English.
 - The bridge is plain `ws://` (over Tailscale/LAN): allow cleartext via a network security config (`cleartextTrafficPermitted`),
   otherwise targetSdk 35 + OkHttp refuse the connection.
