@@ -290,10 +290,10 @@ fun BottomActions(
     }
 }
 
-/** Jump to the newest output: a 36 dp glass circle. */
+/** Jump to the newest output: a 36 dp glass circle. It floats alone over the transcript, so it blurs what is under it. */
 @Composable
 fun ScrollToBottomButton(contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) =
-    GlassCircleButton(LeashIcons.scrollDown, contentDescription, onClick, modifier, size = 36.dp)
+    GlassCircleButton(LeashIcons.scrollDown, contentDescription, onClick, modifier, size = 36.dp, blur = true)
 
 /**
  * A bottom sheet in Leash's material: page colour (with an edge in dark mode), 32 dp continuous top corners, a small
