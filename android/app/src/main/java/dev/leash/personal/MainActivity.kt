@@ -28,12 +28,16 @@ class MainActivity : ComponentActivity() {
         // 3-button navigation stays transparent too: content scrolls on under it (DESIGN.md §7)
         window.isNavigationBarContrastEnforced = false
         super.onCreate(savedInstanceState)
+        // debug builds: `--ez dark true|false` on the launching intent forces the theme (screenshots in both modes without touching the
+        // device's setting); read before the link handling below replaces the intent
+        val debuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val forceDark: Boolean? = if (debuggable && intent.hasExtra("dark")) intent.getBooleanExtra("dark", false) else null
         app.hooks.view = window.decorView
         app.hooks.permissionAsker = { if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
         // a link that started the activity; after a recreation it was handled already
         if (savedInstanceState == null) handleLink(intent)
         setContent {
-            LeashDesignTheme {
+            LeashDesignTheme(dark = forceDark ?: androidx.compose.foundation.isSystemInDarkTheme()) {
                 LeashRoot(model)
             }
         }

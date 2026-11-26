@@ -39,7 +39,13 @@ object QuotaFormat {
         val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
         val time = DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT).withLocale(locale).format(at)
         val day = if (at.toLocalDate() == today) time else DateTimeFormatter.ofPattern("EEE", locale).format(at) + " " + time
-        return Reset(day, durationText(seconds))
+        return Reset(day, left(seconds))
+    }
+
+    /** "2h 10m" up to two days out, then "6d 22h" (a weekly window would otherwise read "166h 17m"). */
+    fun left(seconds: Double): String {
+        val hours = (seconds / 3600).toLong()
+        return if (hours < 48) durationText(seconds) else (hours / 24).toString() + "d " + (hours % 24) + "h"
     }
 
     /** How long ago the numbers were read: "just now", "5 min ago", "3 h ago", "2 d ago". */

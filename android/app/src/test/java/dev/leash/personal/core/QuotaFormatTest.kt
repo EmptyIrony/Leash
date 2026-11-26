@@ -41,7 +41,9 @@ class QuotaFormatTest {
         assertEquals("2h 10m", today.left)
         val later = QuotaFormat.reset(now + 3 * 86_400_000L + 4 * 3_600_000L, now, utc, us)!!
         assertEquals("Sun 1:00 PM", plain(later.day))
-        assertEquals("76h", later.left)
+        assertEquals("3d 4h", later.left)
+        assertEquals("6d 22h", QuotaFormat.left(166 * 3600.0 + 17 * 60))
+        assertEquals("47h 59m", QuotaFormat.left(47 * 3600.0 + 59 * 60))
     }
 
     @Test fun aWindowThatHasResetSaysSo() {
