@@ -51,7 +51,7 @@ implementation; the bridge protocol in `README.md` ("Bridge protocol (v1)" and t
 
 ## Design
 
-Android-native, not an iOS look-alike: Material 3 components, dynamic type (sp), edge-to-edge with proper insets,
+Same product look as iOS (Leash's own visual language, see phases D1/D2 and `android/DESIGN.md` once it exists), Android system behaviour: dynamic type (sp), edge-to-edge with proper insets,
 IME-aware composer, predictive back, light/dark following the system. Use Leash's palette
 (`ios/SharedDesign/LeashPalette.swift`, `ios/Leash/Theme/Theme.swift`) as the brand/seed colors instead of dynamic color.
 Provider icons from `ios/Leash/Assets.xcassets/Provider*.imageset` (convert to vector drawables or PNG resources).
@@ -96,6 +96,22 @@ Motion: Material motion; the "working" state can echo iOS's shimmer idea in Comp
 2b. **Act.** Composer with send / steering / queue tray / cancel / interrupt / Undo (`QueueTray`), pending cards for
    permissions and questions (`PendingCard`), pickers (mode/model/config options, `PickerPopovers`), command palette,
    error states (locked elsewhere, changed elsewhere → reload + resend, not connected).
+D1. **Design system (after 2b, before 3).** The 2a/2b UI is functional but looks like a stock Material template; the iOS app's
+   finish is far above it. Goal: the Android app looks like the same product as iOS (Leash's own visual language), while
+   system-level behaviour stays Android (back gesture, insets, IME, notifications). References: iOS screenshots in
+   `.shots/*.JPG` (look at every one with Read), `ios/Leash/Theme/*`, `ios/SharedDesign/*` (palette, motion curves),
+   the shimmer/dot-matrix glyph and other custom views in `ios/Leash/Views`, `design/icon/*.svg` (real app icon: adaptive
+   icon + monochrome). Write `android/DESIGN.md` (tokens: colours light/dark, type scale, spacing, shapes incl. continuous
+   corners, elevation/translucency, motion specs as Compose springs/easings, haptic moments, per-component specs for list
+   rows, chat entries, activity steps, cards, composer, sheets, buttons, chips) and implement it as a Compose design system
+   (`ui/theme` + `ui/components`): no default Material look leaking through (custom shapes, colours, typography,
+   ripple/indication, top bars). Translucent/blurred surfaces only where iOS uses glass and only on API 31+ with a solid
+   fallback. Get the spec reviewed by a Fable agent before implementing (Agent tool, `model: "fable"`, give it DESIGN.md and
+   the screenshot paths) and on any design doubt later.
+D2. **Reskin.** Apply the design system to every existing screen, one screen at a time, each compared side by side with the
+   matching `.shots` screenshot (and the iOS SwiftUI code for screens without one) until spacing, hierarchy, colour and
+   motion match. Finish with a Fable review of the final emulator screenshots (light + dark) and fix what it flags.
+   Phases 3 and 4 then build only with this design system.
 3. **Background + notifications.** Foreground service, ongoing turn notification, local notifications with actions,
    `bridge/noticed`, deep links, reconnect on network change, behaviour after process death.
 4. **Everything else.** Attachments (upload, `resource_link`), file viewer + download/share, inline images, diff and changes
