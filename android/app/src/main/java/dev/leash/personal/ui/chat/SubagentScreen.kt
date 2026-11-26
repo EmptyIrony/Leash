@@ -64,6 +64,7 @@ import dev.leash.personal.ui.design.softBottomEdge
 import dev.leash.personal.ui.design.components.BackButton
 import dev.leash.personal.ui.design.components.EmptyState
 import dev.leash.personal.ui.design.components.TopBar
+import dev.leash.personal.ui.files.ProvideFiles
 
 /** A subagent's own transcript, opened from its row: the parent's prompt as a quote, its steps (flat, already open), its reply. */
 @Composable
@@ -91,11 +92,12 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
     var dockPx by remember { mutableIntStateOf(0) }
     val dockHeight = with(LocalDensity.current) { dockPx.toDp() }
 
+    ProvideFiles(model, store.agent, rootId) {
     GlassScope(Modifier.fillMaxSize()) {
         GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             if (item == null) EmptyState(LeashIcons.subagent, stringResource(R.string.agent_not_loaded), Modifier.fillMaxSize().padding(top = 200.dp))
-            else CompositionLocalProvider(LocalChatVersion provides version, LocalOpenFile provides {}) {
+            else CompositionLocalProvider(LocalChatVersion provides version) {
                 LazyColumn(
                     Modifier.fillMaxSize(), state = list,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topBarSpace(), bottom = dockHeight + 24.dp),
@@ -131,6 +133,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
                 RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
             }
         }
+    }
     }
 }
 

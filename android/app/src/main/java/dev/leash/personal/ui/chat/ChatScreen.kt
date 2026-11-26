@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import dev.leash.personal.ui.components.pluralText
+import dev.leash.personal.ui.files.ProvideFiles
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -117,7 +118,6 @@ fun ChatScreen(
     val version by store.version.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    val laterText = stringResource(R.string.file_viewer_later)
     val context = LocalContext.current
 
     LaunchedEffect(store) { if (!store.attached) model.attach(store) }
@@ -296,10 +296,8 @@ fun ChatScreen(
     val others = state.pending.values.filter { it.sessionId != sessionId }.sortedBy { it.key }.mapNotNull { it.sessionId }.distinct()
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 } }
 
-    CompositionLocalProvider(
-        LocalChatVersion provides version,
-        LocalOpenFile provides { scope.launch { snackbar.showSnackbar(laterText) } },
-    ) {
+    CompositionLocalProvider(LocalChatVersion provides version) {
+      ProvideFiles(model, agent, sessionId) {
         GlassScope(Modifier.fillMaxSize()) {
             GlassSource(Modifier.fillMaxSize()) {
                 SpaceBackground()
@@ -435,6 +433,7 @@ fun ChatScreen(
             if (startingNew) StartingCapsule(Modifier.align(Alignment.Center))
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = dockHeight + 8.dp)) { data -> LeashSnackbar(data.visuals.message) }
         }
+      }
     }
 }
 

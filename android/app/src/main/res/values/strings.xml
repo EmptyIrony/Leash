@@ -142,7 +142,6 @@
     <string name="subagent">Agent</string>
     <string name="agent_not_loaded">Agent not loaded</string>
     <string name="prompt_label">Prompt</string>
-    <string name="file_viewer_later">The file viewer comes in a later update.</string>
 
     <!-- composer -->
     <string name="placeholder_claude">Ask Claude…</string>
@@ -254,4 +253,33 @@
     <string name="notification_settings">Notification settings</string>
     <string name="keep_alive">Keep running while an agent works</string>
     <string name="keep_alive_detail">Shows an ongoing notification and keeps the connection to the bridge alive after you leave the app, so approvals and results reach you.</string>
+
+    <!-- file viewer -->
+    <string name="file_wrap">Wrap lines</string>
+    <string name="file_no_wrap">Don\'t wrap lines</string>
+    <string name="file_share">Share</string>
+    <string name="file_more">More</string>
+    <string name="file_save">Save to device</string>
+    <string name="file_open_with">Open with…</string>
+    <string name="file_copy_path">Copy path</string>
+    <string name="file_cant_open">Can\'t open file</string>
+    <string name="file_too_large">File too large</string>
+    <string name="file_too_large_note">Showing the first 512 KB · too large to download</string>
+    <string name="file_no_preview">No preview for this file type</string>
+    <string name="file_no_preview_detail">Open it in another app, share it or save a copy.</string>
+    <string name="file_no_app">No app can open this file</string>
+    <string name="file_saved">Saved</string>
+    <string name="file_save_failed">Couldn\'t save the file</string>
+    <string name="file_loading">Loading file…</string>
+    <string name="file_close">Close</string>
+    <string name="pdf_page">Page %1$d of %2$d</string>
+    <string name="image_zoomable">Image. Pinch to zoom, double tap to zoom in</string>
+    <string name="open">Open</string>
+    <string name="attachment_desc">Attachment %1$s</string>
+    <string name="attachment_hint">Opens the file</string>
+    <string name="image_loading">Loading image</string>
+    <string name="image_failed_format">This image format can\'t be shown inline</string>
+    <string name="image_too_large">Image is larger than 16 MB</string>
+    <string name="image_unsupported">Unsupported image source</string>
+    <string name="image_invalid">Invalid image data</string>
 </resources>

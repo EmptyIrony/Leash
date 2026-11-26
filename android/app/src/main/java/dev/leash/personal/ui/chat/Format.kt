@@ -1,7 +1,8 @@
 package dev.leash.personal.ui.chat
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import java.nio.ByteBuffer
 
 /** 12400 -> "12.4k", 1_800_000 -> "1.8M" */
 fun compactNumber(n: Int): String {
@@ -16,12 +17,19 @@ fun compactNumber(n: Int): String {
     }
 }
 
-/** Decodes an attached image, scaled down so no side is much beyond [maxPx] (a camera photo must not be decoded at full size for a thumbnail). */
-fun decodeImage(bytes: ByteArray, maxPx: Int = 1024): Bitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sample = 1
-    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxPx) sample *= 2
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-}
+/**
+ * Decodes an image scaled down so no side is beyond [maxPx] (a camera photo or a screenshot must not be decoded at full size for
+ * a tile), with its EXIF rotation applied. Null for bytes that are not an image the platform can decode.
+ */
+fun decodeImage(bytes: ByteArray, maxPx: Int = 1024): Bitmap? = try {
+    ImageDecoder.decodeBitmap(ImageDecoder.createSource(ByteBuffer.wrap(bytes))) { decoder, info, _ ->
+        val longest = maxOf(info.size.width, info.size.height)
+        if (longest > maxPx) {
+            val scale = maxPx.toFloat() / longest
+            decoder.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
+        }
+        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE   // drawable on any canvas, and savable
+        decoder.isMutableRequired = false
+    }
+} catch (e: java.io.IOException) { null } catch (e: RuntimeException) { null }
+

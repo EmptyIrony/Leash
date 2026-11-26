@@ -14,13 +14,14 @@ import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BrowseResult
+import dev.leash.personal.ui.chat.LocalOpenFile
 import dev.leash.personal.ui.components.LazyScreen
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.components.EmptyState
 import dev.leash.personal.ui.design.components.LoadingState
 import dev.leash.personal.ui.newsession.browseRows
 
-/** A conversation's folder on the agent's host, Files-style: each folder is a screen on the stack (ios ProjectBrowser). Files list only; the viewer arrives in phase 4. */
+/** A conversation's folder on the agent's host, Files-style: each folder is a screen on the stack (ios ProjectBrowser). A file opens in the viewer. */
 @Composable
 fun ProjectFolderScreen(model: AppModel, agent: String, path: String, onBack: () -> Unit, onOpenFolder: (String) -> Unit) {
     var result by remember(path) { mutableStateOf<BrowseResult?>(null) }
@@ -29,12 +30,20 @@ fun ProjectFolderScreen(model: AppModel, agent: String, path: String, onBack: ()
         try { result = model.browse(path, agent) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { error = e.message ?: e.toString() }
     }
     val r = result
+    ProvideFiles(model, agent, null) {
+        val open = LocalOpenFile.current
+        ProjectRows(path, r, error, onBack, onOpenFolder, open)
+    }
+}
+
+@Composable
+private fun ProjectRows(path: String, r: BrowseResult?, error: String?, onBack: () -> Unit, onOpenFolder: (String) -> Unit, onOpenFile: (String) -> Unit) {
     LazyScreen(path.trimEnd('/').substringAfterLast('/').ifEmpty { "/" }, onBack) {
         when {
             error != null -> item("err") { EmptyState(LeashIcons.folder, stringResource(R.string.cant_open_folder), Modifier.fillMaxWidth().padding(top = 96.dp), message = error) }
             r == null -> item("spin") { LoadingState(stringResource(R.string.loading), Modifier.fillMaxWidth().padding(top = 96.dp)) }
             r.dirs.isEmpty() && r.files.isEmpty() -> item("empty") { EmptyState(LeashIcons.folder, stringResource(R.string.empty_folder), Modifier.fillMaxWidth().padding(top = 96.dp)) }
-            else -> browseRows(r.copy(path = path), onOpenFolder, filesHeader = false)
+            else -> browseRows(r.copy(path = path), onOpenFolder, filesHeader = false, onOpenFile = onOpenFile)
         }
     }
 }

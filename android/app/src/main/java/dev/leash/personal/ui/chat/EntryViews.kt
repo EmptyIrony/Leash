@@ -41,7 +41,11 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
+import dev.leash.personal.core.FileLimits
 import dev.leash.personal.core.FileRef
+import dev.leash.personal.ui.files.FileKinds
+import dev.leash.personal.ui.files.LocalOpenImage
+import dev.leash.personal.ui.files.icon
 import dev.leash.personal.core.MessageItem
 import dev.leash.personal.core.NoticeItem
 import dev.leash.personal.core.PlanItem
@@ -66,7 +70,7 @@ import dev.leash.personal.ui.design.components.UserBubble as UserBubbleView
 import dev.leash.personal.ui.markdown.MarkdownView
 import kotlinx.coroutines.launch
 
-/** Opens a file of the agent's host (tool paths, links in the markdown). The viewer arrives in phase 4. */
+/** Opens a file of the agent's host in the viewer (tool paths, links in the markdown, attachments); [dev.leash.personal.ui.files.ProvideFiles] sets it. */
 val LocalOpenFile = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /** Something to draw: tag-only messages (a slash-command caveat, ...) render nothing. */
@@ -84,7 +88,7 @@ fun UserBubble(item: MessageItem, modifier: Modifier = Modifier) {
     val files = item.files + linked.filter { r -> item.files.none { it.path == r.path } }
     val segments = UserSegment.parse(text)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 220.dp).heightIn(max = 220.dp), "image " + (i + 1)) }
+        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 220.dp).heightIn(max = 220.dp), "image " + (i + 1), "image-" + (i + 1) + ".png") }
         if (files.isNotEmpty()) Column(Modifier.padding(start = 48.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             files.forEach { FileChip(it) }
         }
@@ -102,24 +106,38 @@ fun UserBubble(item: MessageItem, modifier: Modifier = Modifier) {
     }
 }
 
+/** A photo of a message: never upscaled; tap opens it in the viewer (zoom, share, save). */
 @Composable
-fun ImageTile(data: ByteArray, modifier: Modifier = Modifier, description: String) {
+fun ImageTile(data: ByteArray, modifier: Modifier = Modifier, description: String, name: String = "image.png") {
     val bmp = remember(data) { decodeImage(data) } ?: return
-    Image(bmp.asImageBitmap(), description, modifier.clip(LeashShapes.card), contentScale = ContentScale.Fit)
+    val open = LocalOpenImage.current
+    val c = Leash.colors
+    val label = stringResource(R.string.open)
+    Image(
+        bmp.asImageBitmap(), description,
+        modifier.clip(LeashShapes.card).border(1.dp, c.hairline, LeashShapes.card).pressable(scale = PressScale.Row, onClickLabel = label) { open(name, data) },
+        contentScale = ContentScale.Fit,
+    )
 }
 
-/** An attached or linked file: a sunken chip with the file glyph and its name. */
+/** An attached or linked file (ios FileChip): an accent-tinted chip with the kind's glyph, the name and the size; tap opens the viewer. */
 @Composable
-fun FileChip(ref: FileRef) {
+fun FileChip(ref: FileRef, modifier: Modifier = Modifier) {
     val open = LocalOpenFile.current
     val c = Leash.colors
+    val desc = stringResource(R.string.attachment_desc, ref.name)
+    val hint = stringResource(R.string.attachment_hint)
     Row(
-        Modifier.pressable(scale = PressScale.Compact) { open(ref.path) }.heightIn(min = 40.dp)
-            .clip(LeashShapes.row).background(c.bgSunken).border(1.dp, c.hairline, LeashShapes.row).padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+        modifier.widthIn(max = 260.dp).heightIn(min = 48.dp).clip(LeashShapes.row).background(c.accent.copy(alpha = 0.16f))
+            .pressable(scale = PressScale.Compact, onClickLabel = hint) { open(ref.path) }
+            .semantics { contentDescription = desc }.padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(LeashIcons.file, null, Modifier.size(16.dp), tint = c.textSecondary)
-        Text(ref.name, style = Leash.type.subheadline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+        Icon(FileKinds.glyph(ref.name).icon(), null, Modifier.size(24.dp), tint = c.accent)
+        Column(Modifier.weight(1f, fill = false)) {
+            Text(ref.name, style = Leash.type.footnote.medium(), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            ref.size?.let { Text(FileLimits.sizeText(it), style = Leash.type.caption2, color = c.textSecondary) }
+        }
     }
 }
 
@@ -242,7 +260,7 @@ fun AnswerView(item: MessageItem) {
     val open = LocalOpenFile.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SelectionContainer { MarkdownView(item.text, open) }
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), "image " + (i + 1)) }
+        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), "image " + (i + 1), "image-" + (i + 1) + ".png") }
         item.files.forEach { FileChip(it) }
     }
 }

@@ -11,6 +11,19 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.CallSplit
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
+import androidx.compose.material.icons.automirrored.outlined.NoteAdd
+import androidx.compose.material.icons.automirrored.rounded.WrapText
+import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PictureAsPdf
+import androidx.compose.material.icons.outlined.Slideshow
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -147,6 +160,21 @@ object LeashIcons {
     val openExternal = Icons.AutoMirrored.Outlined.OpenInNew
     val show = Icons.Outlined.Visibility
     val hide = Icons.Outlined.VisibilityOff
+
+    // files and attachments
+    val share = Icons.Outlined.IosShare
+    val wrapText = Icons.AutoMirrored.Rounded.WrapText
+    val saveFile = Icons.Outlined.FileDownload
+    val pdf = Icons.Outlined.PictureAsPdf
+    val video = Icons.Outlined.Movie
+    val audio = Icons.Outlined.GraphicEq
+    val archive = Icons.Outlined.FolderZip
+    val table = Icons.Outlined.TableChart
+    val slides = Icons.Outlined.Slideshow
+    val brokenImage = Icons.Outlined.BrokenImage
+    val newFile = Icons.AutoMirrored.Outlined.NoteAdd
+    val embed = Icons.Outlined.ViewInAr
+    val fullscreen = Icons.Rounded.OpenInFull
 
     /** The glyph for a tool call kind (ios ToolIcon.name). */
     fun forTool(kind: String?): ImageVector = when (kind) {

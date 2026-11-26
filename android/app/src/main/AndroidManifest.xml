@@ -52,6 +52,15 @@
                 android:value="Keeps a websocket to the user's own bridge open so agent approvals and results reach the phone" />
         </service>
 
+        <!-- Files fetched from the agent's host, handed to Share / Open with (cache folder only) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Allow / Deny buttons of a request notification: answered without opening the app. Only the system's notification can send to it. -->
         <receiver
             android:name=".notify.NotificationActionReceiver"

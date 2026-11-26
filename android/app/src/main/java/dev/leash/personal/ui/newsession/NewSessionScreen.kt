@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.ui.files.FileKinds
+import dev.leash.personal.ui.files.icon
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BrowseResult
 import dev.leash.personal.ui.components.AgentIcon
@@ -157,7 +159,9 @@ internal fun StartingCapsule(modifier: Modifier = Modifier) {
 }
 
 /** Folder and file rows of a browse result, shared by the new-conversation browser and the project browser. */
-internal fun LazyListScope.browseRows(r: BrowseResult, onOpenFolder: (String) -> Unit, filesLimit: Int = Int.MAX_VALUE, filesHeader: Boolean = true) {
+internal fun LazyListScope.browseRows(
+    r: BrowseResult, onOpenFolder: (String) -> Unit, filesLimit: Int = Int.MAX_VALUE, filesHeader: Boolean = true, onOpenFile: ((String) -> Unit)? = null,
+) {
     itemsIndexed(r.dirs, key = { _, d -> "d:$d" }) { i, d ->
         val last = i == r.dirs.lastIndex
         GroupRow(Modifier.groupItem(first = i == 0, last = last), last = last, separatorInset = 52.dp, onClick = { onOpenFolder(r.path.trimEnd('/') + "/" + d) }) {
@@ -172,9 +176,12 @@ internal fun LazyListScope.browseRows(r: BrowseResult, onOpenFolder: (String) ->
         else item("files-gap") { Box(Modifier.padding(top = 20.dp)) }
         itemsIndexed(files, key = { _, f -> "x:$f" }) { i, f ->
             val last = i == files.lastIndex
-            GroupRow(Modifier.groupItem(first = i == 0, last = last), last = last, separatorInset = 52.dp, minHeight = 48.dp) {
-                Icon(LeashIcons.file, null, Modifier.size(22.dp), tint = Leash.colors.textTertiary)
-                Text(f, Modifier.weight(1f).padding(start = 4.dp), style = Leash.type.body, color = Leash.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            GroupRow(
+                Modifier.groupItem(first = i == 0, last = last), last = last, separatorInset = 52.dp, minHeight = 48.dp,
+                onClick = onOpenFile?.let { open -> { open(r.path.trimEnd('/') + "/" + f) } },
+            ) {
+                Icon(FileKinds.glyph(f).icon(), null, Modifier.size(22.dp), tint = if (onOpenFile != null) Leash.colors.accent else Leash.colors.textTertiary)
+                Text(f, Modifier.weight(1f).padding(start = 4.dp), style = Leash.type.body, color = if (onOpenFile != null) Leash.colors.textPrimary else Leash.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
