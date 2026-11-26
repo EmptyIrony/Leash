@@ -139,6 +139,13 @@ private val LeashShapes = Shapes(
     extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(LeashRadius.composer),
 )
 
+/** Feeds [LeashTheme.colors] from the design theme while screens move over to `Leash.colors` (removed with this file in D2). */
+@Composable
+fun LeashLegacyColors(content: @Composable () -> Unit) {
+    val dark = dev.leash.personal.ui.design.Leash.colors.dark
+    androidx.compose.runtime.CompositionLocalProvider(LocalLeashColors provides leashColors(dark), content = content)
+}
+
 /** Light or dark follows the system; the palette is Leash's, not dynamic colour. */
 @Composable
 fun LeashTheme(

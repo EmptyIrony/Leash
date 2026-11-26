@@ -1,12 +1,11 @@
 package dev.leash.personal
 
-import android.os.Build
-import android.view.HapticFeedbackConstants
 import android.view.View
 import dev.leash.personal.core.AppHooks
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.Haptic
 import dev.leash.personal.core.PendingRequest
+import dev.leash.personal.ui.design.LeashHaptics
 
 /** The app's side of [AppHooks]: haptics through the window on screen, notifications, and the foreground service that follows turns. */
 class AndroidHooks(private val app: LeashApplication) : AppHooks {
@@ -15,8 +14,13 @@ class AndroidHooks(private val app: LeashApplication) : AppHooks {
     /** Shows the system's notification-permission prompt (set while an activity exists). */
     @Volatile var permissionAsker: (() -> Unit)? = null
 
+    /** Core haptics: the agent's own events (needs you, a failure) vibrate as events, the rest are touch feedback (DESIGN.md §9). */
     override fun haptic(kind: Haptic) {
-        view?.performHapticFeedback(constant(kind))
+        val v = view ?: return
+        when (kind) {
+            Haptic.Warning, Haptic.Error -> LeashHaptics.event(v, kind)
+            else -> LeashHaptics.touch(v, kind)
+        }
     }
 
     override fun alertRequest(request: PendingRequest, agentLabel: String, conversation: String?): Boolean =
@@ -58,13 +62,4 @@ class AndroidHooks(private val app: LeashApplication) : AppHooks {
         return true
     }
 
-    private fun constant(kind: Haptic): Int = when (kind) {
-        Haptic.Light, Haptic.Soft -> HapticFeedbackConstants.CLOCK_TICK
-        Haptic.Medium -> HapticFeedbackConstants.CONTEXT_CLICK
-        Haptic.Heavy -> HapticFeedbackConstants.LONG_PRESS
-        Haptic.Selection -> if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK else HapticFeedbackConstants.CLOCK_TICK
-        Haptic.Success -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CONTEXT_CLICK
-        Haptic.Warning -> HapticFeedbackConstants.LONG_PRESS
-        Haptic.Error -> if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
-    }
 }

@@ -5,13 +5,15 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.LeashLink
 import dev.leash.personal.ui.LeashRoot
-import dev.leash.personal.ui.theme.LeashTheme
+import dev.leash.personal.ui.design.LeashDesignTheme
+import dev.leash.personal.ui.theme.LeashLegacyColors
 
 class MainActivity : ComponentActivity() {
     private val model: AppModel get() = (application as LeashApplication).model
@@ -19,15 +21,23 @@ class MainActivity : ComponentActivity() {
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        // transparent bars in both modes; LeashDesignTheme sets the icon colour per theme
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+        )
+        // 3-button navigation stays transparent too: content scrolls on under it (DESIGN.md §7)
+        window.isNavigationBarContrastEnforced = false
         super.onCreate(savedInstanceState)
         app.hooks.view = window.decorView
         app.hooks.permissionAsker = { if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
         // a link that started the activity; after a recreation it was handled already
         if (savedInstanceState == null) handleLink(intent)
         setContent {
-            LeashTheme {
-                LeashRoot(model)
+            LeashDesignTheme {
+                LeashLegacyColors {
+                    LeashRoot(model)
+                }
             }
         }
     }

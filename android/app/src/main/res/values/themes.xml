@@ -1,6 +1,8 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- The window and the splash screen paint the page colour (bgBase), so there is no white flash before Compose draws. -->
     <style name="Theme.Leash" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/leash_bg_base</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/leash_bg_base</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
