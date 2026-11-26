@@ -429,10 +429,11 @@ system templates tinted with accent (phase 3). The splash/window background is b
 ## 13. App icon
 
 Adaptive icon from `design/icon` (`mipmap-anydpi` only; minSdk 29 needs no PNGs): background layer = the light Orbit
-surface (vertical gradient #F7F8FC → #E2E6F6 with the white→indigo radial glow), foreground = the pixel lead glyph on
-a whole-dp grid sized so every pixel corner stays inside the 66 dp safe circle (any launcher mask keeps it whole),
-same-colour pixels merged into one path each and overlapping a hair to avoid seams, plus a hard one-pixel offset
-shadow (indigo @ 20%, in the pixel style; vector drawables have no blur). Monochrome layer (Android 13 themed icons)
+surface (vertical gradient #F7F8FC → #E2E6F6 with the white→indigo radial glow), foreground = the pixel lead glyph at
+3.5 dp per pixel (38.5 × 45.5 dp, ~63% of the 72 dp visible area vs 69% on iOS), every pixel corner within 30 dp of the
+centre so any launcher mask inside the 66 dp safe circle keeps it whole, same-colour pixels merged into one path each
+and overlapping a hair to avoid seams, plus a hard half-pixel (1.75 dp) offset shadow (indigo @ 22%, in the pixel
+style; vector drawables have no blur). Monochrome layer (Android 13 themed icons)
 = the glyph with the tinted SVG's greys quantised to three alpha levels (50 / 75 / 100%).
 
 ## 14. Implementation map
