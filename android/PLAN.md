@@ -26,6 +26,8 @@ implementation; the bridge protocol in `README.md` ("Bridge protocol (v1)" and t
   otherwise targetSdk 35 + OkHttp refuse the connection.
 - Every agent's first step: `android_env_status`. If the win-android tools are missing or fail, stop and end the report
   with a line starting `BLOCKED:`. Same for anything else that makes the phase impossible.
+- The emulator is shared and remote: never toggle Wi-Fi/airplane mode/network (`svc wifi`, `cmd connectivity`, …) or reboot it —
+  that once took it offline until a manual restart. Test reconnect logic with unit tests or the demo bridge instead.
 - Screenshots go to `/tmp/claude-501/-config-workspace-Leash/7983988f-39e1-40df-b9e6-1f96e0afa4c0/scratchpad/shots/`
   (pass it as `output_path`), never into the repo or /tmp.
 - Personal-use app: no Google Play Services / Firebase dependency (sideloaded APK, no FCM). No analytics.
