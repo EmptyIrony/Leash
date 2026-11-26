@@ -9,3 +9,6 @@ xcuserdata/
 
 # Go tailnet module output (tailnet/build-ios.sh)
 ios/Frameworks/
+
+# Android release keystore, its passwords and pulled release APKs (back them up, never commit)
+android/signing/
