@@ -210,8 +210,14 @@ class AppModel(
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
             if (s.isConfigured) reconfigure()
-            else set { copy(connection = LinkState.Failed("Pair with your Mac in Settings")) }
         }
+    }
+
+    /** Live state belongs to one connection (a Mac, or the demo); a different one starts clean. */
+    private fun resetLive() {
+        stores.clear(); turnStarts.clear(); watchers.clear()
+        set { copy(agentState = "unknown", agentError = null, agentName = null, bridgeHome = null, imageInput = false, sessions = emptyList(), sessionsLoading = false,
+            sessionsError = null, pending = emptyMap(), running = emptySet(), lastAttention = null, agents = emptyList(), quotas = emptyMap(), quotaErrors = emptyMap(), openRequest = null) }
     }
 
     private fun persist() {
@@ -247,18 +253,19 @@ class AppModel(
     fun setUseDemo(on: Boolean) {
         if (demoLink == null || on == s.useDemo) return
         link.disconnect()
-        stores.clear(); turnStarts.clear()
-        set { copy(useDemo = on, connection = LinkState.Idle, agentState = "unknown", agentError = null, agentName = null, bridgeHome = null, imageInput = false,
-            sessions = emptyList(), sessionsError = null, pending = emptyMap(), running = emptySet(), lastAttention = null, agents = emptyList(), quotas = emptyMap(), quotaErrors = emptyMap()) }
+        resetLive()
+        set { copy(useDemo = on, connection = LinkState.Idle) }
         persist()
         select(on)
-        if (s.isConfigured) reconfigure() else set { copy(connection = LinkState.Failed("Pair with your Mac in Settings")) }
+        if (s.isConfigured) reconfigure()
     }
 
     /** Store the connection settings and connect with them. */
     fun setConnection(host: String, port: Int, token: String, name: String? = null) {
         val h = host.trim()
-        set { copy(host = h, port = port, token = token.trim(), macName = name?.trim()?.takeIf { it.isNotEmpty() } ?: h, useDemo = false) }
+        link.disconnect()
+        resetLive()
+        set { copy(host = h, port = port, token = token.trim(), macName = name?.trim()?.takeIf { it.isNotEmpty() } ?: h, useDemo = false, connection = LinkState.Idle) }
         persist()
         select(false)
         reconfigure()
@@ -269,9 +276,8 @@ class AppModel(
     /** Forget the Mac: no host, no token, disconnected. */
     fun unpair() {
         link.disconnect()
-        stores.clear(); turnStarts.clear()
-        set { copy(host = "", token = "", macName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Failed("Pair with your Mac in Settings"),
-            sessions = emptyList(), pending = emptyMap(), running = emptySet(), agents = emptyList(), quotas = emptyMap()) }
+        resetLive()
+        set { copy(host = "", token = "", macName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Idle) }
         persist()
         select(false)
     }

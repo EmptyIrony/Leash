@@ -97,7 +97,7 @@ class AppModelTest {
         val r = Rig(this, InMemorySettingsStore())
         r.model.start(); runCurrent()
         assertEquals(0, r.link.connects)
-        assertTrue(r.state.connection is LinkState.Failed)
+        assertEquals(LinkState.Idle, r.state.connection)
         assertFalse(r.state.isConfigured)
     }
 
@@ -114,6 +114,17 @@ class AppModelTest {
         r.model.unpair(); runCurrent()
         assertEquals("", r.settings.value.token)
         assertFalse(r.state.isConfigured)
+    }
+
+    @Test fun pairingAnotherMacDropsTheOldLiveState() = runTest {
+        val r = Rig(this)
+        r.link.on("session/list") { jsonObj("sessions" to listOf(session("a"))) }
+        connect(r, readyFrame(pending = listOf(permission("claude:1", "a")), running = listOf("a")))
+        r.model.store("a")
+        assertEquals(1, r.state.sessions.size)
+        r.model.pair(PairingInfo("other.ts.net", 8787, "t2", "Other"))
+        assertTrue(r.state.sessions.isEmpty() && r.state.pending.isEmpty() && r.state.running.isEmpty() && r.state.agents.isEmpty())
+        assertNull(r.model.existingStore("a"))
     }
 
     @Test fun sessionLinkCreatesTheStoreAndAnOpenRequest() = runTest {

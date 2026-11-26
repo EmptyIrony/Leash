@@ -68,7 +68,7 @@ fun LeashRoot(model: AppModel) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("Leash", style = MaterialTheme.typography.headlineMedium, color = scheme.onBackground)
-                    ConnectionLine(state.connection, state.macName, state.useDemo)
+                    if (state.settingsLoaded && !state.isConfigured) StatusLine("Not paired", scheme.onSurfaceVariant) else ConnectionLine(state.connection, state.macName, state.useDemo)
                 }
                 TextButton(onClick = { showSettings = true }) { Text("Settings") }
             }
@@ -102,6 +102,11 @@ private fun ConnectionLine(connection: LinkState, macName: String, demo: Boolean
         is LinkState.Waiting -> "Reconnecting · ${connection.reason}" to scheme.onSurfaceVariant
         is LinkState.Failed -> connection.reason to scheme.error
     }
+    StatusLine(text, color)
+}
+
+@Composable
+private fun StatusLine(text: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
         Box(Modifier.size(8.dp).background(color, CircleShape))
         Spacer(Modifier.width(8.dp))
