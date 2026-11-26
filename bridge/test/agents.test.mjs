@@ -262,3 +262,24 @@ test('index.mjs: fresh machine (empty home, PATH without agents) -> add-claude l
   assert.match(add.out, /Not usable yet: Claude Code adapter not found/);
   assert.equal(fs.readFileSync(path.join(home, '.leash', 'config.json'), 'utf8').includes('/config'), false);
 });
+
+test('index.mjs: LEASH_LOG_FILE gets the console output too (the Windows scheduled task has no console)', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-log-'));
+  const logFile = path.join(home, 'bridge.log');
+  const port = await freePort();
+  fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ token: 'tok', port, bind: '127.0.0.1', agents: [{ id: 'agy', command: process.execPath, args: [MOCK] }] }));
+  const p = runIndex([], { LEASH_HOME: home, HOME: home, LEASH_LOG_FILE: logFile });
+  try {
+    for (let i = 0; i < 50 && !(fs.existsSync(logFile) && /listening on/.test(fs.readFileSync(logFile, 'utf8'))); i++) await new Promise(r => setTimeout(r, 100));
+    assert.match(fs.readFileSync(logFile, 'utf8'), /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d agents from config: agy\n/);
+  } finally { p.child.kill('SIGTERM'); await p.done; }
+});
+
+test('AcpProcess reads CRLF-terminated JSON lines (Windows agents may print them)', async () => {
+  const { AcpProcess } = await import('../src/acp.mjs');
+  const script = "process.stdin.once('data',()=>{process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:1,result:{ok:true}})+'\\r\\n')})";
+  const a = new AcpProcess({ command: process.execPath, args: ['-e', script], env: process.env });
+  a.start();
+  assert.deepEqual(await a.call('ping', {}, { timeoutMs: 5000 }), { ok: true });
+  a.stop();
+});

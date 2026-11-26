@@ -18,12 +18,14 @@ fi
 NODE="$(command -v node || true)"
 AGY="$(command -v agy || true)"
 [[ -z "$NODE" ]] && { echo "node not found on PATH"; exit 1; }
-[[ -z "$AGY" ]] && { echo "agy not found on PATH (install the Antigravity CLI first)"; exit 1; }
+if [[ -z "$AGY" ]]; then
+  echo "note: agy not found on PATH; the bridge starts whatever agent it detects (see: node src/index.mjs doctor)"
+fi
 
 ( cd "$BRIDGE" && [[ -d node_modules ]] || npm install --no-audit --no-fund )
 
 # LaunchAgents get a minimal PATH; bake in the dirs of node and agy plus the current PATH.
-AGENT_PATH="$(dirname "$AGY"):$(dirname "$NODE"):$PATH"
+AGENT_PATH="$(dirname "${AGY:-$NODE}"):$(dirname "$NODE"):$PATH"
 
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 cat > "$PLIST" <<EOF

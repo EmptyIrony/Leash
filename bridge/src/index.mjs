@@ -15,6 +15,15 @@ import { systemDeps, planAgents, detectedEntries, defaultAgyEntry, materialize, 
 const ts = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 const log = (...a) => console.log(ts(), ...a);
 const cmd = process.argv[2] || 'serve';
+// A background run with no console (the Windows scheduled task) sets LEASH_LOG_FILE: everything printed also goes there.
+if (process.env.LEASH_LOG_FILE) {
+  const file = process.env.LEASH_LOG_FILE;
+  try { if (fs.statSync(file).size > 5 << 20) fs.renameSync(file, file + '.1'); } catch {}
+  for (const k of ['log', 'error', 'warn']) {
+    const orig = console[k].bind(console);
+    console[k] = (...a) => { orig(...a); try { fs.appendFileSync(file, a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n'); } catch {} };
+  }
+}
 const cfg = loadConfig(CONFIG_DIR, { persist: cmd !== 'doctor' });   // doctor never writes anything
 const d = systemDeps();
 
