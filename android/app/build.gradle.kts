@@ -17,6 +17,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // lets a second debug build (e.g. -PleashIdSuffix=.design) install beside the main one on a shared emulator
+            applicationIdSuffix = providers.gradleProperty("leashIdSuffix").orNull
+        }
         release {
             isMinifyEnabled = false
         }
@@ -57,6 +61,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.haze)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

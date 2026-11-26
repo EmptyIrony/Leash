@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug only: every design-system component in light and dark, for screenshots.
+             Launch with am start -n (app id)/dev.leash.personal.design.DesignCatalogActivity and the extras
+             page (string), theme (light or dark) and phase (float), see DesignCatalogActivity. -->
+        <activity
+            android:name="dev.leash.personal.design.DesignCatalogActivity"
+            android:exported="true"
+            android:label="Leash design catalog"
+            android:theme="@style/Theme.Leash"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>
