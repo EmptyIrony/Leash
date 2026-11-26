@@ -243,11 +243,12 @@ fun ControlsPage() {
 fun ListPage() {
     val c = Leash.colors
     var seg by remember { mutableIntStateOf(1) }
+    val scroll = rememberScrollState()
     GlassScope(Modifier.fillMaxSize()) {
         GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(top = 60.dp, bottom = 120.dp),
+                Modifier.fillMaxSize().verticalScroll(scroll).statusBarsPadding().padding(top = 60.dp, bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 LargeTitle("Leash", subtitle = "JerrydeMac-mini · 2 agents ready")
@@ -275,7 +276,7 @@ fun ListPage() {
             }
         }
         TopBar(
-            title = "Leash", titleVisible = false,
+            title = "Leash", titleVisible = false, edgeVisible = scroll.value > 0,
             navigation = { GlassCircleButton(LeashIcons.server, "Bridge", {}, badge = { Box(Modifier.padding(4.dp).size(9.dp).clip(CircleShape).background(c.success)) }) },
             actions = { GlassCircleButton(LeashIcons.more, "Quota", {}, tint = c.accentControl) },
         )

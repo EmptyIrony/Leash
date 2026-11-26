@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -61,13 +62,19 @@ fun TopBar(
     subtitle: String? = null,
     titleAlign: TitleAlign = TitleAlign.Center,
     titleVisible: Boolean = true,
+    edgeVisible: Boolean = true,
     navigation: (@Composable () -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val c = Leash.colors
     Box(modifier.fillMaxWidth()) {
-        // the edge reaches 24 dp below the bar
-        Box(Modifier.matchParentSize().softTopEdge())
+        // the edge reaches 24 dp below the bar; a large-title screen shows it only once content scrolls under the bar
+        androidx.compose.animation.AnimatedVisibility(
+            visible = edgeVisible,
+            modifier = Modifier.matchParentSize(),
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
+        ) { Box(Modifier.fillMaxSize().softTopEdge()) }
         val titleBlock: @Composable () -> Unit = {
             androidx.compose.animation.AnimatedVisibility(
                 visible = title != null && titleVisible,

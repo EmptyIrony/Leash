@@ -127,7 +127,8 @@ fun GroupRow(
 /** A 1 px separator. */
 @Composable
 fun Hairline(modifier: Modifier = Modifier, color: Color = Leash.colors.hairline) {
-    Box(modifier.fillMaxWidth().height(Dp.Hairline).background(color))
+    val onePx = with(androidx.compose.ui.platform.LocalDensity.current) { 1f.toDp() }
+    Box(modifier.fillMaxWidth().height(onePx).background(color))
 }
 
 /** The session list's row status (iOS SessionRow.statusGlyph). */

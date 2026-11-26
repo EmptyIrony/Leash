@@ -248,11 +248,14 @@ fun ComposerStatus(text: String, icon: ImageVector, color: Color, modifier: Modi
     }
 }
 
-/** The chips under the composer, scrolling sideways. */
+/**
+ * The chips under the composer, scrolling sideways. Give it the full screen width: [edge] pads the chips inside the
+ * scroll, so they scroll on to the screen edge instead of being cut at the dock's inset (IMG_5522).
+ */
 @Composable
-fun ChipRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+fun ChipRow(modifier: Modifier = Modifier, edge: androidx.compose.ui.unit.Dp = 12.dp, content: @Composable RowScope.() -> Unit) {
     Row(
-        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 2.dp),
+        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = edge),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,

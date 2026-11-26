@@ -72,12 +72,12 @@ private fun Dock(draft: String, onDraft: (String) -> Unit, running: Boolean, mod
     val c = Leash.colors
     Box(Modifier.fillMaxWidth()) {
         Box(Modifier.matchParentSize().softBottomEdge())
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(start = 12.dp, end = 12.dp, top = 24.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            trays()
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(top = 24.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { trays() }
             ComposerSlab(
                 draft, onDraft,
                 placeholder = if (running) "Steer the agent…" else "Ask Claude…",
-                mode = mode, leadingLabel = "Add", above = above,
+                mode = mode, leadingLabel = "Add", above = above, modifier = Modifier.padding(horizontal = 12.dp),
             ) {
                 val glyph = when {
                     running && draft.isBlank() -> SendGlyph.Stop
