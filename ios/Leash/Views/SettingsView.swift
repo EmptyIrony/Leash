@@ -61,6 +61,8 @@ struct SettingsView: View {
                     .disabled(host.isEmpty || token.isEmpty)
                 }
 
+                TailnetSettingsSection()
+
                 Section {
                     Toggle("Haptics", isOn: $haptics)
                 } header: { Text("Feedback") } footer: {

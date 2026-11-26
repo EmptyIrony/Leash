@@ -74,6 +74,56 @@
         }
       }
     },
+    "Advanced" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级"
+          }
+        }
+      }
+    },
+    "Auth key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auth key"
+          }
+        }
+      }
+    },
+    "Built-in Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 Tailscale"
+          }
+        }
+      }
+    },
+    "Built-in Tailscale needs a new auth key. Enter one in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 Tailscale 需要新的 auth key，请在设置中填写。"
+          }
+        }
+      }
+    },
+    "Built-in Tailscale was stopped" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内置 Tailscale 已停止"
+          }
+        }
+      }
+    },
     "Changes" : {
       "localizations" : {
         "zh-Hans" : {
@@ -104,6 +154,26 @@
         }
       }
     },
+    "Connected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接"
+          }
+        }
+      }
+    },
+    "Control URL" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Control URL"
+          }
+        }
+      }
+    },
     "Deleted" : {
       "localizations" : {
         "zh-Hans" : {
@@ -124,12 +194,62 @@
         }
       }
     },
+    "Error" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "错误"
+          }
+        }
+      }
+    },
     "Inserts the command" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "插入这个命令"
+          }
+        }
+      }
+    },
+    "Leash joins your tailnet on its own, without the system VPN, so it works while another VPN is on. Only the connection to the bridge uses it, and only while Leash is running. Create an auth key in the Tailscale admin console, and use the bridge's Tailscale IP or MagicDNS name as its address." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leash 自己加入你的 tailnet，不占用系统 VPN，所以在别的 VPN 开着时也能用。只有连接 bridge 的流量走它，而且只在 Leash 运行时。请在 Tailscale 管理后台创建 auth key，并把 bridge 的 Tailscale IP 或 MagicDNS 名称填作地址。"
+          }
+        }
+      }
+    },
+    "Leash leaves the tailnet and deletes its saved key. Turning this back on needs a new auth key." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leash 会退出 tailnet 并删除已保存的 key。重新开启需要新的 auth key。"
+          }
+        }
+      }
+    },
+    "Log out" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出登录"
+          }
+        }
+      }
+    },
+    "Log out of the tailnet?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出 tailnet？"
           }
         }
       }
@@ -154,6 +274,16 @@
         }
       }
     },
+    "Needs a new auth key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要新的 auth key"
+          }
+        }
+      }
+    },
     "New file" : {
       "localizations" : {
         "zh-Hans" : {
@@ -174,6 +304,16 @@
         }
       }
     },
+    "Paused while Leash is in the background" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leash 在后台，已暂停"
+          }
+        }
+      }
+    },
     "question" : {
       "localizations" : {
         "zh-Hans" : {
@@ -184,12 +324,82 @@
         }
       }
     },
+    "Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale"
+          }
+        }
+      }
+    },
+    "Tailscale is in an unexpected state" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale 处于意外状态"
+          }
+        }
+      }
+    },
+    "This build does not include built-in Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个版本不含内置 Tailscale"
+          }
+        }
+      }
+    },
+    "This build does not include Tailscale. Build the Tailnet framework with tailnet/build-ios.sh, then build Leash again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个版本不含 Tailscale。请先用 tailnet/build-ios.sh 构建 Tailnet framework，再重新构建 Leash。"
+          }
+        }
+      }
+    },
+    "tskey-auth-…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tskey-auth-…"
+          }
+        }
+      }
+    },
     "Unread" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "未读"
+          }
+        }
+      }
+    },
+    "Unreadable status from Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 Tailscale 的状态"
+          }
+        }
+      }
+    },
+    "Use built-in Tailscale" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用内置 Tailscale"
           }
         }
       }
