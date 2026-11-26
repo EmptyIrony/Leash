@@ -90,7 +90,7 @@ fun UserBubble(item: MessageItem, modifier: Modifier = Modifier) {
     val files = item.files + linked.filter { r -> item.files.none { it.path == r.path } }
     val segments = UserSegment.parse(text)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 220.dp).heightIn(max = 220.dp), "image " + (i + 1), "image-" + (i + 1) + ".png") }
+        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 220.dp).heightIn(max = 220.dp), stringResource(R.string.image_numbered, i + 1), "image-" + (i + 1) + ".png") }
         if (files.isNotEmpty()) Column(Modifier.padding(start = 48.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             files.forEach { FileChip(it) }
         }
@@ -264,7 +264,7 @@ fun AnswerView(item: MessageItem) {
     val open = LocalOpenFile.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MessageMenu(item.text, markdown = true) { MarkdownView(item.text, open) }
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), "image " + (i + 1), "image-" + (i + 1) + ".png") }
+        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), stringResource(R.string.image_numbered, i + 1), "image-" + (i + 1) + ".png") }
         item.files.forEach { FileChip(it) }
     }
 }

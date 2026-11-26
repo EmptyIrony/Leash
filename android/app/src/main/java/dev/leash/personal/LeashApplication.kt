@@ -1,6 +1,7 @@
 package dev.leash.personal
 
 import android.app.Application
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
@@ -47,6 +48,12 @@ class LeashApplication : Application() {
         model.start()
         background.start()
         watchNetwork()
+    }
+
+    /** Notification channel names and descriptions are stored text: write them again when the language changes (a re-created channel keeps its importance and the user's settings). */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        notifier.createChannels()
     }
 
     /** The bridge is reached over Wi-Fi, mobile data or Tailscale: when the default network changes the old socket is dead. */

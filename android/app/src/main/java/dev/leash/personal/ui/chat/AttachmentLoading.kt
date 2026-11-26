@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.provider.OpenableColumns
+import dev.leash.personal.R
 import dev.leash.personal.core.FileLimits
 import dev.leash.personal.core.PendingFile
 import java.io.ByteArrayOutputStream
@@ -67,7 +68,7 @@ object AttachmentLoading {
                     }
                 }
             } catch (e: RuntimeException) {}
-            val label = name ?: uri.lastPathSegment ?: "file"
+            val label = name ?: uri.lastPathSegment ?: context.getString(R.string.queued_file)
             if (AttachmentPolicy.tooLarge(size)) { tooLarge += label; continue }
             val bytes = try { context.contentResolver.openInputStream(uri)?.use { readCapped(it) } } catch (e: java.io.IOException) { null } catch (e: SecurityException) { null }
             when {

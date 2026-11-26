@@ -185,7 +185,7 @@ fun CodeBlock(code: String, lang: String, modifier: Modifier = Modifier) {
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     CodeBlockView(
-        code, modifier, language = lang.ifEmpty { null }, copyLabel = stringResource(R.string.copy),
+        code, modifier, language = lang.ifEmpty { stringResource(R.string.code_label) }, copyLabel = stringResource(R.string.copy),
         onCopy = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("code", code))) } },
     )
 }
