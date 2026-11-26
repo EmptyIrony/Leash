@@ -162,7 +162,7 @@
 
 ## Phase D1: Design system — implemented, built, unit-tested; never run on a device
 
-Branch `android-design` (worktree `/config/workspace/Leash-design`), not merged: D2 starts after 2b lands.
+Merged into `main` (5e21836); first seen on the device in D2 (below).
 
 ### What exists
 - `android/DESIGN.md`: what makes the iOS app feel good and the Android translation (colour tokens light/dark incl. the
@@ -227,3 +227,61 @@ Branch `android-design` (worktree `/config/workspace/Leash-design`), not merged:
 - Haptics: map `AppHooks.haptic` to `HapticsPlayer` (touch vs event); phase 3 adds the `VIBRATE` permission.
 - Copy the `applicationIdSuffix` line and the Haze dependency when merging (they are part of this branch).
 - Check every screen at font scale 1.3 and 2.0 and in dark mode; finish with a Fable review of light + dark screenshots.
+
+
+## Phase D2: Reskin — done
+
+### What changed (every screen now uses `ui/design`; the old `ui/theme` is deleted)
+- Catalog first seen on the device (light + dark, fixed shimmer phase) and fixed: `Hairline` used `Dp.Hairline` as a height
+  (0 dp, no separators anywhere) and now draws 1 px; the top soft edge hides behind a resting large title (it smeared
+  "Leash"); the chip row scrolls on to the screen edge; dark prominent buttons / send / shell circles use `onAccent`
+  (#07080D; white was 2.7:1), a disabled prominent button turns neutral, dark segmented thumb #3A3D4B (Fable).
+- App: `MainActivity` in `LeashDesignTheme`, transparent bars incl. 3-button navigation
+  (`isNavigationBarContrastEnforced = false`), window + splash background = bgBase per theme (`values*/themes.xml`);
+  `LeashRoot` on `SpaceBackground` with the push (slide 30% from the end + fade, layout spring) and pop (scale 0.9 +
+  fade) transitions; core haptics go through `LeashHaptics` (Warning / Error as event vibrations, the rest touch).
+- Screens: list + folder (large title handing over to the inline title, segmented filter, inset-grouped lazy sections
+  via `Modifier.groupItem`, design `SessionRow`, bottom glass search / compose circles instead of the FAB, bottom
+  `SearchField` instead of the Material SearchBar, `LeashRefreshBox`); settings / notification rows / scanner
+  (grouped rows, `FieldRow` instead of outlined fields, status pill, `ToggleRow`, `LeashDialog` instead of AlertDialog,
+  glass back circle over the camera); new conversation, folder browser, project browser (`LazyScreen` /
+  `ScrollScreen` in `ui/components/Screens.kt`); chat (floating top bar + overflow `LeashMenu`, banner, transcript
+  under a glass dock: trays, 48 dp composer slab, chips, scroll-to-bottom glass circle, `LeashSnackbar`); transcript
+  (design bubbles, activity header with LiveDots + shimmer instead of the pulse, step rows on a drawn rail, design diff
+  blocks, sunken output, raised plan card, stats line, markdown on the reading scale, inline code backgrounds painted
+  from the text layout with rounded insets: `InlineText`); trays and sheets (approval with two-across / stacked 48 dp
+  Leash buttons, question option rows with radio/checkbox semantics, question sheet with `TextArea` + `LeashSwitch`,
+  diff sheet, model / thinking sheets, mode menu with checks, context ring chip, command palette, subagent tray);
+  subagent screen (prompt quote, live line with dots + shimmer).
+- Design system additions: `groupItem`, `SearchField`, `LeashRefreshBox`, `LeashDialog`, `LeashSnackbar`, `TextArea`,
+  `InlineText`, `TextStyle.capScale` (top bar, banner and segmented labels grow only to 1.3×), `ComposerSlab` over a
+  `TextFieldValue` with a field modifier, `QueueRow` with icons / long-press menu, checkable `LeashMenuItem`,
+  `StepRail` drawn behind its rows (the IntrinsicSize version crashed when a diff opened), `LocalOnSheet` (cards on
+  dark sheets use the panel fill), `softBottomEdge(blur = false)` for the list.
+- Notifications: accent colour (`R.color.leash_accent`) on every notification; the status icon is the app's pixel lead.
+- `LeashPalette` and its test moved to `ui/design`; `DESIGN.md` updated (paths, onAccent labels, dimmer dark stars
+  12–35%, review log).
+
+### Verified
+- `android_build install=true`: BUILD SUCCESSFUL; `android_test` unit: 220 tests, 0 failures.
+- logcat: one crash during the work (StepRail intrinsics, fixed and re-checked); after that `AndroidRuntime` empty
+  (buffer cleared after the fix, checked at the end).
+- Screenshots (scratchpad/shots/d2, demo bridge): every catalog page light + dark; list (rest, scrolled, search),
+  folder, settings, scanner, new conversation, folder browser, finished chat (top with steps + diff, bottom), a streamed
+  turn (Working with live dots, rows update, turn ends), permission tray, question tray (selected option), queue tray,
+  subagent parent + subagent screen, command palette, model sheet; final set in light and dark (`F-*.png`); font scale
+  1.3 and 2.0 (list, permission tray). Side-by-side with `.shots` (`*-vs-ios.png`).
+- Real bridge, read-only (LAN address via deep link, notifications revoked first, nothing sent / answered / created):
+  list loaded ("2 agents ready", 32 + 131 + … conversations), one finished CJK transcript screenshotted in light and
+  dark (inline code, bold, bullets, changes row). App data cleared afterwards (`pm clear`), emulator back to light
+  mode and font scale 1.0.
+- Fable reviewed the catalog (dark accent contrast) and the final light + dark + font-scale screenshots; all flagged
+  items fixed except the quota rings (below).
+
+### Left / known issues
+- The list's trailing quota-ring circle (DESIGN.md §11) is not there: quota rings and the quota sheet are phase 4.
+- The composer has no leading "+" until attachments (phase 4); the slot exists (`showLeading`).
+- Predictive back pop (scale 0.9 + fade) is not checked frame by frame; the dock's IME behaviour was not re-checked
+  with a real keyboard on screen beyond typing via adb.
+- Open folder sections still survive recreation only (state from a previous bridge can leave all sections closed).
+- Demo data quirk: the Antigravity demo conversation shows a Claude model chip (DemoScript config), not a UI bug.
