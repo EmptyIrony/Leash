@@ -92,6 +92,15 @@ object DemoScript {
             "requestedSchema" to jsonObj("type" to "object", "required" to listOf("question_0"), "properties" to jsonObj("question_0" to jsonObj("type" to "string", "title" to "Target database",
                 "oneOf" to listOf(jsonObj("const" to "postgres", "title" to "PostgreSQL", "description" to "Recommended"), jsonObj("const" to "sqlite", "title" to "SQLite")))))))
 
+    /** A form with several questions: it opens the question sheet instead of fitting in the tray. */
+    fun formRequest(key: String, sessionId: String, agent: String) = jsonObj("op" to "request", "agentId" to agent, "key" to key, "method" to "elicitation/create", "sessionId" to sessionId,
+        "params" to jsonObj("message" to "A few questions before I start.",
+            "requestedSchema" to jsonObj("type" to "object", "required" to listOf("question_0"), "properties" to jsonObj(
+                "question_0" to jsonObj("type" to "string", "title" to "Target database", "oneOf" to listOf("postgres", "sqlite", "mysql", "mongo", "redis").map { jsonObj("const" to it, "title" to it) }),
+                "question_0_custom" to jsonObj("type" to "string", "title" to "Other"),
+                "question_1" to jsonObj("type" to "string", "title" to "Notes", "description" to "Anything else I should know?"),
+                "question_2" to jsonObj("type" to "boolean", "title" to "Run the tests afterwards", "default" to true)))))
+
     fun configOptions(model: String = "sonnet", effort: String = "medium") = listOf(
         jsonObj("id" to "model", "name" to "Model", "category" to "model", "type" to "select", "currentValue" to model,
             "options" to listOf(jsonObj("value" to "sonnet", "name" to "Sonnet 5.5"), jsonObj("value" to "opus", "name" to "Opus 5.5"))),

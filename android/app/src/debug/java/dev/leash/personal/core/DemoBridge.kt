@@ -255,6 +255,14 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
                 record(s, DemoScript.tool(rid, "Read Parser.kt", "read", "in_progress", "locations" to listOf(jsonObj("path" to DemoScript.PROJECT + "/src/Parser.kt"))))
                 delay(350)
                 record(s, DemoScript.toolUpdate(rid, "completed"))
+                if (items.any { it.contains("questions", ignoreCase = true) }) {
+                    val key = s.agent + ":" + nextKey++
+                    val req = DemoScript.formRequest(key, s.id, s.agent)
+                    pending[key] = req
+                    val answer = CompletableDeferred<JsonElement>().also { answers[key] = it }
+                    emit(req)
+                    answer.await()
+                }
                 if (items.any { it.contains("permission", ignoreCase = true) }) {
                     val key = s.agent + ":" + nextKey++
                     val req = DemoScript.permissionRequest(key, s.id, s.agent, withDiff = items.any { it.contains("diff", ignoreCase = true) })

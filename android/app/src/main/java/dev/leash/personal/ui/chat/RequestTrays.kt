@@ -296,7 +296,9 @@ private fun OptionRow(choice: Choice, multi: Boolean, selected: Boolean, onClick
 private fun QuestionSheet(spec: ElicitationSpec, answers: ElicitationAnswers, onChange: (ElicitationAnswers) -> Unit, submit: () -> Unit, skip: () -> Unit, dismiss: () -> Unit) {
     val open = LocalOpenFile.current
     ModalBottomSheet(onDismissRequest = dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+          // the answers scroll; Skip and Submit stay in reach
+          Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(stringResource(R.string.agent_asks), style = MaterialTheme.typography.titleMedium)
             spec.message?.let { Text(rememberInline(it, open), style = MaterialTheme.typography.bodyLarge) }
             spec.questions.forEach { q ->
@@ -322,6 +324,7 @@ private fun QuestionSheet(spec: ElicitationSpec, answers: ElicitationAnswers, on
                     }
                 }
             }
+          }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = skip, Modifier.weight(1f)) { Text(stringResource(R.string.skip)) }
                 Button(onClick = submit, Modifier.weight(1f)) { Text(stringResource(R.string.submit), fontWeight = FontWeight.Bold) }
