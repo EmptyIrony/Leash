@@ -22,14 +22,8 @@ object QuotaFormat {
 
     fun percent(fraction: Double): Int = Math.round(fraction * 100).toInt().coerceIn(0, 100)
 
-    /** The label of a window on the chat's quota chip: "5h", "Week". */
-    fun chipLabel(window: String): String = when (window) {
-        "5h" -> "5h"; "weekly" -> "Week"; "daily" -> "Day"; "monthly" -> "Month"
-        else -> window.replaceFirstChar { it.uppercase() }
-    }
-
     /** The day part ("5:30 PM", or "Tue 5:30 PM" past today) and the time left of a window's reset. */
-    class Reset(val day: String, val left: String)
+    class Reset(val day: String, val left: List<DurationPart>)
 
     /** Null when the window has already reset ("Resetting now"). */
     fun reset(resetAtMs: Long, nowMs: Long, zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): Reset? {
@@ -43,19 +37,27 @@ object QuotaFormat {
     }
 
     /** "2h 10m" up to two days out, then "6d 22h" (a weekly window would otherwise read "166h 17m"). */
-    fun left(seconds: Double): String {
+    fun left(seconds: Double): List<DurationPart> {
         val hours = (seconds / 3600).toLong()
-        return if (hours < 48) durationText(seconds) else (hours / 24).toString() + "d " + (hours % 24) + "h"
+        if (hours < 48) return durationParts(seconds)
+        return listOfNotNull(DurationPart(DurationUnit.Day, hours / 24), (hours % 24).takeIf { it > 0 }?.let { DurationPart(DurationUnit.Hour, it) })
     }
 
-    /** How long ago the numbers were read: "just now", "5 min ago", "3 h ago", "2 d ago". */
-    fun ago(fetchedAtMs: Long, nowMs: Long): String {
+    /** How long ago the numbers were read, for the UI to word ("just now", "5 min ago", "3 h ago", "2 d ago"). */
+    sealed interface Ago {
+        data object JustNow : Ago
+        data class Minutes(val count: Int) : Ago
+        data class Hours(val count: Int) : Ago
+        data class Days(val count: Int) : Ago
+    }
+
+    fun ago(fetchedAtMs: Long, nowMs: Long): Ago {
         val minutes = (nowMs - fetchedAtMs) / 60_000
         return when {
-            minutes < 1 -> "just now"
-            minutes < 60 -> "$minutes min ago"
-            minutes < 24 * 60 -> "${minutes / 60} h ago"
-            else -> "${minutes / (24 * 60)} d ago"
+            minutes < 1 -> Ago.JustNow
+            minutes < 60 -> Ago.Minutes(minutes.toInt())
+            minutes < 24 * 60 -> Ago.Hours((minutes / 60).toInt())
+            else -> Ago.Days((minutes / (24 * 60)).toInt())
         }
     }
 

@@ -21,18 +21,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.core.Problem
+import dev.leash.personal.core.toProblem
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import dev.leash.personal.ui.files.FileKinds
 import dev.leash.personal.ui.files.icon
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BrowseResult
 import dev.leash.personal.ui.components.AgentIcon
 import dev.leash.personal.ui.components.LazyScreen
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.LeashShapes
@@ -52,7 +56,7 @@ import kotlinx.coroutines.launch
 class NewSessionController(private val model: AppModel, private val scope: CoroutineScope) {
     var creating by mutableStateOf<String?>(null)
         private set
-    var error by mutableStateOf<String?>(null)
+    var error by mutableStateOf<Problem?>(null)
     /** the agent chosen on the first screen; the browser continues with it */
     var agent by mutableStateOf("agy")
 
@@ -71,7 +75,7 @@ class NewSessionController(private val model: AppModel, private val scope: Corou
                 creating = null
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: e.toString()
+                error = e.toProblem()
                 creating = null
                 model.hooks.haptic(dev.leash.personal.core.Haptic.Error)
             }
@@ -97,7 +101,7 @@ fun NewSessionScreen(model: AppModel, controller: NewSessionController, onBack: 
                 Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp).fillMaxWidth(),
             )
         }
-        controller.error?.let { e -> item("error") { Notice(LeashIcons.failed, stringResource(R.string.couldnt_start), e, c.danger) } }
+        controller.error?.let { e -> item("error") { Notice(LeashIcons.failed, stringResource(R.string.couldnt_start), res().problemText(e), c.danger) } }
         val ready = state.isReady(agent)
         if (!ready) item("not-ready") { Notice(LeashIcons.warning, stringResource(R.string.agent_not_running, state.agentLabel(agent)), null, c.attention) }
         val recent = state.recentFolders(agent)
@@ -172,7 +176,7 @@ internal fun LazyListScope.browseRows(
     }
     val files = r.files.take(filesLimit)
     if (files.isNotEmpty()) {
-        if (filesHeader) item("files-h") { SectionHeader(pluralText(R.plurals.files_count, r.files.size), Modifier.padding(top = 12.dp)) }
+        if (filesHeader) item("files-h") { SectionHeader(pluralStringResource(R.plurals.files_count, r.files.size, r.files.size), Modifier.padding(top = 12.dp)) }
         else item("files-gap") { Box(Modifier.padding(top = 20.dp)) }
         itemsIndexed(files, key = { _, f -> "x:$f" }) { i, f ->
             val last = i == files.lastIndex
@@ -193,9 +197,9 @@ fun FolderBrowserScreen(model: AppModel, controller: NewSessionController, path:
     val state by model.state.collectAsStateWithLifecycle()
     val c = Leash.colors
     var result by remember(path) { mutableStateOf<BrowseResult?>(null) }
-    var error by remember(path) { mutableStateOf<String?>(null) }
+    var error by remember(path) { mutableStateOf<Problem?>(null) }
     LaunchedEffect(path) {
-        try { result = model.browse(path, controller.agent) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { error = e.message ?: e.toString() }
+        try { result = model.browse(path, controller.agent) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { error = e.toProblem() }
     }
     val r = result
     LazyScreen(
@@ -213,8 +217,8 @@ fun FolderBrowserScreen(model: AppModel, controller: NewSessionController, path:
         },
         overlay = { if (controller.creating != null) StartingCapsule(Modifier.align(Alignment.Center)) },
     ) {
-        error?.let { e -> item("err") { Notice(LeashIcons.failed, stringResource(R.string.cant_open_folder), e, c.danger) } }
-        controller.error?.let { e -> item("err2") { Notice(LeashIcons.failed, stringResource(R.string.couldnt_start), e, c.danger) } }
+        error?.let { e -> item("err") { Notice(LeashIcons.failed, stringResource(R.string.cant_open_folder), res().problemText(e), c.danger) } }
+        controller.error?.let { e -> item("err2") { Notice(LeashIcons.failed, stringResource(R.string.couldnt_start), res().problemText(e), c.danger) } }
         if (r != null) {
             item("start") {
                 LeashButton(

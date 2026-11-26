@@ -45,8 +45,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.files.ProvideFiles
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -57,6 +57,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.core.Problem
+import dev.leash.personal.core.toProblem
+import dev.leash.personal.text.errorText
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -155,7 +160,8 @@ fun ChatScreen(
     val trayVisible = pending.isNotEmpty()
     val blocked = permissions.isNotEmpty()
     val loading = store.loading
-    val loadError = store.loadError
+    val res = res()
+    val loadError = store.loadError?.let(res::problemText)
     val lockedBy = store.lockedBy
     val running = store.running
     val stopReason = store.lastStopReason
@@ -164,7 +170,7 @@ fun ChatScreen(
     val queued = store.queued
     val removedQueued = store.removedQueued
     val subagents = store.runningSubagents
-    val composerError = store.composerError
+    val composerError = store.composerError?.let(res::problemText)
     val agentReady = state.isReady(agent)
     val composerEnabled = ComposerLogic.enabled(agentReady, attached)
 
@@ -230,7 +236,7 @@ fun ChatScreen(
     var images by remember(sessionId) { mutableStateOf<List<ByteArray>>(emptyList()) }
     var files by remember(sessionId) { mutableStateOf<List<PendingFile>>(emptyList()) }
     var uploading by remember(sessionId) { mutableStateOf(false) }
-    var uploadError by remember(sessionId) { mutableStateOf<String?>(null) }
+    var uploadError by remember(sessionId) { mutableStateOf<Problem?>(null) }
     val asksSideQuestions = state.asksSideQuestions(agent)
     val kind = ComposerLogic.kind(draft.text, asksSideQuestions)
     val hasAttachments = images.isNotEmpty() || files.isNotEmpty()
@@ -272,15 +278,15 @@ fun ChatScreen(
             var failed = 0
             for (u in uris.take(AttachmentPolicy.room(images.size, uris.size))) AttachmentLoading.photo(appContext, u)?.let { added += it } ?: run { failed++ }
             if (added.isNotEmpty()) { images = images + added; buzz(Haptic.Selection) }
-            if (failed > 0) { store.composerError = appContext.getString(R.string.photo_unreadable); buzz(Haptic.Error) }
+            if (failed > 0) { store.composerError = Problem(appContext.getString(R.string.photo_unreadable)); buzz(Haptic.Error) }
         }
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) scope.launch {
             val r = AttachmentLoading.files(appContext, uris)
             if (r.files.isNotEmpty()) { files = files + r.files; buzz(Haptic.Selection) }
-            if (r.tooLarge.isNotEmpty()) { store.composerError = tooLargeText(r.tooLarge); buzz(Haptic.Error) }
-            else if (r.unreadable.isNotEmpty()) { store.composerError = unreadableText(r.unreadable); buzz(Haptic.Error) }
+            if (r.tooLarge.isNotEmpty()) { store.composerError = Problem(tooLargeText(r.tooLarge)); buzz(Haptic.Error) }
+            else if (r.unreadable.isNotEmpty()) { store.composerError = Problem(unreadableText(r.unreadable)); buzz(Haptic.Error) }
         }
     }
     // photos that went back after a refused send (locked elsewhere, ...) return to the front of the strip
@@ -316,7 +322,7 @@ fun ChatScreen(
                 pinned = true
                 buzz(if (interrupt) Haptic.Heavy else Haptic.Light)
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                store.composerError = e.message ?: e.toString()
+                store.composerError = e.toProblem()
                 uploadError = store.composerError
                 buzz(Haptic.Error)
             } finally { uploading = false }
@@ -392,7 +398,7 @@ fun ChatScreen(
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 startingNew = false
                 buzz(Haptic.Error)
-                snackbar.showSnackbar(startFailed + ": " + (e.message ?: e.toString()))
+                snackbar.showSnackbar(startFailed + ": " + res.errorText(e))
             }
         }
     }
@@ -401,7 +407,7 @@ fun ChatScreen(
         showingInCli = true
         scope.launch {
             try { model.showInCli(store); buzz(Haptic.Success); snackbar.showSnackbar(cliDone) }
-            catch (e: CancellationException) { throw e } catch (e: Exception) { buzz(Haptic.Error); snackbar.showSnackbar(cliFailed + ": " + (e.message ?: e.toString())) }
+            catch (e: CancellationException) { throw e } catch (e: Exception) { buzz(Haptic.Error); snackbar.showSnackbar(cliFailed + ": " + res.errorText(e)) }
             finally { showingInCli = false }
         }
     }
@@ -503,7 +509,7 @@ fun ChatScreen(
                 )
                 AnimatedVisibility(others.isNotEmpty(), enter = Motion.bannerEnter(reduced), exit = Motion.bannerExit(reduced)) {
                     Banner(
-                        if (others.size > 1) pluralText(R.plurals.others_need_you, others.size) else stringResource(R.string.another_needs_approval),
+                        if (others.size > 1) pluralStringResource(R.plurals.others_need_you, others.size, others.size) else stringResource(R.string.another_needs_approval),
                         { others.firstOrNull()?.let(onOpenChat) },
                         Modifier.padding(horizontal = 16.dp).offset(y = (-20).dp),
                     )

@@ -23,4 +23,68 @@
         <item quantity="one">%1$d other conversation needs you</item>
         <item quantity="other">%1$d other conversations need you</item>
     </plurals>
+    <plurals name="steps_count">
+        <item quantity="one">%1$d step</item>
+        <item quantity="other">%1$d steps</item>
+    </plurals>
+    <plurals name="files_changed">
+        <item quantity="one">%1$d file changed</item>
+        <item quantity="other">%1$d files changed</item>
+    </plurals>
+    <plurals name="read_files">
+        <item quantity="one">Read %1$d file</item>
+        <item quantity="other">Read %1$d files</item>
+    </plurals>
+    <plurals name="show_earlier_steps">
+        <item quantity="one">Show %1$d earlier step</item>
+        <item quantity="other">Show %1$d earlier steps</item>
+    </plurals>
+    <plurals name="unchanged_lines">
+        <item quantity="one">%1$d unchanged line</item>
+        <item quantity="other">%1$d unchanged lines</item>
+    </plurals>
+    <plurals name="status_agents_ready">
+        <item quantity="one">%1$s · %2$d agent ready</item>
+        <item quantity="other">%1$s · %2$d agents ready</item>
+    </plurals>
+    <plurals name="status_agents_some_ready">
+        <item quantity="one">%1$s · %2$d/%3$d agent ready</item>
+        <item quantity="other">%1$s · %2$d/%3$d agents ready</item>
+    </plurals>
+    <plurals name="summary_agents">
+        <item quantity="one">ran %1$d agent</item>
+        <item quantity="other">ran %1$d agents</item>
+    </plurals>
+    <plurals name="summary_explored">
+        <item quantity="one">explored %1$d file</item>
+        <item quantity="other">explored %1$d files</item>
+    </plurals>
+    <plurals name="summary_ran">
+        <item quantity="one">ran %1$d command</item>
+        <item quantity="other">ran %1$d commands</item>
+    </plurals>
+    <plurals name="summary_edited">
+        <item quantity="one">edited %1$d file</item>
+        <item quantity="other">edited %1$d files</item>
+    </plurals>
+    <plurals name="summary_browsed">
+        <item quantity="one">browsed %1$d page</item>
+        <item quantity="other">browsed %1$d pages</item>
+    </plurals>
+    <plurals name="summary_tools">
+        <item quantity="one">used %1$d tool</item>
+        <item quantity="other">used %1$d tools</item>
+    </plurals>
+    <plurals name="ago_minutes">
+        <item quantity="one">%1$d min ago</item>
+        <item quantity="other">%1$d min ago</item>
+    </plurals>
+    <plurals name="ago_hours">
+        <item quantity="one">%1$d h ago</item>
+        <item quantity="other">%1$d h ago</item>
+    </plurals>
+    <plurals name="ago_days">
+        <item quantity="one">%1$d d ago</item>
+        <item quantity="other">%1$d d ago</item>
+    </plurals>
 </resources>

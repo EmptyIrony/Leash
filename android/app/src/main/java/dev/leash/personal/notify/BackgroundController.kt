@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import dev.leash.personal.R
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BackgroundPolicy
 import dev.leash.personal.core.Clock
@@ -57,7 +58,7 @@ class BackgroundController(
         val s = model.state.value
         val store = model.existingStore(sessionId)
         val agent = store?.agent ?: s.sessions.firstOrNull { it.id == sessionId }?.agent ?: "agy"
-        val title = s.conversationTitle(sessionId) ?: store?.title ?: "Conversation"
+        val title = s.conversationTitle(sessionId) ?: store?.title ?: app.getString(R.string.conversation)
         tracker.started(TrackedTurn(sessionId, agent, title, Clock.now()))
         evaluate()
     }

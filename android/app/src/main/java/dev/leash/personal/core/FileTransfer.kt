@@ -30,7 +30,7 @@ object FileLimits {
 
     /** 1_500_000 -> "1.5 MB" (decimal units, like the iOS file size style). */
     fun sizeText(bytes: Long): String {
-        if (bytes < 1000) return "$bytes bytes"
+        if (bytes < 1000) return "$bytes B"
         val units = listOf("KB", "MB", "GB")
         var v = bytes / 1000.0
         var u = 0
@@ -65,11 +65,11 @@ fun splitLineSuffix(path: String): Pair<String, Int?> {
  */
 suspend fun AppModel.upload(f: PendingFile, st: ChatStore): JsonElement {
     if (f.size > FileLimits.MAX_UPLOAD_BYTES) {
-        throw BridgeError(FileLimits.FILE_TOO_LARGE, f.name + " is larger than " + FileLimits.MAX_UPLOAD_TEXT)
+        throw BridgeError(FileLimits.FILE_TOO_LARGE, f.name + " is larger than " + FileLimits.MAX_UPLOAD_TEXT, issue = Issue.FileTooLarge, detail = f.name)
     }
     val data = withContext(Dispatchers.Default) { java.util.Base64.getEncoder().encodeToString(f.data) }
     val r = link.call("bridge/upload", jsonObj("sessionId" to st.sessionId, "name" to f.name, "data" to data, "agent" to st.agent), 300_000)
-    val uri = r["uri"].string ?: throw BridgeError(-3, "Upload failed")
+    val uri = r["uri"].string ?: throw BridgeError(-3, "Upload failed", issue = Issue.UploadFailed)
     val block = linkedMapOf<String, Any?>("type" to "resource_link", "uri" to uri, "name" to (r["name"].string ?: f.name), "size" to f.size)
     r["mimeType"].string?.let { block["mimeType"] = it }
     return j(block)
@@ -80,7 +80,7 @@ suspend fun AppModel.fetchFile(path: String, agent: String, sessionId: String?, 
     val p = linkedMapOf<String, Any?>("path" to path, "agent" to agent, "mode" to "base64", "maxBytes" to maxBytes)
     if (sessionId != null) p["sessionId"] = sessionId
     val r = link.call("bridge/readFile", j(p), 180_000)
-    val b64 = r["data"].string ?: throw BridgeError(-3, "The bridge sent no file data")
+    val b64 = r["data"].string ?: throw BridgeError(-3, "The bridge sent no file data", issue = Issue.NoFileData)
     val data = withContext(Dispatchers.Default) { java.util.Base64.getMimeDecoder().decode(b64) }
     return FetchedFile(r["path"].string ?: path, data, r["mimeType"].string, r["binary"].bool ?: true)
 }

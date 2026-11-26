@@ -7,7 +7,7 @@ class TailnetException(message: String) : Exception(message)
  * Why built-in Tailscale could not give a route to the bridge. [retry] false: only the user can fix it (a new auth key), so the
  * connection stops with `Failed` instead of backing off and trying again.
  */
-class TunnelError(override val message: String, val retry: Boolean) : Exception(message)
+class TunnelError(override val message: String, val retry: Boolean, val issue: Issue? = null) : Exception(message)
 
 /**
  * The embedded Tailscale node (the `tailnet` Go module, built into an AAR by gomobile). Calls block on the Go side, so the
@@ -38,13 +38,13 @@ sealed interface TailnetStatus {
     data class Connected(val name: String, val address: String) : TailnetStatus
     /** The key was rejected or expired, or there is none and no saved node; control's reason when it gave one. */
     data class NeedsKey(val reason: String?) : TailnetStatus
-    data class Failed(val message: String) : TailnetStatus
+    data class Failed(val message: String, val issue: Issue? = null) : TailnetStatus
 }
 
 /** Parses the Go side's `Status()` JSON. */
 fun parseTailnetStatus(json: String): TailnetStatus {
     val o = runCatching { parseJson(json) }.getOrNull()?.takeIf { it.obj != null }
-        ?: return TailnetStatus.Failed("Unreadable status from Tailscale")
+        ?: return TailnetStatus.Failed("Unreadable status from Tailscale", Issue.TailnetUnreadable)
     val detail = o["error"].string?.takeIf { it.isNotEmpty() }
     return when (o["state"].string) {
         "connected" -> {
@@ -54,7 +54,7 @@ fun parseTailnetStatus(json: String): TailnetStatus {
         "starting" -> TailnetStatus.Connecting
         "needs_key" -> TailnetStatus.NeedsKey(detail)
         "stopped" -> TailnetStatus.Stopped
-        else -> TailnetStatus.Failed(detail ?: "Tailscale is in an unexpected state")
+        else -> TailnetStatus.Failed(detail ?: "Tailscale is in an unexpected state", fallbackIssue(detail, Issue.TailnetUnexpected))
     }
 }
 

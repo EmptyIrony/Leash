@@ -31,6 +31,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.text.quotaChipLabel
+import dev.leash.personal.text.quotaShortLabel
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.ChatStore
 import dev.leash.personal.core.ConfigChoice
@@ -192,7 +195,7 @@ fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
             val tight = QuotaFormat.isTight(f)
             val desc = limit?.first?.let { stringResource(R.string.quota_rings_desc, it.label, QuotaFormat.percent(f ?: 0.0)) } ?: stringResource(R.string.quota_chip)
             Chip(
-                if (b != null && f != null) QuotaFormat.chipLabel(b.window) + " " + QuotaFormat.percent(f) + "%" else stringResource(R.string.quota_chip),
+                if (b != null && f != null) res().quotaChipLabel(b.window) + " " + QuotaFormat.percent(f) + "%" else stringResource(R.string.quota_chip),
                 { quotaSheet = true },
                 modifier = Modifier.semantics { contentDescription = desc },
                 leading = { RingGauge(f?.toFloat(), size = 14.dp, tint = quotaRingTint(f)) },
@@ -236,7 +239,7 @@ private fun ModelSheet(option: ConfigOption, agent: String, quota: QuotaInfo?, o
                         if (f == null) null else ({
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 RingGauge(f.toFloat(), size = 11.dp, stroke = 1.6.dp, tint = quotaRingTint(f))
-                                Text(b.shortLabel + " " + QuotaFormat.percent(f) + "%", style = Leash.type.caption2.tabular(), color = if (QuotaFormat.isTight(f)) quotaTint(f) else c.textTertiary)
+                                Text(res().quotaShortLabel(b.window) + " " + QuotaFormat.percent(f) + "%", style = Leash.type.caption2.tabular(), color = if (QuotaFormat.isTight(f)) quotaTint(f) else c.textTertiary)
                             }
                         })
                     },

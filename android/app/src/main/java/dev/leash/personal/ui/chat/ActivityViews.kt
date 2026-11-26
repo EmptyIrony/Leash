@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,7 +37,12 @@ import dev.leash.personal.core.StepRowModel
 import dev.leash.personal.core.StepSegment
 import dev.leash.personal.core.SubagentItem
 import dev.leash.personal.core.ToolItem
-import dev.leash.personal.core.durationText
+import dev.leash.personal.text.durationText
+import dev.leash.personal.text.liveText
+import dev.leash.personal.text.res
+import dev.leash.personal.text.subagentLineText
+import dev.leash.personal.text.summaryText
+import dev.leash.personal.text.toolTitle
 import dev.leash.personal.core.pretty
 import dev.leash.personal.ui.components.ObserveChat
 import dev.leash.personal.ui.design.Leash
@@ -69,18 +75,19 @@ fun ActivityRow(group: ActivityGroup, store: ChatStore, blocked: Boolean, onOpen
     // a live turn not opened in full lays its messages and runs out below the header: the header keeps a sub-line only for an approval wait or before any step
     val showsSubLine = !group.live || expanded || blocked || (group.steps.isEmpty() && !group.answerFollows)
     val startedAt = store.turnStartedAtMs
+    val res = res()
     val header = if (group.live) {
         if (startedAt != null) {
             val now by produceState(Clock.now(), startedAt) { while (true) { value = Clock.now(); kotlinx.coroutines.delay(1000) } }
-            stringResource(R.string.working_for, durationText((now - startedAt) / 1000.0))
+            stringResource(R.string.working_for, res.durationText((now - startedAt) / 1000.0))
         } else stringResource(R.string.working)
     } else {
         val ms = group.stats?.durationMs
         if (ms != null) {
-            if (group.failedCount > 0) stringResource(R.string.worked_failed, durationText(ms / 1000.0), group.failedCount) else stringResource(R.string.worked_for, durationText(ms / 1000.0))
+            if (group.failedCount > 0) stringResource(R.string.worked_failed, res.durationText(ms / 1000.0), group.failedCount) else stringResource(R.string.worked_for, res.durationText(ms / 1000.0))
         } else {
             val n = group.visibleTools.size
-            if (n == 1) stringResource(R.string.steps_one) else stringResource(R.string.steps_n, n)
+            pluralStringResource(R.plurals.steps_count, n, n)
         }
     }
     val state = when {
@@ -92,8 +99,8 @@ fun ActivityRow(group: ActivityGroup, store: ChatStore, blocked: Boolean, onOpen
     }
     val subLine = if (!showsSubLine) null
         else if (blocked) stringResource(R.string.waiting_approval)
-        else if (group.live) group.liveAction
-        else if (group.summary.isEmpty()) null else group.summary + " ›"
+        else if (group.live) res.liveText(group.liveAction)
+        else if (group.summary.isEmpty) null else res.summaryText(group.summary) + " ›"
     Column(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ActivityHeader(
             header, state,
@@ -124,7 +131,7 @@ fun SegmentRow(segment: StepSegment, store: ChatStore, blocked: Boolean, onOpenS
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                segment.liveLine ?: segment.summary, style = Leash.type.footnote,
+                res().let { r -> segment.liveLine?.let(r::liveText) ?: r.summaryText(segment.summary) }, style = Leash.type.footnote,
                 color = if (blocked) c.attention else if (active) c.textSecondary else c.textTertiary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
@@ -144,7 +151,7 @@ fun StepList(rows: List<StepRowModel>, store: ChatStore, onOpenSubagent: (String
         head.forEach { StepRow(it, store, onOpenSubagent) }
         if (collapsed) {
             Text(
-                stringResource(R.string.show_earlier_steps, rows.size - 13),
+                pluralStringResource(R.plurals.show_earlier_steps, rows.size - 13, rows.size - 13),
                 Modifier.pressable(scale = PressScale.Text) { showAll = true }.padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
                 style = Leash.type.footnote.medium(), color = Leash.colors.accent,
             )
@@ -175,7 +182,7 @@ fun StepRow(row: StepRowModel, store: ChatStore, onOpenSubagent: (String) -> Uni
     when (kind) {
         is StepRowModel.Kind.Thought -> { stepKind = StepKind.Thought; annotated = rememberInline(kind.item.text.trim(), openFile) }
         is StepRowModel.Kind.Note -> { stepKind = StepKind.Note; annotated = rememberInline(kind.item.text.trim(), openFile) }
-        is StepRowModel.Kind.Reads -> title = stringResource(R.string.read_n_files, kind.items.size)
+        is StepRowModel.Kind.Reads -> title = pluralStringResource(R.plurals.read_files, kind.items.size, kind.items.size)
         is StepRowModel.Kind.Tool -> {
             val t = kind.item
             val cmd = t.commandPreview
@@ -183,7 +190,7 @@ fun StepRow(row: StepRowModel, store: ChatStore, onOpenSubagent: (String) -> Uni
             when {
                 t.kind == "execute" && cmd != null -> { title = cmd; stepKind = StepKind.Command }
                 p != null -> { title = p.substringAfterLast('/'); stepKind = StepKind.Edit }
-                else -> title = t.title
+                else -> title = res().toolTitle(t.title, t.asked)
             }
         }
         is StepRowModel.Kind.Subagent -> Unit
@@ -246,7 +253,7 @@ fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12, whole
             is DiffLine.Add -> DiffLineModel.Add(l.text)
             is DiffLine.Del -> DiffLineModel.Del(l.text)
             is DiffLine.Same -> DiffLineModel.Same(l.text)
-            is DiffLine.Gap -> DiffLineModel.Gap("⋯ " + stringResource(R.string.more_lines, l.skipped))
+            is DiffLine.Gap -> DiffLineModel.Gap("⋯ " + pluralStringResource(R.plurals.unchanged_lines, l.skipped, l.skipped))
         }
     }
     DiffBlockView(
@@ -291,8 +298,8 @@ fun SubagentStepRow(item: SubagentItem, onOpen: (String) -> Unit) {
     ) {
         Icon(LeashIcons.subagent, null, Modifier.size(16.dp), tint = c.textTertiary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(item.displayTitle, style = Leash.type.footnote, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(item.secondaryLine, style = Leash.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            Text(item.displayTitle ?: stringResource(R.string.subagent_unnamed), style = Leash.type.footnote, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(res().subagentLineText(item.secondaryLine), style = Leash.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
         }
         when {
             item.needsAction -> Icon(LeashIcons.needsYou, stringResource(R.string.needs_approval), Modifier.size(15.dp), tint = c.attention)

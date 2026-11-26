@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.leash.personal.R
+import dev.leash.personal.text.errorText
+import dev.leash.personal.text.res
 import dev.leash.personal.ui.components.LeashFullScreen
 import dev.leash.personal.ui.components.LocalAppModel
 import dev.leash.personal.ui.components.LocalContentGrew
@@ -91,6 +93,7 @@ fun AgentEmbedView(src: String, modifier: Modifier = Modifier) {
     val transcript = LocalTranscript.current
     val grew = LocalContentGrew.current
     val key = transcript.agent + "|" + src
+    val res = res()
     var html by remember(key) { mutableStateOf(EmbedCache.html[key]) }
     var error by remember(key) { mutableStateOf<String?>(null) }
     var height by remember(key) { mutableStateOf(EmbedCache.height[key] ?: 0f) }   // 0 = not measured yet
@@ -109,7 +112,7 @@ fun AgentEmbedView(src: String, modifier: Modifier = Modifier) {
             EmbedCache.html[key] = r.text
             if (html != r.text) html = r.text
         } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { if (html == null) error = e.message ?: e.toString() }
+        catch (e: Exception) { if (html == null) error = res.errorText(e) }
     }
     val c = Leash.colors
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {

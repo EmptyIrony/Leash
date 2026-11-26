@@ -9,17 +9,7 @@ data class QuotaBucket(
     /** remaining, 0..1 */
     val fraction: Double?,
     val resetAtMs: Long?,
-) {
-    /** Compact window tag for chips: "5h", "wk". */
-    val shortLabel: String
-        get() = when (window) { "5h" -> "5h"; "weekly" -> "wk"; "daily" -> "day"; else -> window }
-
-    val windowLabel: String
-        get() = when (window) {
-            "5h" -> "5-hour"; "weekly" -> "Weekly"; "daily" -> "Daily"; "monthly" -> "Monthly"
-            else -> window.replaceFirstChar { it.uppercase() }
-        }
-}
+)
 
 data class QuotaPool(
     val id: String,

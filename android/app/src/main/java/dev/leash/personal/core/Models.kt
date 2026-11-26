@@ -10,17 +10,20 @@ import kotlinx.serialization.json.JsonNull
 /** A second stable id from an entry's own, for a row built around it (a group, a segment), so the two never collide. */
 fun UUID.derived(salt: Int): UUID = UUID(mostSignificantBits, leastSignificantBits xor salt.toLong())
 
-/** "1m 3s", "42s", "1h 5m": at most two units, like iOS's narrow duration. */
-fun durationText(seconds: Double): String {
+enum class DurationUnit { Day, Hour, Minute, Second }
+
+/** One unit of a duration, e.g. 3 minutes. */
+data class DurationPart(val unit: DurationUnit, val value: Long)
+
+/**
+ * A duration as its largest [maxUnits] consecutive units, zero ones left out ("1m 3s", "42s", "1h 5m"; 1 h 0 m 5 s is just
+ * "1h"), like iOS's narrow duration. The words and their order come from resources: see ui/chat/Format.kt.
+ */
+fun durationParts(seconds: Double, maxUnits: Int = 2): List<DurationPart> {
     val s = maxOf(0L, Math.round(seconds))
-    val h = s / 3600
-    val m = (s % 3600) / 60
-    val sec = s % 60
-    return when {
-        h > 0 -> if (m > 0) h.toString() + "h " + m + "m" else h.toString() + "h"
-        m > 0 -> if (sec > 0) m.toString() + "m " + sec + "s" else m.toString() + "m"
-        else -> sec.toString() + "s"
-    }
+    val all = listOf(DurationUnit.Hour to s / 3600, DurationUnit.Minute to (s % 3600) / 60, DurationUnit.Second to s % 60)
+    val first = all.indexOfFirst { it.second > 0 }.takeIf { it >= 0 } ?: return listOf(DurationPart(DurationUnit.Second, 0))
+    return all.drop(first).take(maxUnits).filter { it.second > 0 }.map { DurationPart(it.first, it.second) }
 }
 
 internal fun lastPathComponent(p: String) = p.trimEnd('/').substringAfterLast('/')
@@ -124,6 +127,8 @@ class ChecklistStep(val index: Int, val title: String, /** pending | in_progress
 class ToolItem(val toolCallId: String) {
     val id: UUID = UUID.randomUUID()
     var title = "Tool"
+    /** [title] is the question of an ask_question call (the UI words it "Asked: …") */
+    var asked = false
     var kind = "other"
     var status = ""
     var content: List<ToolContent> = emptyList()
@@ -173,11 +178,11 @@ class ToolItem(val toolCallId: String) {
 
     fun apply(u: JsonElement) {
         u["name"].string?.let { name = it }
-        u["title"].string?.takeIf { it.isNotEmpty() }?.let { title = it }
+        u["title"].string?.takeIf { it.isNotEmpty() }?.let { title = it; asked = false }
         val q = (u["args"] ?: u["rawInput"])["questions"][0]["question"].string
         val summary = u["args"]["toolSummary"].string
-        if (name == "ask_question" && q != null) title = "Asked: " + q
-        else if (!summary.isNullOrEmpty()) title = summary
+        if (name == "ask_question" && q != null) { title = q; asked = true }
+        else if (!summary.isNullOrEmpty()) { title = summary; asked = false }
         else if (title == "Tool" && u["name"].string != null) title = capitalizedWords(u["name"].string!!.replace("_", " "))
         if (rawInput == null) u["args"]?.takeIf { !it.isJsonNull }?.let { rawInput = it }
         u["kind"].string?.let { kind = it }
@@ -297,6 +302,46 @@ class TurnStats(u: JsonElement) {
  * A subagent the agent launched (Claude Code's Agent tool), run as a child session (ACP subagents RFD). The bridge files
  * the child's updates under the root conversation tagged _meta.leash.subagent; they land in [entries].
  */
+enum class SummaryKind { Agents, Explored, Ran, Edited, Browsed, Tools }
+
+data class SummaryClause(val kind: SummaryKind, val count: Int)
+
+/** What a group of steps did, as data the UI words in the device language: up to three clauses, [more] left out, or only thinking. */
+data class ActivitySummary(val clauses: List<SummaryClause>, val more: Int = 0, val thoughtOnly: Boolean = false) {
+    val isEmpty: Boolean get() = clauses.isEmpty() && !thoughtOnly
+
+    companion object { val EMPTY = ActivitySummary(emptyList()) }
+}
+
+/** What the agent is doing right now, for the live sub-line; the UI words it in the device language. */
+sealed interface LiveAction {
+    data class Running(val command: String) : LiveAction
+    data class Reading(val file: String?) : LiveAction
+    data object Searching : LiveAction
+    data class Editing(val file: String?) : LiveAction
+    data object Browsing : LiveAction
+    /** any other tool, by its own title ([asked]: it is the question of an ask_question call) */
+    data class Tool(val title: String, val asked: Boolean = false) : LiveAction
+    data object Thinking : LiveAction
+    /** the checklist step in progress (its title is the agent's own text) */
+    data class Step(val title: String) : LiveAction
+    data object NeedsApproval : LiveAction
+    /** a subagent at work, [name] null for one with no title ("Agent") */
+    data class Subagent(val name: String?, val action: LiveAction) : LiveAction
+    /** the run so far, between two tools */
+    data class Summary(val summary: ActivitySummary) : LiveAction
+}
+
+/** A subagent's second line: what it is doing while it runs, how much it did once it is done. */
+data class SubagentLine(
+    val agentType: String?,
+    val model: String? = null,
+    val action: LiveAction? = null,
+    val steps: Int? = null,
+    val durationSeconds: Double? = null,
+    val stopped: Boolean = false,
+)
+
 class SubagentItem(val sessionId: String) {
     val id: UUID = UUID.randomUUID()
     var title: String? = null
@@ -317,7 +362,8 @@ class SubagentItem(val sessionId: String) {
 
     val isRunning: Boolean get() = state == "running" || state == "requires_action"
     val needsAction: Boolean get() = state == "requires_action"
-    val displayTitle: String get() = title?.takeIf { it.isNotEmpty() } ?: agentType ?: "Agent"
+    /** Null for an agent with neither (the UI says "Agent"). */
+    val displayTitle: String? get() = title?.takeIf { it.isNotEmpty() } ?: agentType
 
     /** The child's work as one activity group (no user prompt), for the live line and the step count. */
     val activity: ActivityGroup
@@ -332,22 +378,13 @@ class SubagentItem(val sessionId: String) {
     val stepCount: Int get() { val a = activity; return a.visibleTools.size + a.subagents.size }
 
     /** "Explore · Fable 5.2 · Running git status…" while it runs, "Explore · 42 steps · 1m 3s" once done. */
-    val secondaryLine: String
+    val secondaryLine: SubagentLine
         get() {
-            val parts = mutableListOf<String>()
-            agentType?.takeIf { it.isNotEmpty() && it != title }?.let { parts += it }
-            if (isRunning) {
-                model?.let { parts += it }
-                parts += if (needsAction) "Needs approval" else activity.liveAction
-            } else {
-                val n = stepCount
-                parts += if (n == 1) "1 step" else "$n steps"
-                val a = startedAtMs
-                val b = endedAtMs
-                if (a != null && b != null) parts += durationText((b - a) / 1000.0)
-                if (stopReason == "cancelled") parts += "Stopped"
-            }
-            return parts.joinToString(" · ")
+            val type = agentType?.takeIf { it.isNotEmpty() && it != title }
+            if (isRunning) return SubagentLine(type, model, if (needsAction) LiveAction.NeedsApproval else activity.liveAction)
+            val a = startedAtMs
+            val b = endedAtMs
+            return SubagentLine(type, null, null, stepCount, if (a != null && b != null) (b - a) / 1000.0 else null, stopReason == "cancelled")
         }
 
     /** This child and every subagent nested in it (their requests show in its view). */
@@ -438,11 +475,11 @@ class ActivityGroup(val id: UUID, val steps: MutableList<ChatEntry> = mutableLis
 
     val failedCount: Int get() = visibleTools.count { it.status == "failed" }
 
-    /** "Explored 12 files, ran 6 commands, edited 3 files" */
-    val summary: String
+    /** "Explored 12 files, ran 6 commands, edited 3 files": at most three clauses and how many more there would be. */
+    val summary: ActivitySummary
         get() {
             val t = visibleTools
-            val clauses = mutableListOf<String>()
+            val clauses = mutableListOf<SummaryClause>()
             val explored = t.count { it.kind == "read" || it.kind == "search" }
             val ran = t.count { it.kind == "execute" }
             val edits = t.filter { it.kind in listOf("edit", "delete", "move") }
@@ -451,20 +488,18 @@ class ActivityGroup(val id: UUID, val steps: MutableList<ChatEntry> = mutableLis
             val browsed = t.count { it.kind == "fetch" }
             val other = t.size - explored - ran - edits.size - browsed
             val agents = subagents.size
-            if (agents > 0) clauses += if (agents == 1) "ran 1 agent" else "ran $agents agents"
-            if (explored > 0) clauses += if (explored == 1) "explored 1 file" else "explored $explored files"
-            if (ran > 0) clauses += if (ran == 1) "ran 1 command" else "ran $ran commands"
-            if (edited > 0) clauses += if (edited == 1) "edited 1 file" else "edited $edited files"
-            if (browsed > 0) clauses += if (browsed == 1) "browsed 1 page" else "browsed $browsed pages"
-            if (other > 0) clauses += if (other == 1) "used 1 tool" else "used $other tools"
-            if (clauses.isEmpty()) return if (steps.isEmpty()) "" else "Thought it through"
-            val more = clauses.size - 3
-            val shown = clauses.take(3).joinToString(", ") + (if (more > 0) " +$more more" else "")
-            return shown.substring(0, 1).uppercase() + shown.substring(1)
+            if (agents > 0) clauses += SummaryClause(SummaryKind.Agents, agents)
+            if (explored > 0) clauses += SummaryClause(SummaryKind.Explored, explored)
+            if (ran > 0) clauses += SummaryClause(SummaryKind.Ran, ran)
+            if (edited > 0) clauses += SummaryClause(SummaryKind.Edited, edited)
+            if (browsed > 0) clauses += SummaryClause(SummaryKind.Browsed, browsed)
+            if (other > 0) clauses += SummaryClause(SummaryKind.Tools, other)
+            if (clauses.isEmpty()) return if (steps.isEmpty()) ActivitySummary.EMPTY else ActivitySummary(emptyList(), 0, thoughtOnly = true)
+            return ActivitySummary(clauses.take(3), (clauses.size - 3).coerceAtLeast(0))
         }
 
     /** What the agent is doing right now (for the live sub-line). */
-    val liveAction: String
+    val liveAction: LiveAction
         get() {
             val last = steps.lastOrNull()
             if (last != null) {
@@ -472,21 +507,21 @@ class ActivityGroup(val id: UUID, val steps: MutableList<ChatEntry> = mutableLis
                     last is ChatEntry.Tool && (last.item.status == "in_progress" || last.item.status == "pending" || last.item.status.isEmpty()) -> {
                         val t = last.item
                         return when (t.kind) {
-                            "execute" -> "Running " + (t.commandPreview ?: t.title) + "…"
-                            "read" -> "Reading " + (t.locations.firstOrNull()?.let(::lastPathComponent) ?: "file") + "…"
-                            "search" -> "Searching…"
-                            "edit", "delete", "move" -> "Editing " + ((t.firstDiff?.path ?: t.locations.firstOrNull())?.let(::lastPathComponent) ?: "file") + "…"
-                            "fetch" -> "Browsing…"
-                            else -> t.title + "…"
+                            "execute" -> LiveAction.Running(t.commandPreview ?: t.title)
+                            "read" -> LiveAction.Reading(t.locations.firstOrNull()?.let(::lastPathComponent))
+                            "search" -> LiveAction.Searching
+                            "edit", "delete", "move" -> LiveAction.Editing((t.firstDiff?.path ?: t.locations.firstOrNull())?.let(::lastPathComponent))
+                            "fetch" -> LiveAction.Browsing
+                            else -> LiveAction.Tool(t.title, t.asked)
                         }
                     }
-                    last is ChatEntry.Message && last.item.role == MessageItem.Role.Thought -> return "Thinking…"
+                    last is ChatEntry.Message && last.item.role == MessageItem.Role.Thought -> return LiveAction.Thinking
                     last is ChatEntry.Subagent && last.item.isRunning ->
-                        return last.item.displayTitle + ": " + (if (last.item.needsAction) "Needs approval" else last.item.activity.liveAction)
+                        return LiveAction.Subagent(last.item.displayTitle, if (last.item.needsAction) LiveAction.NeedsApproval else last.item.activity.liveAction)
                 }
             }
-            checklist.firstOrNull { it.status == "in_progress" }?.let { return it.title }
-            return "Thinking…"
+            checklist.firstOrNull { it.status == "in_progress" }?.let { return LiveAction.Step(it.title) }
+            return LiveAction.Thinking
         }
 }
 
@@ -556,8 +591,8 @@ class TurnChanges private constructor(val id: UUID, val files: List<File>) {
 }
 
 /** A live turn's run of tools and thoughts between two of the agent's messages ("Explored 3 files, ran 2 commands"). */
-class StepSegment(val id: UUID, val steps: List<ChatEntry>, /** the current action, on the run still going */ val liveLine: String? = null) {
-    val summary: String get() = ActivityGroup(id, steps.toMutableList()).summary
+class StepSegment(val id: UUID, val steps: List<ChatEntry>, /** the current action, or the run so far, on the run still going */ val liveLine: LiveAction? = null) {
+    val summary: ActivitySummary get() = ActivityGroup(id, steps.toMutableList()).summary
 }
 
 /** One row of an expanded step list: consecutive successful reads fold into one row. */
@@ -690,6 +725,6 @@ data class AgentCommand(
 )
 
 /** A /btw side question: answered from the conversation's context by a throwaway fork; never part of the transcript. */
-data class SideQuestion(val id: UUID = UUID.randomUUID(), val question: String, val answer: String? = null, val error: String? = null) {
+data class SideQuestion(val id: UUID = UUID.randomUUID(), val question: String, val answer: String? = null, val error: Problem? = null) {
     val pending: Boolean get() = answer == null && error == null
 }

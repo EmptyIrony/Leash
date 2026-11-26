@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.SideQuestion
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
@@ -110,7 +112,7 @@ fun SideQuestionTray(item: SideQuestion, index: Int, total: Int, collapsed: Bool
                 }
                 item.error != null -> Row(Modifier.padding(end = 8.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     Icon(LeashIcons.failed, null, Modifier.size(18.dp), tint = c.danger)
-                    Text(item.error, style = Leash.type.callout, color = c.danger)
+                    Text(res().problemText(item.error), style = Leash.type.callout, color = c.danger)
                 }
                 else -> Row(Modifier.heightIn(min = 32.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Spinner(size = 16.dp)

@@ -43,6 +43,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.text.liveText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.DisplayItem
 import dev.leash.personal.core.StepRowModel
@@ -81,7 +83,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
     }
     val item = store.subagent(childId)
     val rows = remember(version) { item?.let { foldSubagent(it) } ?: emptyList() }
-    val title = item?.displayTitle ?: stringResource(R.string.subagent)
+    val title = item?.displayTitle ?: stringResource(R.string.subagent_unnamed)
     val subtitle = item?.let { listOfNotNull(it.agentType.takeIf { t -> t != it.title }, it.model).joinToString(" · ") } ?: ""
     val needsAction = item?.needsAction == true
     val liveAction = item?.activity?.liveAction
@@ -108,7 +110,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
                             is DisplayItem.User -> PromptQuote(d.item.text)
                             is DisplayItem.Activity -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val g = d.group
-                                if (g.live) LiveLine(if (needsAction) stringResource(R.string.waiting_approval) else (liveAction ?: g.liveAction), needsAction)
+                                if (g.live) LiveLine(if (needsAction) stringResource(R.string.waiting_approval) else res().liveText(liveAction ?: g.liveAction), needsAction)
                                 val checklist = g.checklist
                                 if (checklist.isNotEmpty()) ChecklistView(checklist)
                                 val steps = StepRowModel.build(g.steps)

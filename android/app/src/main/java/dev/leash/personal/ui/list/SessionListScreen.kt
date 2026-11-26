@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.text.linkText
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AgentInfo
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.AppState
@@ -275,7 +278,7 @@ private fun StatusCard(state: AppState, model: AppModel, onSettings: () -> Unit)
     }
     val failed = state.connection as? LinkState.Failed
     if (failed != null) {
-        Notice(LeashIcons.failed, failed.reason, c.danger)
+        Notice(LeashIcons.failed, res().linkText(failed), c.danger)
         return
     }
     if (state.isConnected) {
@@ -301,7 +304,7 @@ private fun StatusCard(state: AppState, model: AppModel, onSettings: () -> Unit)
             return
         }
     }
-    state.sessionsError?.let { Notice(LeashIcons.warning, it, c.attention) }
+    state.sessionsError?.let { Notice(LeashIcons.warning, res().problemText(it), c.attention) }
 }
 
 @Composable
@@ -357,7 +360,7 @@ internal fun ConversationItem(s: SessionSummary, state: AppState, model: AppMode
     var menu by remember { mutableStateOf(false) }
     Box(modifier) {
         SessionRow(
-            s.displayTitle,
+            s.displayTitle ?: stringResource(R.string.conversation_untitled, s.shortId),
             unread = unread,
             status = when {
                 s.pendingCount > 0 -> RowStatus.NeedsYou

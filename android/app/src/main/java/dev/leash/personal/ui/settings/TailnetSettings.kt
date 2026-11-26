@@ -24,6 +24,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.core.Problem
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.TailnetStatus
 import dev.leash.personal.ui.components.SectionGap
@@ -108,7 +111,7 @@ fun TailnetSection(model: AppModel) {
             when (val s = t.status) {
                 is TailnetStatus.Connected -> NoteRow(listOf(s.name, s.address).filter { it.isNotEmpty() }.joinToString("  "), c.textSecondary)
                 is TailnetStatus.NeedsKey -> NoteRow(s.reason ?: stringResource(R.string.tailnet_needs_key_detail), c.textSecondary)
-                is TailnetStatus.Failed -> NoteRow(s.message, c.danger)
+                is TailnetStatus.Failed -> NoteRow(res().problemText(Problem(s.message, s.issue)), c.danger)
                 else -> {}
             }
             val canSave = key.isNotBlank() || t.keySaved
@@ -120,7 +123,7 @@ fun TailnetSection(model: AppModel) {
         }
     }
     SectionFooter(stringResource(if (t.available) R.string.tailnet_detail else R.string.tailnet_unavailable_detail))
-    t.logoutNote?.let { SectionFooter(it) }
+    t.logoutNote?.let { SectionFooter(res().problemText(it)) }
 
     if (confirmLogout) LeashDialog(
         onDismiss = { confirmLogout = false },

@@ -17,7 +17,7 @@ class FileTransferTest {
     }
 
     @Test fun sizeTextUsesDecimalUnits() {
-        assertEquals("12 bytes", FileLimits.sizeText(12))
+        assertEquals("12 B", FileLimits.sizeText(12))
         assertEquals("1.5 KB", FileLimits.sizeText(1_500))
         assertEquals("1 MB", FileLimits.sizeText(1_000_000))
         assertEquals("25 MB", FileLimits.sizeText(25_000_000))

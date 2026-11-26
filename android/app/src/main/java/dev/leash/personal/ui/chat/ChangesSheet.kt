@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -32,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
 import dev.leash.personal.R
 import dev.leash.personal.core.TurnChanges
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.Motion
@@ -63,7 +63,7 @@ fun ChangesSheet(changes: TurnChanges, cwd: String?, onDismiss: () -> Unit, onCo
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(pluralText(R.plurals.files_count, changes.files.size), style = Leash.type.footnote, color = c.textSecondary)
+                Text(pluralStringResource(R.plurals.files_count, changes.files.size, changes.files.size), style = Leash.type.footnote, color = c.textSecondary)
                 Text("+" + changes.adds, style = Leash.type.monoSmall.tabular(), color = c.success)
                 Text("−" + changes.dels, style = Leash.type.monoSmall.tabular(), color = c.danger, modifier = Modifier.weight(1f))
                 if (onCommit != null) LeashButton(stringResource(R.string.commit), onCommit, style = ButtonStyle.Tinted, size = ButtonSize.Regular, enabled = commitEnabled)

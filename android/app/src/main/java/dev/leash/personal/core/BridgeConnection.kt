@@ -51,19 +51,19 @@ class BridgeConnection(
         if (h.isEmpty() || t.isEmpty()) {
             endpoint = null
             disconnect()
-            state = LinkState.Failed("Set the bridge address and token in Settings")
+            state = LinkState.Failed("Set the bridge address and token in Settings", Issue.SetAddressAndToken)
             return
         }
         if (!HOST.matches(h) || port !in 1..65535) {
             endpoint = null
             disconnect()
-            state = LinkState.Failed("The bridge address or port is not valid")
+            state = LinkState.Failed("The bridge address or port is not valid", Issue.InvalidAddress)
             return
         }
         if (!TOKEN.matches(t)) {
             endpoint = null
             disconnect()
-            state = LinkState.Failed("The token has characters a token cannot have")
+            state = LinkState.Failed("The token has characters a token cannot have", Issue.InvalidToken)
             return
         }
         val bracketed = if (':' in h && !h.startsWith("[")) "[$h]" else h
@@ -73,7 +73,7 @@ class BridgeConnection(
     }
 
     override fun connect() {
-        val ep = endpoint ?: run { state = LinkState.Failed("Set the bridge address and token in Settings"); return }
+        val ep = endpoint ?: run { state = LinkState.Failed("Set the bridge address and token in Settings", Issue.SetAddressAndToken); return }
         retryJob?.cancel(); retryJob = null
         teardown(null)
         val gen = ++generation
@@ -90,7 +90,7 @@ class BridgeConnection(
                 throw e
             } catch (e: TunnelError) {
                 if (gen != generation) return@launch
-                if (e.retry) scheduleRetry(e.message) else state = LinkState.Failed(e.message)
+                if (e.retry) scheduleRetry(e.message, e.issue) else state = LinkState.Failed(e.message, e.issue)
             } catch (e: Exception) {
                 if (gen == generation) scheduleRetry(e.message ?: e.toString())
             }
@@ -110,7 +110,7 @@ class BridgeConnection(
         watchdogJob = scope.launch {
             delay(READY_TIMEOUT_MS)
             if (gen == generation && state == LinkState.Connecting && socket === s) {
-                handleFailure(gen, s, BridgeError(BridgeError.NO_REPLY, "The bridge did not answer (is it running and reachable?)"), null)
+                handleFailure(gen, s, BridgeError(BridgeError.NO_REPLY, "The bridge did not answer (is it running and reachable?)", issue = Issue.NoReply), null)
             }
         }
     }
@@ -143,7 +143,7 @@ class BridgeConnection(
         watchdogJob?.cancel(); watchdogJob = null
         socket?.close()
         socket = null
-        val err = BridgeError(BridgeError.CLOSED, reason ?: "Connection closed")
+        val err = BridgeError(BridgeError.CLOSED, reason ?: "Connection closed", issue = if (reason == null) Issue.Closed else null)
         val dropped = pending.values.toList()
         pending.clear()
         for (c in dropped) c.completeExceptionally(err)
@@ -155,7 +155,7 @@ class BridgeConnection(
         override fun onText(text: String) { scope.launch { if (gen == generation) receive(text) } }
         override fun onFailure(error: Throwable, httpStatus: Int?) { scope.launch { handleFailure(gen, null, error, httpStatus) } }
         override fun onClosed(reason: String) {
-            scope.launch { handleFailure(gen, null, BridgeError(BridgeError.CLOSED, "Connection closed by the bridge" + (if (reason.isBlank()) "" else " ($reason)")), null) }
+            scope.launch { handleFailure(gen, null, BridgeError(BridgeError.CLOSED, "Connection closed by the bridge" + (if (reason.isBlank()) "" else " ($reason)"), issue = Issue.ClosedByBridge, detail = reason.ifBlank { null }), null) }
         }
     }
 
@@ -174,16 +174,17 @@ class BridgeConnection(
     private fun fail(error: Throwable, httpStatus: Int?) {
         teardown(error.message)
         if (httpStatus == 401) {
-            state = LinkState.Failed("Token rejected by the bridge (401). Re-pair in Settings.")
+            state = LinkState.Failed("Token rejected by the bridge (401). Re-pair in Settings.", Issue.TokenRejected)
             return
         }
-        scheduleRetry(error.message ?: error.toString())
+        val be = error as? BridgeError
+        scheduleRetry(error.message ?: error.toString(), be?.issue, be?.detail)
     }
 
-    private fun scheduleRetry(message: String) {
+    private fun scheduleRetry(message: String, issue: Issue? = null, detail: String? = null) {
         val delayMs = retryDelayMs
         retryDelayMs = minOf(retryDelayMs * 2, MAX_RETRY_MS)
-        state = LinkState.Waiting(message)
+        state = LinkState.Waiting(message, issue, detail)
         retryJob = scope.launch {
             delay(delayMs)
             connect()
@@ -222,7 +223,7 @@ class BridgeConnection(
     private fun sendRaw(obj: JsonElement) {
         val s = socket
         if (s == null || state != LinkState.Connected) throw BridgeError.notConnected()
-        if (!s.send(obj.encoded())) throw BridgeError(BridgeError.CLOSED, "Connection closed")
+        if (!s.send(obj.encoded())) throw BridgeError(BridgeError.CLOSED, "Connection closed", issue = Issue.Closed)
     }
 
     override suspend fun call(method: String, params: JsonElement, timeoutMs: Long?): JsonElement {

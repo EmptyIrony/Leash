@@ -16,7 +16,7 @@ object SessionGrouping {
         val q = search.trim()
         return sessions.filter { s ->
             (agentFilter == "all" || !multiAgent || s.agent == agentFilter) &&
-                (q.isEmpty() || s.displayTitle.contains(q, ignoreCase = true) || s.cwd.contains(q, ignoreCase = true))
+                (q.isEmpty() || (s.displayTitle ?: "").contains(q, ignoreCase = true) || s.cwd.contains(q, ignoreCase = true))
         }
     }
 

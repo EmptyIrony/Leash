@@ -51,9 +51,9 @@ class ChatStore(val sessionId: String) {
      * couldn't be attached or uploaded, a change the agent refused. Shown until dismissed or the next send; a turn that
      * fails once running is a transcript notice instead.
      */
-    var composerError: String? by tracked(null)
+    var composerError: Problem? by tracked(null)
     /** The conversation couldn't be loaded; shown in place of the transcript (or under it) with Try Again. */
-    var loadError: String? by tracked(null)
+    var loadError: Problem? by tracked(null)
     /** Set while another client (Claude Code terminal / desktop app) has this conversation open: "cli", "claude-desktop", … */
     var lockedBy: String? by tracked(null)
     /** Text the bridge refused to send (conversation locked) or a queued message taken back; the composer puts it back. */
@@ -79,7 +79,7 @@ class ChatStore(val sessionId: String) {
         removedPrompt = null
     }
 
-    fun resolveSideQuestion(id: UUID, answer: String?, error: String?) {
+    fun resolveSideQuestion(id: UUID, answer: String?, error: Problem?) {
         sideQuestions = sideQuestions.map { if (it.id == id) it.copy(answer = answer, error = error) else it }
     }
 
@@ -267,7 +267,7 @@ class ChatStore(val sessionId: String) {
             }
             val id = first.id.derived(2)
             val steps = run.toList()
-            val liveLine = if (active) (if (busy || !listed) g.liveAction else StepSegment(id, steps).summary) else null
+            val liveLine = if (active) (if (busy || !listed) g.liveAction else LiveAction.Summary(StepSegment(id, steps).summary)) else null
             items += DisplayItem.Segment(StepSegment(id, steps, liveLine))
             run = mutableListOf()
         }

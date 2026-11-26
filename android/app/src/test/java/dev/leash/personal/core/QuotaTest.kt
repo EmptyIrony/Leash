@@ -17,7 +17,7 @@ class QuotaTest {
         assertEquals(1700000000000L, q.fetchedAtMs)
         assertEquals(3, q.pools.size)
         assertEquals(1795410000000L, q.pools[0].buckets[0].resetAtMs)
-        assertEquals("wk", q.pools[1].weekly!!.shortLabel)
+        assertEquals("weekly", q.pools[1].weekly!!.window)
         assertEquals(0.2, q.pools[1].minFraction!!, 0.0)
     }
 

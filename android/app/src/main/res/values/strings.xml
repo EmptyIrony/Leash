@@ -2,8 +2,6 @@
     <string name="app_name">Leash</string>
     <string name="status_bridge">Bridge</string>
     <string name="status_demo">Demo bridge</string>
-    <string name="status_agents_ready">%1$s · %2$d agents ready</string>
-    <string name="status_agents_some_ready">%1$s · %2$d/%3$d agents ready</string>
     <string name="status_agent_ready">%1$s · agy ready</string>
     <string name="status_agent_starting">%1$s · starting agy…</string>
     <string name="status_agent_down">%1$s · agy down</string>
@@ -96,16 +94,12 @@
     <string name="exit_code">exit %1$d</string>
     <string name="no_output">No output</string>
     <string name="plan">Plan</string>
-    <string name="n_files_changed_one">1 file changed</string>
-    <string name="n_files_changed">%1$d files changed</string>
     <string name="stats_first_token">First token</string>
     <string name="stats_duration">Duration</string>
     <string name="stats_thinking">Thinking</string>
     <string name="stats_cached">Cached</string>
     <string name="stats_stop">Stop</string>
     <string name="tokens_unit">%1$s tok</string>
-    <string name="steps_one">1 step</string>
-    <string name="steps_n">%1$d steps</string>
     <string name="working">Working</string>
     <string name="working_for">Working · %1$s</string>
     <string name="worked_for">Worked for %1$s</string>
@@ -114,10 +108,7 @@
     <string name="steps_progress">%1$d/%2$d steps</string>
     <string name="failed">Failed</string>
     <string name="stopped">Stopped</string>
-    <string name="show_earlier_steps">Show %1$d earlier steps</string>
-    <string name="read_n_files">Read %1$d files</string>
     <string name="needs_approval">Needs approval</string>
-    <string name="more_lines">%1$d unchanged lines</string>
     <string name="show_all_diff">Show all %1$d lines</string>
     <string name="conversation">Conversation</string>
     <string name="loading_conversation">Loading conversation…</string>
@@ -357,4 +348,74 @@
     <string name="tailnet_detail">Leash joins your tailnet on its own, without the system VPN, so it works while another VPN is on. Only the connection to the bridge uses it, and only while Leash is running. Create an auth key in the Tailscale admin console, and use the bridge\'s Tailscale IP or MagicDNS name as its address.</string>
     <string name="tailnet_unavailable">Not included in this build</string>
     <string name="tailnet_unavailable_detail">This build was made without the Tailscale node. Install the Android NDK on the build host and build Leash again.</string>
+
+    <!-- what the agent does, as core reports it (see text/CoreText.kt) -->
+    <string name="live_running">Running %1$s…</string>
+    <string name="live_reading">Reading %1$s…</string>
+    <string name="live_editing">Editing %1$s…</string>
+    <string name="live_file">file</string>
+    <string name="live_searching">Searching…</string>
+    <string name="live_browsing">Browsing…</string>
+    <string name="live_thinking">Thinking…</string>
+    <string name="live_tool">%1$s…</string>
+    <string name="live_subagent">%1$s: %2$s</string>
+    <string name="asked_prefix">Asked: %1$s</string>
+    <string name="summary_separator">", "</string>
+    <string name="summary_more">" +%1$d more"</string>
+    <string name="summary_thought">Thought it through</string>
+    <string name="conversation_untitled">Conversation %1$s</string>
+    <string name="tokens_per_second">%1$.0f tok/s</string>
+    <!-- durations: the unit words and how they join -->
+    <string name="duration_day">%1$dd</string>
+    <string name="duration_hour">%1$dh</string>
+    <string name="duration_minute">%1$dm</string>
+    <string name="duration_second">%1$ds</string>
+    <string name="duration_separator">" "</string>
+    <string name="ago_just_now">just now</string>
+    <!-- quota windows -->
+    <string name="quota_window_5h">5-hour</string>
+    <string name="quota_window_weekly">Weekly</string>
+    <string name="quota_window_daily">Daily</string>
+    <string name="quota_window_monthly">Monthly</string>
+    <string name="quota_short_5h">5h</string>
+    <string name="quota_short_weekly">wk</string>
+    <string name="quota_short_daily">day</string>
+    <string name="quota_chip_weekly">Week</string>
+    <string name="quota_chip_daily">Day</string>
+    <string name="quota_chip_monthly">Month</string>
+    <!-- problems Leash finds itself -->
+    <string name="issue_set_address">Set the bridge address and token in Settings</string>
+    <string name="issue_invalid_address">The bridge address or port is not valid</string>
+    <string name="issue_invalid_token">The token has characters a token cannot have</string>
+    <string name="issue_token_rejected">Token rejected by the bridge (401). Re-pair in Settings.</string>
+    <string name="issue_no_reply">The bridge did not answer (is it running and reachable?)</string>
+    <string name="issue_closed">Connection closed</string>
+    <string name="issue_closed_by_bridge">Connection closed by the bridge</string>
+    <string name="issue_closed_by_bridge_detail">Connection closed by the bridge (%1$s)</string>
+    <string name="issue_not_connected">Not connected to the bridge</string>
+    <string name="issue_timed_out">Request timed out</string>
+    <string name="issue_empty_response">Empty response</string>
+    <string name="issue_file_too_large">%1$s is larger than %2$s</string>
+    <string name="issue_upload_failed">Upload failed</string>
+    <string name="issue_no_file_data">The bridge sent no file data</string>
+    <string name="issue_no_session_id">The agent returned no session id</string>
+    <string name="issue_no_answer">No answer came back.</string>
+    <string name="issue_tailnet_unreadable">Unreadable status from Tailscale</string>
+    <string name="issue_tailnet_unexpected">Tailscale is in an unexpected state</string>
+    <string name="issue_tailnet_no_route">Tailscale has no route to the bridge</string>
+    <string name="issue_tailnet_logout_failed">Logging out failed</string>
+    <string name="issue_tailnet_not_started">Tailscale did not start</string>
+    <string name="issue_tailnet_not_connected">Tailscale did not connect</string>
+    <string name="issue_tailnet_status_failed">Tailscale status failed</string>
+    <string name="issue_tailnet_needs_key">Built-in Tailscale needs a new auth key. Enter one in Settings.</string>
+    <string name="issue_tailnet_stopped">Built-in Tailscale was stopped</string>
+    <!-- notification titles -->
+    <string name="notif_title_question">%1$s has a question</string>
+    <string name="notif_title_approval">%1$s needs approval</string>
+    <string name="notif_title_finished">%1$s finished</string>
+    <string name="notif_title_error">%1$s hit an error</string>
+    <string name="notif_title_stopped">%1$s stopped</string>
+    <string name="notif_title_working">%1$s is working</string>
+    <string name="notif_took">Took %1$s</string>
+    <string name="notif_needs_input">Needs your input</string>
 </resources>

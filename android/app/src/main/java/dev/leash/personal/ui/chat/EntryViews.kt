@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -51,7 +52,8 @@ import dev.leash.personal.core.NoticeItem
 import dev.leash.personal.core.PlanItem
 import dev.leash.personal.core.TurnChanges
 import dev.leash.personal.core.TurnStats
-import dev.leash.personal.core.durationText
+import dev.leash.personal.text.durationText
+import dev.leash.personal.text.res
 import dev.leash.personal.ui.components.ObserveChat
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
@@ -270,6 +272,7 @@ fun AnswerView(item: MessageItem) {
 /** "Sonnet 5.5 · High · ↑12.4k ↓1.8k · 62 tok/s" under the final answer; tap for the details. */
 @Composable
 fun StatsLine(stats: TurnStats) {
+    val res = res()
     var open by rememberSaveable(stats.id.toString()) { mutableStateOf(false) }
     val summary = buildList {
         stats.model?.let { add(it.replace("Gemini 4 ", "").replace("Claude ", "")) }
@@ -278,13 +281,13 @@ fun StatsLine(stats: TurnStats) {
         stats.inputTokens?.let { tok += "↑" + compactNumber(it) }
         stats.outputTokens?.let { tok += (if (tok.isEmpty()) "" else " ") + "↓" + compactNumber(it + (stats.thoughtTokens ?: 0)) }
         if (tok.isNotEmpty()) add(tok)
-        stats.tokensPerSecond?.let { add(String.format(java.util.Locale.US, "%.0f tok/s", it)) }
+        stats.tokensPerSecond?.let { add(res.getString(R.string.tokens_per_second, it)) }
     }.joinToString(" · ")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         StatsLineView(summary, onClick = { open = !open })
         if (open) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            stats.ttftMs?.let { StatRow(stringResource(R.string.stats_first_token), durationText(it / 1000.0)) }
-            stats.durationMs?.let { StatRow(stringResource(R.string.stats_duration), durationText(it / 1000.0)) }
+            stats.ttftMs?.let { StatRow(stringResource(R.string.stats_first_token), res.durationText(it / 1000.0)) }
+            stats.durationMs?.let { StatRow(stringResource(R.string.stats_duration), res.durationText(it / 1000.0)) }
             stats.thoughtTokens?.let { StatRow(stringResource(R.string.stats_thinking), stringResource(R.string.tokens_unit, compactNumber(it))) }
             stats.cachedTokens?.takeIf { it > 0 }?.let { StatRow(stringResource(R.string.stats_cached), stringResource(R.string.tokens_unit, compactNumber(it))) }
             stats.stopReason?.let { StatRow(stringResource(R.string.stats_stop), it) }
@@ -309,7 +312,7 @@ fun ChangesRow(changes: TurnChanges) {
     val n = changes.files.size
     val open = LocalOpenChanges.current
     ChangesRowView(
-        if (n == 1) stringResource(R.string.n_files_changed_one) else stringResource(R.string.n_files_changed, n),
+        pluralStringResource(R.plurals.files_changed, n, n),
         changes.adds, changes.dels, onClick = { open(changes) },
     )
 }

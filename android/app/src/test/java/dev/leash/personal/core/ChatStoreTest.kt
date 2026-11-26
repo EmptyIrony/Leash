@@ -101,7 +101,7 @@ class ChatStoreTest {
         val items = s.displayItems()
         assertEquals(listOf("User", "Activity", "Answer", "Stats"), items.map { it::class.simpleName })
         val g = (items[1] as DisplayItem.Activity).group
-        assertEquals("Explored 1 file, ran 1 command", g.summary)
+        assertEquals(ActivitySummary(listOf(SummaryClause(SummaryKind.Explored, 1), SummaryClause(SummaryKind.Ran, 1))), g.summary)
         assertEquals(40, g.stats!!.outputTokens)
         assertEquals("Done.", (items[2] as DisplayItem.Answer).item.text)
     }
@@ -125,7 +125,7 @@ class ChatStoreTest {
         val items = s.displayItems()
         assertEquals(listOf("User", "Activity", "Segment"), items.map { it::class.simpleName })
         assertTrue((items[1] as DisplayItem.Activity).group.live)
-        assertEquals("Running npm test…", (items[2] as DisplayItem.Segment).segment.liveLine)
+        assertEquals(LiveAction.Running("npm test"), (items[2] as DisplayItem.Segment).segment.liveLine)
         // expanded: no timeline, just the header
         s.expandedGroups = setOf(items[1].id)
         assertEquals(listOf("User", "Activity"), s.displayItems().map { it::class.simpleName })
@@ -137,7 +137,7 @@ class ChatStoreTest {
         s.feed(chunk("user_message_chunk", "go", "u"))
         val items = s.displayItems()
         assertEquals(listOf("User", "Activity"), items.map { it::class.simpleName })
-        assertEquals("Thinking…", (items[1] as DisplayItem.Activity).group.liveAction)
+        assertEquals(LiveAction.Thinking, (items[1] as DisplayItem.Activity).group.liveAction)
     }
 
     @Test fun theOptimisticBubbleIsAdoptedByTheEchoInPlace() {
@@ -261,7 +261,11 @@ class ChatStoreTest {
         assertEquals(setOf("c1", "g1"), sub.lineage)
         assertNotNull(s.subagent("g1"))   // nested ones are indexed too
         assertEquals(listOf("c1"), s.runningSubagents.map { it.sessionId })
-        assertTrue(sub.secondaryLine.startsWith("Explore · Fable 5.2 · "))
+        val line = sub.secondaryLine
+        assertEquals("Explore", line.agentType)
+        assertEquals("Fable 5.2", line.model)
+        assertNotNull(line.action)   // running: what it does now, not a step count
+        assertNull(line.steps)
         // the tool inside the child still counts as a root-level tool lookup (permission requests find it)
         s.feed(jsonObj("sessionUpdate" to "tool_call_update", "toolCallId" to "ct1", "status" to "completed", "_meta" to child))
         assertEquals("completed", sub.entries.filterIsInstance<ChatEntry.Tool>().single().item.status)
@@ -332,9 +336,14 @@ class ChatStoreTest {
     }
 
     @Test fun durationsAndPercentDecoding() {
-        assertEquals("1m 3s", durationText(63.0))
-        assertEquals("42s", durationText(42.4))
-        assertEquals("1h 5m", durationText(3900.0))
+        assertEquals(listOf(DurationPart(DurationUnit.Minute, 1), DurationPart(DurationUnit.Second, 3)), durationParts(63.0))
+        assertEquals(listOf(DurationPart(DurationUnit.Second, 42)), durationParts(42.4))
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 1), DurationPart(DurationUnit.Minute, 5)), durationParts(3900.0))
+        // at most two units by default, zero ones left out; the notification asks for three
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 1)), durationParts(3605.0))
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 1), DurationPart(DurationUnit.Second, 5)), durationParts(3605.0, maxUnits = 3))
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 2), DurationPart(DurationUnit.Minute, 3), DurationPart(DurationUnit.Second, 5)), durationParts(7385.0, maxUnits = 3))
+        assertEquals(listOf(DurationPart(DurationUnit.Second, 0)), durationParts(-5.0))
         assertEquals("/a b/ü", FileRef.pathFromUri("file:///a%20b/%C3%BC"))
         assertEquals("/plain", FileRef.pathFromUri("/plain"))
         assertNull(FileRef.pathFromUri("https://x"))
@@ -347,5 +356,33 @@ class ChatStoreTest {
         val q = QueuedMessage.list(parseJson("""[{"id":"agy:q1","text":"later","imageCount":1},{"text":"no id"}]"""))
         assertEquals(listOf(QueuedMessage("agy:q1", "later", 1, 0)), q)
         assertNull(ConfigOption.parse(parseJson("{}")))
+    }
+
+    @Test fun aSummaryKeepsThreeClausesAndCountsTheRest() {
+        fun tool(id: String, kind: String) = jsonObj("sessionUpdate" to "tool_call", "toolCallId" to id, "title" to id, "kind" to kind, "status" to "completed")
+        val s = ChatStore("s1")
+        s.feed(chunk("user_message_chunk", "go", "u"), tool("a", "read"), tool("b", "read"), tool("c", "execute"), tool("d", "fetch"), tool("e", "think"), chunk("agent_message_chunk", "ok", "m"))
+        val g = (s.displayItems()[1] as DisplayItem.Activity).group
+        assertEquals(
+            ActivitySummary(listOf(SummaryClause(SummaryKind.Explored, 2), SummaryClause(SummaryKind.Ran, 1), SummaryClause(SummaryKind.Browsed, 1)), more = 1),
+            g.summary,
+        )
+        assertFalse(g.summary.isEmpty)
+    }
+
+    @Test fun aQuestionToolKeepsTheQuestionAsItsTitleAndSaysSo() {
+        val t = ToolItem("q")
+        t.apply(jsonObj("name" to "ask_question", "args" to jsonObj("questions" to listOf(jsonObj("question" to "Which one?")))))
+        assertEquals("Which one?", t.title)
+        assertTrue(t.asked)
+        t.apply(jsonObj("title" to "Done asking"))
+        assertFalse(t.asked)
+    }
+
+    @Test fun aProblemKeepsLeashsOwnIssueAndTheSystemsTextAsItIs() {
+        val own = BridgeError.timeout().toProblem()
+        assertEquals(Issue.TimedOut, own.issue)
+        assertEquals(Problem("boom"), java.io.IOException("boom").toProblem())
+        assertEquals(Problem("bridge says no"), BridgeError(-32603, "bridge says no").toProblem())
     }
 }

@@ -49,6 +49,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
+import dev.leash.personal.core.Problem
+import dev.leash.personal.core.toProblem
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BridgeError
 import dev.leash.personal.core.FileLimits
@@ -163,7 +167,7 @@ fun FileViewerPage(target: ViewTarget, model: AppModel, agent: String, sessionId
     val clipboard = LocalClipboard.current
     var attempt by remember { mutableIntStateOf(0) }
     var loaded by remember(target) { mutableStateOf<Loaded?>(null) }
-    var error by remember(target) { mutableStateOf<String?>(null) }
+    var error by remember(target) { mutableStateOf<Problem?>(null) }
     var wrap by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -171,7 +175,7 @@ fun FileViewerPage(target: ViewTarget, model: AppModel, agent: String, sessionId
         loaded = null; error = null
         try { loaded = loadTarget(context, model, target, agent, sessionId) }
         catch (e: CancellationException) { throw e }
-        catch (e: Exception) { error = e.message ?: e.toString() }
+        catch (e: Exception) { error = e.toProblem() }
     }
     LaunchedEffect(toast) { if (toast != null) { delay(2_500); toast = null } }
 
@@ -229,7 +233,7 @@ fun FileViewerPage(target: ViewTarget, model: AppModel, agent: String, sessionId
         when {
             error != null -> EmptyState(
                 LeashIcons.failed, stringResource(R.string.file_cant_open), Modifier.fillMaxSize().padding(top = top + 80.dp),
-                message = error, actionLabel = stringResource(R.string.try_again), onAction = { attempt++ },
+                message = error?.let { res().problemText(it) }, actionLabel = stringResource(R.string.try_again), onAction = { attempt++ },
             )
             l == null -> LoadingState(stringResource(R.string.file_loading), Modifier.fillMaxWidth().padding(top = top + 96.dp), delayMs = 150)
             l is Loaded.TooLarge -> EmptyState(

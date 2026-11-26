@@ -18,7 +18,8 @@ class NotificationContentTest {
             jsonObj("toolCallId" to "t", "title" to "Bash", "kind" to "execute", "rawInput" to jsonObj("command" to "rm -rf build")),
         )
         val a = NotificationContent.request(p, "Claude Code", "Clean up")
-        assertEquals("Claude Code needs approval", a.title)
+        assertEquals(RequestKind.NeedsApproval, a.kind)
+        assertEquals("Claude Code", a.agentLabel)
         assertEquals("Clean up", a.subtitle)
         assertEquals("Bash\nrm -rf build", a.body)
         assertEquals("o", a.allowId)
@@ -57,7 +58,8 @@ class NotificationContentTest {
     @Test fun aQuestionOpensTheChatWithoutActions() {
         val q = PendingRequest("claude:8", "claude", "elicitation/create", "s", jsonObj("message" to "Which database?"))
         val a = NotificationContent.request(q, "Claude Code", "Migrate")
-        assertEquals("Claude Code has a question", a.title)
+        assertEquals(RequestKind.Question, a.kind)
+        assertEquals("Claude Code", a.agentLabel)
         assertEquals("Which database?", a.body)
         assertFalse(a.hasQuickAnswer)
     }
@@ -69,26 +71,24 @@ class NotificationContentTest {
 
     @Test fun turnEndsByReason() {
         fun end(r: String?) = NotificationContent.turnEnd("s", "claude", "Claude Code", "Refactor", r, 1_000, 65_000)
-        assertEquals("Claude Code finished", end("end_turn")!!.title)
-        assertEquals("Claude Code finished", end(null)!!.title)
-        assertEquals("Claude Code hit an error", end("error")!!.title)
-        assertEquals("Claude Code hit an error", end("refusal")!!.title)
-        assertEquals("Claude Code stopped", end("max_tokens")!!.title)
+        assertEquals(TurnEndKind.Finished, end("end_turn")!!.kind)
+        assertEquals(TurnEndKind.Finished, end(null)!!.kind)
+        assertEquals(TurnEndKind.HitError, end("error")!!.kind)
+        assertEquals(TurnEndKind.HitError, end("refusal")!!.kind)
+        assertEquals(TurnEndKind.Stopped, end("max_tokens")!!.kind)
+        assertEquals("Claude Code", end("end_turn")!!.agentLabel)
         assertNull(end("cancelled"))
         val e = end("end_turn")!!
-        assertEquals("Took 1m 4s", e.body)
+        assertEquals(64_000L, e.tookMs)
         assertEquals("Refactor", e.subtitle)
         assertEquals("leash://session?id=s&agent=claude", e.url)
-        assertNull(NotificationContent.turnEnd("s", "claude", "Claude Code", null, "end_turn", null, 5)!!.body)
+        assertNull(NotificationContent.turnEnd("s", "claude", "Claude Code", null, "end_turn", null, 5)!!.tookMs)
+        // a clock behind the start never reads as a negative time
+        assertEquals(0L, NotificationContent.turnEnd("s", "claude", "Claude Code", null, "end_turn", 9_000, 5_000)!!.tookMs)
     }
 
-    @Test fun durationsUseAbbreviatedUnitsWithoutZeroOnes() {
-        assertEquals("0s", NotificationContent.duration(0))
-        assertEquals("0s", NotificationContent.duration(-5000))
-        assertEquals("6s", NotificationContent.duration(6_400))
-        assertEquals("1m", NotificationContent.duration(60_000))
-        assertEquals("4m 5s", NotificationContent.duration(245_000))
-        assertEquals("1h 3s", NotificationContent.duration(3_603_000))
-        assertEquals("2h 3m 5s", NotificationContent.duration(7_385_000))
+    @Test fun aRequestThatSaysNothingHasNoBody() {
+        val q = PendingRequest("claude:8", "claude", "elicitation/create", "s", jsonObj("x" to 1))
+        assertNull(NotificationContent.request(q, "Claude Code", null).body)
     }
 }

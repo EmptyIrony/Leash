@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.text.linkText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.LinkState
 import dev.leash.personal.core.parsePairingLink
@@ -151,8 +153,8 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onScan: () -> Unit) {
                         trailing = { tailnetStatusLabel(ts.status).let { (text, kind) -> StatusPill(text, kind.color(), Modifier.padding(start = 8.dp)) } },
                     )
                 }
-                (state.connection as? LinkState.Waiting)?.let { NoteRow(it.reason, c.textSecondary) }
-                (state.connection as? LinkState.Failed)?.let { NoteRow(it.reason, c.danger) }
+                (state.connection as? LinkState.Waiting)?.let { NoteRow(res().linkText(it), c.textSecondary) }
+                (state.connection as? LinkState.Failed)?.let { NoteRow(res().linkText(it), c.danger) }
                 state.agents.forEach { a ->
                     GroupRow {
                         AgentIcon(a.id, 18.dp)

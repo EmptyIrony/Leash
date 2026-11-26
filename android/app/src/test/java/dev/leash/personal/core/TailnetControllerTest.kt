@@ -171,7 +171,7 @@ class TailnetControllerTest {
         r.node.logoutError = TailnetException("tailnet: control logout failed, local state removed: offline")
         r.tailnet.logout()
         runCurrent()
-        assertEquals("tailnet: control logout failed, local state removed: offline", r.tailnet.state.value.logoutNote)
+        assertEquals(Problem("tailnet: control logout failed, local state removed: offline"), r.tailnet.state.value.logoutNote)
         assertEquals("", r.prefs.value.authKey)
         assertEquals(TailnetStatus.Off, r.tailnet.state.value.status)
     }
@@ -213,9 +213,9 @@ class TailnetControllerTest {
         assertEquals(TailnetStatus.NeedsKey(null), parseTailnetStatus("""{"state":"needs_key","ips":[]}"""))
         assertEquals(TailnetStatus.Stopped, parseTailnetStatus("""{"state":"stopped","ips":[]}"""))
         assertEquals(TailnetStatus.Failed("boom"), parseTailnetStatus("""{"state":"error","error":"boom","ips":[]}"""))
-        assertEquals(TailnetStatus.Failed("Tailscale is in an unexpected state"), parseTailnetStatus("""{"state":"???"}"""))
-        assertEquals(TailnetStatus.Failed("Unreadable status from Tailscale"), parseTailnetStatus("not json"))
-        assertEquals(TailnetStatus.Failed("Unreadable status from Tailscale"), parseTailnetStatus(""))
+        assertEquals(TailnetStatus.Failed("Tailscale is in an unexpected state", Issue.TailnetUnexpected), parseTailnetStatus("""{"state":"???"}"""))
+        assertEquals(TailnetStatus.Failed("Unreadable status from Tailscale", Issue.TailnetUnreadable), parseTailnetStatus("not json"))
+        assertEquals(TailnetStatus.Failed("Unreadable status from Tailscale", Issue.TailnetUnreadable), parseTailnetStatus(""))
     }
 
     @Test fun configPrintsWithoutTheKey() {

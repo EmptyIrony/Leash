@@ -194,7 +194,8 @@ class AppModelTest {
         assertEquals(0.4, s.quotas["agy"]!!.pools[0].buckets[0].fraction!!, 0.0)
         assertTrue(s.agentReady)
         assertEquals(listOf("b", "a", "c"), s.sessions.map { it.id })   // newest first
-        assertEquals("Conversation b", s.sessions[0].displayTitle)
+        assertNull(s.sessions[0].displayTitle)   // no title yet: the UI says "Conversation b"
+        assertEquals("b", s.sessions[0].shortId)
         assertEquals(1, s.sessions.first { it.id == "a" }.pendingCount)
         assertTrue(s.sessions.first { it.id == "c" }.running)
         assertEquals("proj", s.sessions[0].folderName)
@@ -215,7 +216,7 @@ class AppModelTest {
         val r = Rig(this)
         r.link.on("session/list") { throw BridgeError(-32603, "boom") }
         connect(r)
-        assertEquals("boom", r.state.sessionsError)
+        assertEquals(Problem("boom"), r.state.sessionsError)
         assertFalse(r.state.sessionsLoading)
     }
 
@@ -445,7 +446,7 @@ class AppModelTest {
         connect(r)
         val st = r.model.store("a")
         r.model.attach(st)
-        assertEquals("agent cannot load", st.loadError)
+        assertEquals(Problem("agent cannot load"), st.loadError)
         assertFalse(st.loading)
         assertFalse(st.attaching)
     }
@@ -599,7 +600,7 @@ class AppModelTest {
         r.model.send(st, "hello")
         runCurrent()
         assertEquals(2, r.link.callsOf("session/prompt").size)
-        assertEquals("changed", st.composerError)
+        assertEquals(Problem("changed"), st.composerError)
         assertEquals("hello", st.unsentDraft)
     }
 
@@ -613,7 +614,7 @@ class AppModelTest {
         assertNull(st.pendingEcho)
         assertFalse(st.running)
         assertEquals("hello", st.unsentDraft)
-        assertEquals("agent is down", st.composerError)
+        assertEquals(Problem("agent is down"), st.composerError)
         assertTrue(Haptic.Error in r.hooks.haptics)
     }
 
@@ -854,7 +855,7 @@ class AppModelTest {
         assertTrue(st.sideQuestions.all { it.pending })
         runCurrent()
         assertEquals("answer", st.sideQuestions[0].answer)
-        assertEquals("No answer came back.", st.sideQuestions[1].error)
+        assertEquals(Problem("No answer came back.", Issue.NoAnswer), st.sideQuestions[1].error)
         r.model.closeSideQuestion(st, st.sideQuestions[0].id)
         assertEquals(2, st.sideQuestions.size)
     }

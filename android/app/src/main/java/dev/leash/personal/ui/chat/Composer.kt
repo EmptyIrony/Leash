@@ -30,6 +30,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -40,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
 import dev.leash.personal.core.AgentCommand
 import dev.leash.personal.core.QueuedMessage
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.LocalReduceMotion
@@ -231,7 +231,7 @@ fun QueueTray(
     TrayShell(contentPadding = PaddingValues(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (items.isNotEmpty()) QueueHeader(
-                pluralText(R.plurals.queued_count, items.size),
+                pluralStringResource(R.plurals.queued_count, items.size, items.size),
                 stringResource(if (running) R.string.interrupt_and_send else R.string.send_now),
                 sendNow, enabled = enabled,
             )

@@ -29,11 +29,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
+import dev.leash.personal.text.res
+import dev.leash.personal.text.toolTitle
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.PendingRequest
 import dev.leash.personal.core.SubagentItem
@@ -42,7 +45,6 @@ import dev.leash.personal.core.bool
 import dev.leash.personal.core.double
 import dev.leash.personal.core.get
 import dev.leash.personal.core.string
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.Motion
@@ -142,7 +144,7 @@ private fun ApprovalBody(model: AppModel, request: PendingRequest, index: Int, t
     var showDiff by remember(request.key) { mutableStateOf(false) }
     val diff = tool.firstDiff
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        TrayHeader(tool.title, LeashIcons.needsYou, c.attention, counter = counter(index, total))
+        TrayHeader(res().toolTitle(tool.title, tool.asked), LeashIcons.needsYou, c.attention, counter = counter(index, total))
         val cmd = tool.commandPreview
         if (cmd != null && (cmd != tool.title || tool.kind == "execute")) CommandPreview(cmd)
         if (diff != null) Row(
@@ -214,7 +216,7 @@ private fun QuestionBody(model: AppModel, request: PendingRequest, index: Int, t
                 if (spec.custom(q) != null) LeashButton(stringResource(R.string.other_answer), { showSheet = true }, style = ButtonStyle.Plain, size = ButtonSize.Small)
             } else {
                 val n = spec.questions.size
-                Text(pluralText(R.plurals.questions_count, n), style = Leash.type.subheadline, color = c.textSecondary)
+                Text(pluralStringResource(R.plurals.questions_count, n, n), style = Leash.type.subheadline, color = c.textSecondary)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -297,7 +299,7 @@ fun SubagentsTray(agents: List<SubagentItem>, collapsed: Boolean, onOpen: (Strin
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.heightIn(min = 32.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.width(16.dp), contentAlignment = Alignment.Center) { Spinner(size = 11.dp) }
-                Text(pluralText(R.plurals.agents_running, agents.size), style = Leash.type.subheadline.semibold(), color = c.textPrimary)
+                Text(pluralStringResource(R.plurals.agents_running, agents.size, agents.size), style = Leash.type.subheadline.semibold(), color = c.textPrimary)
             }
             if (!collapsed) {
                 agents.take(shown).forEach { SubagentStepRow(it, onOpen) }

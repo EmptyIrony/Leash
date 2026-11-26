@@ -48,7 +48,7 @@ class BackgroundPolicyTest {
         val c = pick(listOf(turn("a", 100), turn("b", 300), turn("c", 200)))!!
         assertEquals("b", c.sessionId)
         assertEquals(OngoingPhase.Working, c.phase)
-        assertEquals("Claude Code is working", c.title)
+        assertEquals("Claude Code", c.agentLabel)
         assertEquals("Title b", c.text)   // no live title known: the one from when it started
         assertEquals(300L, c.sinceMs)
         assertEquals(2, c.others)
@@ -62,7 +62,7 @@ class BackgroundPolicyTest {
         val c = pick(listOf(turn("a", 100), turn("b", 300)), listOf(req("claude:2", "a"), req("claude:1", "a", permission = false)))!!
         assertEquals("a", c.sessionId)
         assertEquals(OngoingPhase.NeedsAnswer, c.phase)   // claude:1 is the oldest
-        assertEquals("Claude Code has a question", c.title)
+        assertEquals("Claude Code", c.agentLabel)
         assertEquals(100L, c.sinceMs)
         assertEquals(1, c.others)
         assertEquals("leash://session?id=a&agent=claude", c.url)

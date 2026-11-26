@@ -11,12 +11,23 @@ sealed interface LinkState {
     data object Connecting : LinkState
     data object Connected : LinkState
     /** Will retry. */
-    data class Waiting(val reason: String) : LinkState
+    data class Waiting(val reason: String, val issue: Issue? = null, val detail: String? = null) : LinkState
     /** Will not retry (bad token, nothing configured). */
-    data class Failed(val reason: String) : LinkState
+    data class Failed(val reason: String, val issue: Issue? = null, val detail: String? = null) : LinkState
 }
 
-class BridgeError(val code: Int, override val message: String, /** -32020: who holds the conversation ("cli", "claude-desktop", …) */ val holder: String? = null) : Exception(message) {
+/**
+ * [message] is for logs (and the bridge's own words for a protocol error); [issue] with its [detail] is what the UI words in the
+ * device language when Leash found the problem itself.
+ */
+class BridgeError(
+    val code: Int,
+    override val message: String,
+    /** -32020: who holds the conversation ("cli", "claude-desktop", …) */
+    val holder: String? = null,
+    val issue: Issue? = null,
+    val detail: String? = null,
+) : Exception(message) {
     companion object {
         /** the conversation is open in another client (Claude Code terminal / desktop app) */
         const val LOCKED_ELSEWHERE = -32020
@@ -30,8 +41,8 @@ class BridgeError(val code: Int, override val message: String, /** -32020: who h
         const val TIMEOUT = -2
         const val NO_REPLY = -4
 
-        fun notConnected() = BridgeError(CLOSED, "Not connected to the bridge")
-        fun timeout() = BridgeError(TIMEOUT, "Request timed out")
+        fun notConnected() = BridgeError(CLOSED, "Not connected to the bridge", issue = Issue.NotConnected)
+        fun timeout() = BridgeError(TIMEOUT, "Request timed out", issue = Issue.TimedOut)
     }
 }
 

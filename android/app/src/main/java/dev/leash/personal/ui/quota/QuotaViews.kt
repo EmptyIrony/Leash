@@ -36,6 +36,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import dev.leash.personal.core.Problem
+import dev.leash.personal.text.agoText
+import dev.leash.personal.text.durationText
+import dev.leash.personal.text.locale
+import dev.leash.personal.text.problemText
+import dev.leash.personal.text.quotaWindowLabel
+import dev.leash.personal.text.res
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.QuotaBucket
@@ -123,8 +130,10 @@ fun QuotaSheet(model: AppModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun AgentQuota(id: String, showName: Boolean, label: String, quota: dev.leash.personal.core.QuotaInfo?, error: String?) {
+private fun AgentQuota(id: String, showName: Boolean, label: String, quota: dev.leash.personal.core.QuotaInfo?, error: Problem?) {
     val c = Leash.colors
+    val res = res()
+    val errorText = error?.let(res::problemText)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (showName) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AgentIcon(id, 16.dp)
@@ -132,15 +141,15 @@ private fun AgentQuota(id: String, showName: Boolean, label: String, quota: dev.
         }
         if (quota != null) {
             quota.pools.forEach { PoolCard(it) }
-            val updated = stringResource(R.string.quota_updated, QuotaFormat.ago(quota.fetchedAtMs, Clock.now()))
+            val updated = stringResource(R.string.quota_updated, res.agoText(QuotaFormat.ago(quota.fetchedAtMs, Clock.now())))
             Text(updated + (quota.planTier?.let { " · $it" } ?: ""), style = Leash.type.footnote, color = c.textSecondary, modifier = Modifier.padding(horizontal = 16.dp))
             if (error != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 Icon(LeashIcons.warning, null, Modifier.size(14.dp), tint = c.attention)
-                Text(error, style = Leash.type.caption, color = c.attention)
+                Text(errorText.orEmpty(), style = Leash.type.caption, color = c.attention)
             }
         } else Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (error == null) Spinner(size = 18.dp) else Icon(LeashIcons.warning, null, Modifier.size(18.dp), tint = c.attention)
-            Text(error ?: stringResource(R.string.quota_reading), style = Leash.type.footnote, color = c.textSecondary)
+            Text(errorText ?: stringResource(R.string.quota_reading), style = Leash.type.footnote, color = c.textSecondary)
         }
     }
 }
@@ -158,17 +167,17 @@ private fun PoolCard(pool: QuotaPool) {
 private fun BucketRow(b: QuotaBucket) {
     val c = Leash.colors
     val f = b.fraction
-    val desc = stringResource(R.string.quota_bucket_desc, b.windowLabel, f?.let { QuotaFormat.percent(it) } ?: 0)
+    val desc = stringResource(R.string.quota_bucket_desc, res().quotaWindowLabel(b.window), f?.let { QuotaFormat.percent(it) } ?: 0)
     Column(Modifier.semantics(mergeDescendants = true) { contentDescription = desc }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(b.windowLabel, Modifier.weight(1f), style = Leash.type.subheadline.medium(), color = c.textPrimary)
+            Text(res().quotaWindowLabel(b.window), Modifier.weight(1f), style = Leash.type.subheadline.medium(), color = c.textPrimary)
             Text(f?.let { stringResource(R.string.quota_left, QuotaFormat.percent(it)) } ?: "—", style = Leash.type.subheadline.tabular().let { if (QuotaFormat.isTight(f)) it.medium() else it }, color = quotaTint(f))
         }
         CapacityBar(f ?: 0.0, if (QuotaFormat.isTight(f)) quotaTint(f) else c.accent)
         b.resetAtMs?.let { at ->
-            val r = QuotaFormat.reset(at, Clock.now())
+            val r = QuotaFormat.reset(at, Clock.now(), locale = res().locale)
             Text(
-                if (r == null) stringResource(R.string.quota_resetting) else stringResource(R.string.quota_resets, r.day, r.left),
+                if (r == null) stringResource(R.string.quota_resetting) else stringResource(R.string.quota_resets, r.day, res().durationText(r.left)),
                 style = Leash.type.caption, color = c.textSecondary,
             )
         }

@@ -23,7 +23,8 @@ data class OngoingContent(
     val sessionId: String?,
     val agent: String,
     val phase: OngoingPhase,
-    val title: String,
+    /** whose turn or request it is; the title is worded from [phase] and this in the device language */
+    val agentLabel: String,
     /** the conversation, or what the request is about */
     val text: String?,
     /** elapsed time counts from here */
@@ -52,7 +53,7 @@ object OngoingFocus {
             return OngoingContent(
                 waiting.sessionId, waiting.agentId,
                 if (waiting.isPermission) OngoingPhase.NeedsApproval else OngoingPhase.NeedsAnswer,
-                if (waiting.isPermission) "$label needs approval" else "$label has a question",
+                label,
                 conversation(waiting.sessionId) ?: turn?.title,
                 turn?.startedAtMs,
                 (ids.size - 1).coerceAtLeast(0),
@@ -61,7 +62,7 @@ object OngoingFocus {
         }
         val t = turns.maxByOrNull { it.startedAtMs } ?: return null
         return OngoingContent(
-            t.sessionId, t.agent, OngoingPhase.Working, "${agentLabel(t.agent)} is working", conversation(t.sessionId) ?: t.title,
+            t.sessionId, t.agent, OngoingPhase.Working, agentLabel(t.agent), conversation(t.sessionId) ?: t.title,
             t.startedAtMs, (ids.size - 1).coerceAtLeast(0), NotificationContent.link(t.sessionId, t.agent),
         )
     }

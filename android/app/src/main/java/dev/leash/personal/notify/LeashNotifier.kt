@@ -16,6 +16,9 @@ import androidx.core.content.ContextCompat
 import dev.leash.personal.MainActivity
 import dev.leash.personal.R
 import dev.leash.personal.core.NotificationContent
+import dev.leash.personal.core.RequestKind
+import dev.leash.personal.core.TurnEndKind
+import dev.leash.personal.text.durationText
 import dev.leash.personal.core.OngoingContent
 import dev.leash.personal.core.OngoingPhase
 import dev.leash.personal.core.PendingRequest
@@ -60,16 +63,18 @@ class LeashNotifier(private val context: Context) {
     fun request(p: PendingRequest, agentLabel: String, conversation: String?): Boolean {
         if (!canAlert(NEEDS_YOU)) return false
         val a = NotificationContent.request(p, agentLabel, conversation)
-        val b = base(NEEDS_YOU, a.title, a.body.lineSequence().first(), a.url, "req." + p.key)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(a.body))
+        val title = context.getString(if (a.kind == RequestKind.Question) R.string.notif_title_question else R.string.notif_title_approval, a.agentLabel)
+        val body = a.body ?: context.getString(R.string.notif_needs_input)
+        val b = base(NEEDS_YOU, title, body.lineSequence().first(), a.url, "req." + p.key)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSubText(a.subtitle)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(Notification.DEFAULT_ALL)
-            .setPublicVersion(base(NEEDS_YOU, context.getString(R.string.notif_hidden_title), a.title, a.url, "req." + p.key).build())
+            .setPublicVersion(base(NEEDS_YOU, context.getString(R.string.notif_hidden_title), title, a.url, "req." + p.key).build())
         if (a.allowId != null) {
             // Allow runs something on the bridge's host: a locked phone asks to be unlocked first
-            val tool = a.body.lineSequence().first()
+            val tool = body.lineSequence().first()
             b.addAction(action(R.string.allow, p.key, a.allowId, true, a.url, tool, authenticate = true))
             b.addAction(action(R.string.deny, p.key, a.denyId, false, a.url, tool, authenticate = false))
         }
@@ -80,7 +85,12 @@ class LeashNotifier(private val context: Context) {
     fun turnEnd(sessionId: String, agent: String, agentLabel: String, conversation: String?, stopReason: String?, beganMs: Long?, nowMs: Long): Boolean {
         if (!canAlert(TURN_FINISHED)) return false
         val a = NotificationContent.turnEnd(sessionId, agent, agentLabel, conversation, stopReason, beganMs, nowMs) ?: return false
-        val b = base(TURN_FINISHED, a.title, a.body, a.url, "end.$sessionId").setSubText(a.subtitle).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_STATUS)
+        val title = context.getString(
+            when (a.kind) { TurnEndKind.Finished -> R.string.notif_title_finished; TurnEndKind.HitError -> R.string.notif_title_error; TurnEndKind.Stopped -> R.string.notif_title_stopped },
+            a.agentLabel,
+        )
+        val took = a.tookMs?.let { context.getString(R.string.notif_took, context.resources.durationText(it / 1000.0, maxUnits = 3)) }
+        val b = base(TURN_FINISHED, title, took, a.url, "end.$sessionId").setSubText(a.subtitle).setAutoCancel(true).setCategory(NotificationCompat.CATEGORY_STATUS)
         return post("end.$sessionId", b.build())
     }
 
@@ -148,7 +158,7 @@ class LeashNotifier(private val context: Context) {
         val b = NotificationCompat.Builder(context, BACKGROUND)
             .setSmallIcon(R.drawable.ic_stat_leash)
         .setColor(context.getColor(R.color.leash_accent))
-            .setContentTitle(content.title)
+            .setContentTitle(context.getString(when (content.phase) { OngoingPhase.Working -> R.string.notif_title_working; OngoingPhase.NeedsApproval -> R.string.notif_title_approval; OngoingPhase.NeedsAnswer -> R.string.notif_title_question }, content.agentLabel))
             .setContentText(content.text)
             .setSubText(if (content.others > 0) context.getString(R.string.notif_others, content.others) else null)
             .setContentIntent(open(content.url, "ongoing"))

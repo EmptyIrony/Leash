@@ -140,6 +140,7 @@ class BridgeConnectionTest {
         r.transport.last.listener.onFailure(java.net.ProtocolException("Expected HTTP 101 response but was '401 Unauthorized'"), 401)
         runCurrent()
         assertTrue((r.link.state as LinkState.Failed).reason.contains("401"))
+        assertEquals(Issue.TokenRejected, (r.link.state as LinkState.Failed).issue)
         advanceTimeBy(120_000)
         assertEquals(1, r.transport.sockets.size)
         // a later foreground still tries (the user may have re-paired)
@@ -187,6 +188,7 @@ class BridgeConnectionTest {
         assertEquals(LinkState.Connecting, r.link.state)
         advanceTimeBy(2)
         assertTrue((r.link.state as LinkState.Waiting).reason.contains("did not answer"))
+        assertEquals(Issue.NoReply, (r.link.state as LinkState.Waiting).issue)
         advanceTimeBy(1_001)
         assertEquals(2, r.transport.sockets.size)
     }
@@ -227,13 +229,13 @@ class BridgeConnectionTest {
     @Test fun configureRejectsMissingOrBadSettings() = runTest {
         val r = rig()
         r.link.configure("", 8787, "t")
-        assertTrue(r.link.state is LinkState.Failed)
+        assertEquals(Issue.SetAddressAndToken, (r.link.state as LinkState.Failed).issue)
         r.link.connect()
         assertTrue(r.transport.sockets.isEmpty())
         r.link.configure("bad host/x", 8787, "t")
-        assertTrue(r.link.state is LinkState.Failed)
+        assertEquals(Issue.InvalidAddress, (r.link.state as LinkState.Failed).issue)
         r.link.configure("h", 8787, "to ken")
-        assertTrue(r.link.state is LinkState.Failed)
+        assertEquals(Issue.InvalidToken, (r.link.state as LinkState.Failed).issue)
         r.link.configure("fe80::1", 8787, "t")
         r.link.connect()
         assertEquals("ws://[fe80::1]:8787/ws", r.transport.last.endpoint.url)
@@ -286,9 +288,9 @@ class BridgeConnectionTest {
 
     @Test fun aRouteThatNeedsTheUserStopsTheRetries() = runTest {
         val r = rig()
-        r.link.route = { _, _ -> throw TunnelError("Built-in Tailscale needs a new auth key. Enter one in Settings.", retry = false) }
+        r.link.route = { _, _ -> throw TunnelError("Built-in Tailscale needs a new auth key. Enter one in Settings.", retry = false, issue = Issue.TailnetNeedsKey) }
         r.link.connect(); runCurrent()
-        assertEquals(LinkState.Failed("Built-in Tailscale needs a new auth key. Enter one in Settings."), r.link.state)
+        assertEquals(LinkState.Failed("Built-in Tailscale needs a new auth key. Enter one in Settings.", Issue.TailnetNeedsKey), r.link.state)
         advanceTimeBy(60_000)
         assertTrue(r.transport.sockets.isEmpty())
     }

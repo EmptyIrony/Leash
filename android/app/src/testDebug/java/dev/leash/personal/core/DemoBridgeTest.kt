@@ -45,7 +45,10 @@ class DemoBridgeTest {
         assertEquals(listOf("User", "Activity", "Answer", "Changes", "Stats"), items.map { it::class.simpleName })
         val g = (items.first { it is DisplayItem.Activity } as DisplayItem.Activity).group
         assertTrue(g.steps.any { it is ChatEntry.Message && it.item.role == MessageItem.Role.Thought })
-        assertEquals("Explored 2 files, ran 1 command, edited 1 file", g.summary)
+        assertEquals(
+            ActivitySummary(listOf(SummaryClause(SummaryKind.Explored, 2), SummaryClause(SummaryKind.Ran, 1), SummaryClause(SummaryKind.Edited, 1))),
+            g.summary,
+        )
         val answer = (items.first { it is DisplayItem.Answer } as DisplayItem.Answer).item.text
         assertTrue(answer.contains("kotlin\nfun parse") && answer.contains("![parser flow](/Users/demo"))
         assertEquals(1, (items.first { it is DisplayItem.Changes } as DisplayItem.Changes).changes.files.size)

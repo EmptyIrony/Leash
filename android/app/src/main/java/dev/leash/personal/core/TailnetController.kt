@@ -26,7 +26,7 @@ data class TailnetState(
     val controlUrl: String = "",
     val status: TailnetStatus = TailnetStatus.Off,
     /** Control could not be told about a log out (the local state is gone anyway). */
-    val logoutNote: String? = null,
+    val logoutNote: Problem? = null,
 )
 
 /**
@@ -72,7 +72,7 @@ class TailnetController(
         }
     }
 
-    private fun publish(status: TailnetStatus? = null, logoutNote: String? = _state.value.logoutNote) {
+    private fun publish(status: TailnetStatus? = null, logoutNote: Problem? = _state.value.logoutNote) {
         _state.update {
             it.copy(loaded = true, enabled = enabled, keySaved = config.authKey.isNotBlank(), controlUrl = config.controlUrl,
                 status = status ?: it.status, logoutNote = logoutNote)
@@ -129,7 +129,7 @@ class TailnetController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw TunnelError(e.message ?: "Tailscale has no route to the bridge", retry = true)
+            throw TunnelError(e.message ?: "Tailscale has no route to the bridge", retry = true, issue = fallbackIssue(e.message, Issue.TailnetNoRoute))
         }
     }
 
@@ -162,7 +162,7 @@ class TailnetController(
     suspend fun logout() {
         loaded.await()
         stop()
-        var note: String? = null
+        var note: Problem? = null
         val n = node
         if (n != null) {
             try {
@@ -172,7 +172,7 @@ class TailnetController(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                note = e.message ?: "Logging out failed"
+                note = Problem(e.message ?: "Logging out failed", fallbackIssue(e.message, Issue.TailnetLogoutFailed))
             }
             n.stop()
         }
@@ -203,8 +203,9 @@ class TailnetController(
                 throw e
             } catch (e: Exception) {
                 val message = e.message ?: "Tailscale did not start"
-                if (gen == generation) publish(status = TailnetStatus.Failed(message))
-                throw TunnelError(message, retry = true)
+                val issue = fallbackIssue(e.message, Issue.TailnetNotStarted)
+                if (gen == generation) publish(status = TailnetStatus.Failed(message, issue))
+                throw TunnelError(message, retry = true, issue = issue)
             }
             if (gen != generation) throw interrupted(n)
             running = true
@@ -218,9 +219,9 @@ class TailnetController(
         } catch (e: Exception) {
             if (gen != generation) throw interrupted(n)
             if (refreshStatus(n, gen) is TailnetStatus.NeedsKey) {
-                throw TunnelError("Built-in Tailscale needs a new auth key. Enter one in Settings.", retry = false)
+                throw TunnelError("Built-in Tailscale needs a new auth key. Enter one in Settings.", retry = false, issue = Issue.TailnetNeedsKey)
             }
-            throw TunnelError(e.message ?: "Tailscale did not connect", retry = true)
+            throw TunnelError(e.message ?: "Tailscale did not connect", retry = true, issue = fallbackIssue(e.message, Issue.TailnetNotConnected))
         }
         if (gen != generation) throw interrupted(n)
         refreshStatus(n, gen)
@@ -229,7 +230,7 @@ class TailnetController(
     /** A stop (or a restart with other settings) overtook an attempt. If nothing wants the node any more it must not be left running by a start that finished after the stop. */
     private fun interrupted(n: TailnetNode): TunnelError {
         if (!desired) n.stop()
-        return TunnelError("Built-in Tailscale was stopped", retry = true)
+        return TunnelError("Built-in Tailscale was stopped", retry = true, issue = Issue.TailnetStopped)
     }
 
     // MARK: status
@@ -246,7 +247,7 @@ class TailnetController(
     }
 
     private suspend fun refreshStatus(n: TailnetNode, gen: Int): TailnetStatus {
-        val s = runCatching { parseTailnetStatus(n.status()) }.getOrElse { if (it is CancellationException) throw it else TailnetStatus.Failed(it.message ?: "Tailscale status failed") }
+        val s = runCatching { parseTailnetStatus(n.status()) }.getOrElse { if (it is CancellationException) throw it else TailnetStatus.Failed(it.message ?: "Tailscale status failed", fallbackIssue(it.message, Issue.TailnetStatusFailed)) }
         if (gen == generation && running) publish(status = s)
         return s
     }

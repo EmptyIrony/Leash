@@ -36,6 +36,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
+import dev.leash.personal.core.Issue
+import dev.leash.personal.text.errorText
+import dev.leash.personal.text.res
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.FileLimits
 import dev.leash.personal.core.fetchFile
@@ -93,23 +96,23 @@ private suspend fun fetchImage(src: String, agent: String, sessionId: String?, m
             if (!r.isSuccessful) throw dev.leash.personal.core.BridgeError(r.code, r.message.ifEmpty { "HTTP " + r.code })
             val out = ByteArrayOutputStream()
             val buf = ByteArray(32 * 1024)
-            val body = r.body?.byteStream() ?: throw dev.leash.personal.core.BridgeError(-3, "Empty response")
+            val body = r.body?.byteStream() ?: throw dev.leash.personal.core.BridgeError(-3, "Empty response", issue = Issue.EmptyResponse)
             while (true) {
                 val n = body.read(buf)
                 if (n < 0) break
                 out.write(buf, 0, n)
-                if (out.size() > FileLimits.MAX_INLINE_IMAGE_BYTES) throw dev.leash.personal.core.BridgeError(FileLimits.FILE_TOO_LARGE, "Image is larger than 16 MB")
+                if (out.size() > FileLimits.MAX_INLINE_IMAGE_BYTES) throw dev.leash.personal.core.BridgeError(FileLimits.FILE_TOO_LARGE, "Image is larger than 16 MB", issue = Issue.ImageTooLarge)
             }
             Fetched(out.toByteArray(), ImageSource.fallbackName(s.url))
         }
     }
     is ImageSource.Data -> Fetched(s.bytes, "image")
     is ImageSource.Local -> {
-        val m = model ?: throw dev.leash.personal.core.BridgeError(-3, "Not connected to the bridge")
+        val m = model ?: throw dev.leash.personal.core.BridgeError(-3, "Not connected to the bridge", issue = Issue.NotConnected)
         val f = m.fetchFile(s.path, agent, sessionId, FileLimits.MAX_INLINE_IMAGE_BYTES)
         Fetched(f.data, f.name)
     }
-    ImageSource.Unsupported -> throw dev.leash.personal.core.BridgeError(-3, "Unsupported image source")
+    ImageSource.Unsupported -> throw dev.leash.personal.core.BridgeError(-3, "Unsupported image source", issue = Issue.UnsupportedImage)
 }
 
 /**
@@ -129,6 +132,7 @@ fun MarkdownImage(src: String, alt: String = "", quiet: Boolean = false, modifie
     var failure by remember(key) { mutableStateOf<String?>(null) }
     var attempt by remember(key) { mutableIntStateOf(0) }
     val unsupported = stringResource(R.string.image_failed_format)
+    val res = res()
     LaunchedEffect(key, attempt) {
         val cached = InlineImages.get(key)
         if (cached != null && entry?.bitmap !== cached.bitmap) entry = cached
@@ -146,7 +150,7 @@ fun MarkdownImage(src: String, alt: String = "", quiet: Boolean = false, modifie
             if (grewTaller) grew()
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
-            val reason = e.message ?: e.toString()
+            val reason = res.errorText(e)
             InlineImages.fail(key, reason)
             if (entry == null) failure = reason
         }

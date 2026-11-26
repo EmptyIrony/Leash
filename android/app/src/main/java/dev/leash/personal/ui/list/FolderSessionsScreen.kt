@@ -27,12 +27,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
 import dev.leash.personal.core.AppModel
-import dev.leash.personal.ui.components.pluralText
 import dev.leash.personal.ui.design.components.GlassCircleButton
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
@@ -57,7 +57,7 @@ fun FolderSessionsScreen(model: AppModel, agent: String, folder: String, onBack:
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     val all = remember(state.sessions) { state.sessions.filter { it.agent == agent && it.cwd == folder } }
-    val shown = remember(all, search) { if (search.isBlank()) all else all.filter { it.displayTitle.contains(search.trim(), ignoreCase = true) } }
+    val shown = remember(all, search) { if (search.isBlank()) all else all.filter { (it.displayTitle ?: "").contains(search.trim(), ignoreCase = true) } }
     val (folderName, general) = SessionGrouping.folderTitle(folder, state.home(agent))
     val title = if (general) stringResource(R.string.general) else folderName
     val list = rememberLazyListState()
@@ -81,7 +81,7 @@ fun FolderSessionsScreen(model: AppModel, agent: String, folder: String, onBack:
         }
         TopBar(
             title = title,
-            subtitle = pluralText(R.plurals.conversations_count, all.size),
+            subtitle = pluralStringResource(R.plurals.conversations_count, all.size, all.size),
             edgeVisible = scrolled,
             navigation = { BackButton(stringResource(R.string.back), onBack) },
         )

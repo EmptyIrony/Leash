@@ -4,6 +4,7 @@ import java.time.ZoneId
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class QuotaFormatTest {
@@ -28,22 +29,20 @@ class QuotaFormatTest {
         assertEquals(0, QuotaFormat.percent(0.001))
     }
 
-    @Test fun windowsHaveChipLabels() {
-        assertEquals("5h", QuotaFormat.chipLabel("5h"))
-        assertEquals("Week", QuotaFormat.chipLabel("weekly"))
-        assertEquals("Custom", QuotaFormat.chipLabel("custom"))
-    }
-
     @Test fun aResetTodayIsJustItsTimeAndLaterOnesNameTheWeekday() {
         val now = java.time.ZonedDateTime.of(2026, 11, 26, 9, 0, 0, 0, utc).toInstant().toEpochMilli()
         val today = QuotaFormat.reset(now + 2 * 3_600_000L + 10 * 60_000L, now, utc, us)!!
         assertEquals("11:10 AM", plain(today.day))
-        assertEquals("2h 10m", today.left)
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 2), DurationPart(DurationUnit.Minute, 10)), today.left)
         val later = QuotaFormat.reset(now + 3 * 86_400_000L + 4 * 3_600_000L, now, utc, us)!!
         assertEquals("Sun 1:00 PM", plain(later.day))
-        assertEquals("3d 4h", later.left)
-        assertEquals("6d 22h", QuotaFormat.left(166 * 3600.0 + 17 * 60))
-        assertEquals("47h 59m", QuotaFormat.left(47 * 3600.0 + 59 * 60))
+        assertEquals(listOf(DurationPart(DurationUnit.Day, 3), DurationPart(DurationUnit.Hour, 4)), later.left)
+        // the weekday follows the locale it is given
+        assertTrue(QuotaFormat.reset(now + 3 * 86_400_000L + 4 * 3_600_000L, now, utc, java.util.Locale.SIMPLIFIED_CHINESE)!!.day.startsWith("周日"))
+        assertEquals(listOf(DurationPart(DurationUnit.Day, 6), DurationPart(DurationUnit.Hour, 22)), QuotaFormat.left(166 * 3600.0 + 17 * 60))
+        // whole days leave the zero hours out
+        assertEquals(listOf(DurationPart(DurationUnit.Day, 3)), QuotaFormat.left(72 * 3600.0))
+        assertEquals(listOf(DurationPart(DurationUnit.Hour, 47), DurationPart(DurationUnit.Minute, 59)), QuotaFormat.left(47 * 3600.0 + 59 * 60))
     }
 
     @Test fun aWindowThatHasResetSaysSo() {
@@ -53,10 +52,10 @@ class QuotaFormatTest {
 
     @Test fun agoIsCoarse() {
         val now = 10_000_000_000L
-        assertEquals("just now", QuotaFormat.ago(now - 30_000, now))
-        assertEquals("5 min ago", QuotaFormat.ago(now - 5 * 60_000, now))
-        assertEquals("3 h ago", QuotaFormat.ago(now - 3 * 3_600_000, now))
-        assertEquals("2 d ago", QuotaFormat.ago(now - 2 * 86_400_000, now))
+        assertEquals(QuotaFormat.Ago.JustNow, QuotaFormat.ago(now - 30_000, now))
+        assertEquals(QuotaFormat.Ago.Minutes(5), QuotaFormat.ago(now - 5 * 60_000, now))
+        assertEquals(QuotaFormat.Ago.Hours(3), QuotaFormat.ago(now - 3 * 3_600_000, now))
+        assertEquals(QuotaFormat.Ago.Days(2), QuotaFormat.ago(now - 2 * 86_400_000, now))
     }
 
     @Test fun providerHints() {

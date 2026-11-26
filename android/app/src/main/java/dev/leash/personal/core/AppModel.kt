@@ -51,7 +51,9 @@ data class SessionSummary(
     val lastStopReason: String? = null,
     val turnEndedAtMs: Long? = null,
 ) {
-    val displayTitle: String get() = title?.takeIf { it.isNotEmpty() } ?: ("Conversation " + id.take(8))
+    /** Null for a conversation with no title yet (the UI says "Conversation" and a piece of its id, see [shortId]). */
+    val displayTitle: String? get() = title?.takeIf { it.isNotEmpty() }
+    val shortId: String get() = id.take(8)
     val folderName: String get() = cwd.trimEnd('/').substringAfterLast('/')
 }
 
@@ -69,7 +71,8 @@ data class PendingRequest(
     val subagent: SubagentRef? = null,
 ) {
     val isPermission: Boolean get() = method == "session/request_permission"
-    val toolTitle: String get() = params["toolCall"]["title"].string ?: params["message"].string ?: "Needs your input"
+    /** What the request is about; null when it says nothing (the UI says "Needs your input"). */
+    val toolTitle: String? get() = params["toolCall"]["title"].string ?: params["message"].string
 }
 
 data class BrowseResult(val path: String, val parent: String?, val isGit: Boolean, val dirs: List<String>, val files: List<String>)
@@ -122,13 +125,13 @@ data class AppState(
     val imageInput: Boolean = false,
     val sessions: List<SessionSummary> = emptyList(),
     val sessionsLoading: Boolean = false,
-    val sessionsError: String? = null,
+    val sessionsError: Problem? = null,
     val pending: Map<String, PendingRequest> = emptyMap(),
     val running: Set<String> = emptySet(),
     val lastAttention: PendingRequest? = null,
     val agents: List<AgentInfo> = emptyList(),
     val quotas: Map<String, QuotaInfo> = emptyMap(),
-    val quotaErrors: Map<String, String> = emptyMap(),
+    val quotaErrors: Map<String, Problem> = emptyMap(),
     /** a conversation the root screen should show (consumed there) */
     val openRequest: OpenRequest? = null,
     val drafts: Map<String, String> = emptyMap(),
@@ -154,7 +157,7 @@ data class AppState(
     fun agentLabel(id: String): String = agent(id)?.label ?: if (id == "claude") "Claude Code" else "Antigravity"
     /** legacy single-agent accessors (Antigravity) */
     val quota: QuotaInfo? get() = quotas["agy"] ?: quotas.values.firstOrNull()
-    val quotaError: String? get() = quotaErrors["agy"]
+    val quotaError: Problem? get() = quotaErrors["agy"]
     /** The tightest quota pool across all agents (for the list's rings). */
     val tightestPool: QuotaPool? get() = quotas.values.mapNotNull { it.mostConstrained }.minByOrNull { it.minFraction ?: 1.0 }
     fun pendingFor(sessionId: String): List<PendingRequest> = pending.values.filter { it.sessionId == sessionId }.sortedBy { it.key }
@@ -171,8 +174,6 @@ data class AppState(
     }
     fun conversationTitle(sid: String?): String? = if (sid == null) null else sessions.firstOrNull { it.id == sid }?.displayTitle
 }
-
-private fun Throwable.text(): String = message ?: toString()
 
 /**
  * The app-scoped model (ios Core/AppModel.swift + AppModel+Remote.swift): connection, conversations list, pending
@@ -402,9 +403,9 @@ class AppModel(
             val r = link.call("bridge/quota", jsonObj("force" to force, "agent" to agent), 75_000)
             QuotaInfo.parse(r["quota"])?.let { q -> set { copy(quotas = quotas + (agent to q)) } }
             val err = r["error"].string
-            set { copy(quotaErrors = if (err != null) quotaErrors + (agent to err) else quotaErrors - agent) }
+            set { copy(quotaErrors = if (err != null) quotaErrors + (agent to Problem(err)) else quotaErrors - agent) }
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            set { copy(quotaErrors = quotaErrors + (agent to e.text())) }
+            set { copy(quotaErrors = quotaErrors + (agent to e.toProblem())) }
         }
     }
 
@@ -617,7 +618,7 @@ class AppModel(
             next = withPendingCounts(next)
             set { copy(sessions = next, sessionsError = null) }
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
-            set { copy(sessionsError = e.text()) }
+            set { copy(sessionsError = e.toProblem()) }
         } finally {
             set { copy(sessionsLoading = false) }
         }
@@ -706,7 +707,7 @@ class AppModel(
                 st.lockedBy = e.holder ?: "other"
                 st.attached = false
                 if (echoAtStart != null && st.pendingEcho?.id == echoAtStart) st.pendingEcho = null
-            } else st.loadError = e.text()
+            } else st.loadError = e.toProblem()
         } finally {
             st.loading = false
             st.attaching = false
@@ -752,7 +753,7 @@ class AppModel(
 
     suspend fun newSession(cwd: String, agent: String = "agy"): String {
         val r = link.call("session/new", jsonObj("cwd" to cwd, "agent" to agent), 120_000)
-        val id = r["sessionId"].string ?: throw BridgeError(-3, "agent returned no session id")
+        val id = r["sessionId"].string ?: throw BridgeError(-3, "agent returned no session id", issue = Issue.NoSessionId)
         val st = store(id)
         st.cwd = cwd
         st.agent = agent
@@ -838,7 +839,7 @@ class AppModel(
                             st.unsentDraft = restore
                             if (images.isNotEmpty()) st.unsentImages = images
                         }
-                        if (refused) st.composerError = e.text()
+                        if (refused) st.composerError = e.toProblem()
                         hooks.haptic(Haptic.Error)
                     }
                 }
@@ -873,7 +874,7 @@ class AppModel(
                 if (code != null && code != 0) hooks.haptic(Haptic.Warning)
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 if ((e as? BridgeError)?.code != BridgeError.CLOSED) {   // dropped: the command still finishes on the host and shows up after the resync
-                    st.composerError = e.text()
+                    st.composerError = e.toProblem()
                     hooks.haptic(Haptic.Error)
                 }
             }
@@ -904,10 +905,10 @@ class AppModel(
             try {
                 val r = link.call("bridge/btw", jsonObj("sessionId" to st.sessionId, "question" to q, "agent" to st.agent), 190_000)
                 val text = (r["text"].string ?: "").trim()
-                st.resolveSideQuestion(item.id, text.ifEmpty { null }, if (text.isEmpty()) "No answer came back." else null)
+                st.resolveSideQuestion(item.id, text.ifEmpty { null }, if (text.isEmpty()) Problem("No answer came back.", Issue.NoAnswer) else null)
                 hooks.haptic(if (text.isEmpty()) Haptic.Error else Haptic.Success)
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                st.resolveSideQuestion(item.id, null, e.text())
+                st.resolveSideQuestion(item.id, null, e.toProblem())
                 hooks.haptic(Haptic.Error)
             }
         }
@@ -943,7 +944,7 @@ class AppModel(
                         if (wasIdle) { st.running = false; set { copy(running = running - st.sessionId) }; hooks.turnAborted(st.sessionId) }
                         // still queued: nothing went out. Once the bridge has taken the queue, the error is the turn failing,
                         // which it logs as a notice in the transcript
-                        if (st.queued.isNotEmpty()) st.composerError = e.text()
+                        if (st.queued.isNotEmpty()) st.composerError = e.toProblem()
                         hooks.haptic(Haptic.Error)
                     }
                 }
@@ -965,7 +966,7 @@ class AppModel(
                 if (text.isNotEmpty()) st.unsentDraft = text
                 if (imgs.isNotEmpty()) st.unsentImages = imgs
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
-                if ((e as? BridgeError)?.code != BridgeError.ALREADY_SENT) st.composerError = e.text()   // else it went out with the turn that just ended
+                if ((e as? BridgeError)?.code != BridgeError.ALREADY_SENT) st.composerError = e.toProblem()   // else it went out with the turn that just ended
             }
         }
     }
@@ -981,7 +982,7 @@ class AppModel(
                 return@async link.call("bridge/unqueue", jsonObj("sessionId" to st.sessionId, "id" to q.id, "agent" to st.agent)).get("prompt").array
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 // already sent: it went out with the turn that just ended, nothing to put back
-                if ((e as? BridgeError)?.code != BridgeError.ALREADY_SENT) st.composerError = e.text()
+                if ((e as? BridgeError)?.code != BridgeError.ALREADY_SENT) st.composerError = e.toProblem()
             }
             if (st.removedQueued?.token == removed.token) st.forgetRemovedQueued()
             null
@@ -1013,7 +1014,7 @@ class AppModel(
                 link.call("bridge/requeue", jsonObj("sessionId" to st.sessionId, "id" to q.id, "prompt" to blocks, "index" to removed.index, "agent" to st.agent))
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
                 st.queued = st.queued.filter { it.id != q.id }
-                st.composerError = e.text()
+                st.composerError = e.toProblem()
                 hooks.haptic(Haptic.Error)
             }
         }
@@ -1031,7 +1032,7 @@ class AppModel(
             try {
                 val r = link.call("session/set_config_option", j(params))
                 st.setConfigOptions(r["configOptions"])
-            } catch (e: CancellationException) { throw e } catch (e: Exception) { st.composerError = e.text() }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { st.composerError = e.toProblem() }
         }
     }
 
@@ -1070,7 +1071,7 @@ class AppModel(
             try {
                 link.call("session/set_mode", jsonObj("sessionId" to st.sessionId, "modeId" to mode, "agent" to st.agent))
                 st.currentMode = mode
-            } catch (e: CancellationException) { throw e } catch (e: Exception) { st.composerError = e.text() }
+            } catch (e: CancellationException) { throw e } catch (e: Exception) { st.composerError = e.toProblem() }
         }
     }
 
