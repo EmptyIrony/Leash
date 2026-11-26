@@ -26,7 +26,6 @@ val platformKey = (if (isWindows) "windows" else System.getProperty("os.name").l
 val cacheDir = rootProject.layout.projectDirectory.dir(".gradle/tailnet-toolchain")
 val goSrcDir = layout.projectDirectory.dir("go").takeIf { it.file("go.mod").asFile.exists() }
     ?: layout.projectDirectory.dir("../../tailnet")
-val aarFile = layout.buildDirectory.file("outputs/tailnet.aar")
 
 fun sdkDir(): File? {
     System.getenv("ANDROID_HOME")?.let { return File(it) }
@@ -158,6 +157,8 @@ abstract class InstallGomobile : GoTask() {
 abstract class BindTailnet : GoTask() {
     @get:Input abstract val goVersion: Property<String>
     @get:Input abstract val androidApi: Property<Int>
+    /** gomobile -target: android/amd64 (debug, the emulator) or android/arm64 (release) */
+    @get:Input abstract val target: Property<String>
     @get:Input abstract val ndkName: Property<String>
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val sources: ConfigurableFileCollection
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val gomobileBin: RegularFileProperty
@@ -168,7 +169,7 @@ abstract class BindTailnet : GoTask() {
         val tags = workDir.get().file("build-tags.txt").asFile.readText().replace("\n", "").trim()
         aar.get().asFile.parentFile.mkdirs()
         run(
-            "gomobile", "bind", "-target", "android/arm64,android/amd64", "-androidapi", androidApi.get().toString(),
+            "gomobile", "bind", "-target", target.get(), "-androidapi", androidApi.get().toString(),
             "-javapkg", "dev.leash.personal", "-tags", tags, "-trimpath", "-ldflags", "-s -w",
             "-o", aar.get().asFile.absolutePath, ".",
         )
@@ -184,7 +185,8 @@ extra["tailnetLinked"] = when (providers.gradleProperty("tailnet").orNull) {
     "off" -> false
     else -> ndkDir() != null
 }
-extra["tailnetAar"] = aarFile
+extra["tailnetAarDebug"] = layout.buildDirectory.file("outputs/tailnet-debug.aar")
+extra["tailnetAarRelease"] = layout.buildDirectory.file("outputs/tailnet-release.aar")
 extra["ndkVersion"] = ndkVersion
 
 val exe = if (isWindows) ".exe" else ""
@@ -211,7 +213,7 @@ fun GoTask.common() {
     goHome.set(goInstallDir)
     cache.set(cacheDir)
     sourceDir.set(goSrcDir)
-    workDir.set(project.layout.buildDirectory.dir("gosrc"))
+    workDir.set(project.layout.buildDirectory.dir("gosrc/$name"))
     sdkDir()?.let { sdk.set(it.absolutePath) }
     ndkDir()?.let { ndk.set(it.absolutePath) }
 }
@@ -224,16 +226,22 @@ val installGomobile = tasks.register<InstallGomobile>("installGomobile") {
     gomobileBin.set(gomobileFile)
 }
 
-val bindTailnet = tasks.register<BindTailnet>("bindTailnet") {
+/** One AAR per build type: debug is for the x86_64 emulator, release for arm64 phones. */
+fun registerBind(taskName: String, goTarget: String, aar: Provider<RegularFile>) = tasks.register<BindTailnet>(taskName) {
     common()
     dependsOn(checkTailnetHost, installGomobile)
     goVersion.set(goVer)
     androidApi.set(androidApiLevel)
+    target.set(goTarget)
     ndkName.set(provider { ndkDir()?.name ?: "" })
     sources.from(fileTree(goSrcDir) { include("*.go", "go.mod", "go.sum", "build-tags.txt"); exclude("*_test.go") })
     gomobileBin.set(gomobileFile)
-    aar.set(aarFile)
+    this.aar.set(aar)
 }
+
+registerBind("bindTailnetDebug", "android/amd64", layout.buildDirectory.file("outputs/tailnet-debug.aar"))
+registerBind("bindTailnetRelease", "android/arm64", layout.buildDirectory.file("outputs/tailnet-release.aar"))
+tasks.register("bindTailnet") { dependsOn("bindTailnetDebug", "bindTailnetRelease") }
 
 /** Prints what the build host offers: `gradlew :tailnet:tailnetDoctor`. */
 tasks.register("tailnetDoctor") {

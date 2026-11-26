@@ -24,10 +24,13 @@ android {
 
     buildTypes {
         debug {
+            // the Go node (and so the APK) is x86_64 only for the emulator; release is arm64 only
+            ndk { abiFilters += "x86_64" }
             // lets a second debug build (e.g. -PleashIdSuffix=.design) install beside the main one on a shared emulator
             applicationIdSuffix = providers.gradleProperty("leashIdSuffix").orNull
         }
         release {
+            ndk { abiFilters += "arm64-v8a" }
             isMinifyEnabled = false
         }
     }
@@ -71,7 +74,10 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.haze)
-    if (tailnetLinked) implementation(files(tailnet.extra["tailnetAar"]!!).builtBy(":tailnet:bindTailnet"))
+    if (tailnetLinked) {
+        debugImplementation(files(tailnet.extra["tailnetAarDebug"]!!).builtBy(":tailnet:bindTailnetDebug"))
+        releaseImplementation(files(tailnet.extra["tailnetAarRelease"]!!).builtBy(":tailnet:bindTailnetRelease"))
+    }
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
