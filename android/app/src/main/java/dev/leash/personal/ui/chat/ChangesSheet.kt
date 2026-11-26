@@ -62,11 +62,11 @@ fun ChangesSheet(changes: TurnChanges, cwd: String?, onDismiss: () -> Unit, onCo
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(pluralText(R.plurals.files_count, changes.files.size), style = Leash.type.footnote, color = c.textSecondary)
                 Text("+" + changes.adds, style = Leash.type.monoSmall.tabular(), color = c.success)
                 Text("−" + changes.dels, style = Leash.type.monoSmall.tabular(), color = c.danger, modifier = Modifier.weight(1f))
-                if (onCommit != null) LeashButton(stringResource(R.string.commit), onCommit, style = ButtonStyle.Tinted, size = ButtonSize.Small, enabled = commitEnabled)
+                if (onCommit != null) LeashButton(stringResource(R.string.commit), onCommit, style = ButtonStyle.Tinted, size = ButtonSize.Regular, enabled = commitEnabled)
             }
             GroupCard {
                 changes.files.forEachIndexed { i, f ->
@@ -101,7 +101,7 @@ fun ChangesSheet(changes: TurnChanges, cwd: String?, onDismiss: () -> Unit, onCo
                             blocks.forEach { d -> DiffBlock(d.path, d.old, d.new, maxLines = 400, wholeFile = true) }
                         }
                     }
-                    if (i != changes.files.lastIndex) Hairline(Modifier.padding(start = 16.dp))
+                    if (i != changes.files.lastIndex) Hairline(Modifier.padding(start = 46.dp, end = 16.dp))
                 }
             }
         }

@@ -317,7 +317,7 @@ fun ChangesRow(changes: TurnChanges) {
 @Composable
 fun ChangeCounts(adds: Int, dels: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("+" + adds, style = Leash.type.monoSmall.tabular(), color = Leash.colors.success)
-        Text("−" + dels, style = Leash.type.monoSmall.tabular(), color = Leash.colors.danger)
+        if (adds > 0 || dels == 0) Text("+" + adds, style = Leash.type.monoSmall.tabular(), color = Leash.colors.success)
+        if (dels > 0 || adds == 0) Text("−" + dels, style = Leash.type.monoSmall.tabular(), color = Leash.colors.danger)
     }
 }

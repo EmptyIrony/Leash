@@ -87,7 +87,7 @@ fun SideQuestionTray(item: SideQuestion, index: Int, total: Int, collapsed: Bool
                 Text(item.question, Modifier.weight(1f).semantics { contentDescription = label }, style = Leash.type.subheadline.semibold(), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (total > 1) Text(stringResource(R.string.request_of, index, total), style = Leash.type.caption.tabular(), color = c.textSecondary)
                 val closeLabel = stringResource(R.string.sq_close)
-                Box(Modifier.size(44.dp).pressable(onClickLabel = closeLabel, onClick = close), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(48.dp).pressable(onClickLabel = closeLabel, onClick = close), contentAlignment = Alignment.Center) {
                     Icon(LeashIcons.close, closeLabel, Modifier.size(14.dp), tint = c.textSecondary)
                 }
             }

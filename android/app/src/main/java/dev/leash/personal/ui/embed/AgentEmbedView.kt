@@ -114,11 +114,11 @@ fun AgentEmbedView(src: String, modifier: Modifier = Modifier) {
     val c = Leash.colors
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(LeashIcons.embed, null, Modifier.size(14.dp), tint = c.textTertiary)
-            Text(AgentEmbed.title(src), Modifier.weight(1f), style = Leash.type.caption, color = c.textTertiary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+            Icon(LeashIcons.embed, null, Modifier.size(14.dp), tint = c.textSecondary)
+            Text(AgentEmbed.title(src), Modifier.weight(1f), style = Leash.type.caption, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
             val label = stringResource(R.string.embed_fullscreen)
-            Box(Modifier.size(40.dp).pressable(enabled = html != null, scale = PressScale.Compact, onClickLabel = label) { fullscreen = true }, contentAlignment = Alignment.Center) {
-                Icon(LeashIcons.fullscreen, label, Modifier.size(14.dp), tint = c.textTertiary)
+            Box(Modifier.size(48.dp).pressable(enabled = html != null, scale = PressScale.Compact, onClickLabel = label) { fullscreen = true }, contentAlignment = Alignment.Center) {
+                Icon(LeashIcons.fullscreen, label, Modifier.size(18.dp), tint = c.textSecondary)
             }
         }
         val h = html

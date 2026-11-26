@@ -261,7 +261,7 @@ private fun TextLines(lines: List<String>, wrap: Boolean, highlight: Int?, top: 
     val contentW = remember(longest, style) { measurer.measure(longest.replace("\t", "    "), style).size.width }
     val list = rememberLazyListState()
     LaunchedEffect(highlight, lines) { if (highlight != null && highlight in 1..lines.size) list.scrollToItem((highlight - 1 - 3).coerceAtLeast(0)) }
-    val hl = c.attention.copy(alpha = 0.22f)
+    val hl = c.selectedFill
     val rows: @Composable (Modifier) -> Unit = { m ->
         LazyColumn(m, state = list, contentPadding = PaddingValues(top = top, bottom = 24.dp)) {
             itemsIndexed(lines) { i, line ->

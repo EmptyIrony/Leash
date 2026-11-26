@@ -36,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -321,7 +322,19 @@ fun LeashSheet(
     val shape = RoundedCornerShape(topStart = LeashRadius.sheet, topEnd = LeashRadius.sheet)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        modifier = if (c.dark) modifier.border(onePx, c.sheetEdge, shape) else modifier,
+        modifier = if (c.dark) modifier.drawWithContent {
+            drawContent()
+            // only the sheet's top (the two corner arcs and the straight between them): sides and bottom fall on the screen edges and would draw a frame through the content
+            val r = LeashRadius.sheet.toPx()
+            val w = size.width
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(0f, r)
+                arcTo(androidx.compose.ui.geometry.Rect(0f, 0f, 2 * r, 2 * r), 180f, 90f, false)
+                lineTo(w - r, 0f)
+                arcTo(androidx.compose.ui.geometry.Rect(w - 2 * r, 0f, w, 2 * r), 270f, 90f, false)
+            }
+            drawPath(p, c.sheetEdge, style = androidx.compose.ui.graphics.drawscope.Stroke(onePx.toPx()))
+        } else modifier,
         sheetState = sheetState,
         shape = shape,
         containerColor = c.bgSheet,
@@ -340,10 +353,14 @@ fun LeashSheet(
                 }
                 if (onDone != null) {
                     Box(
-                        Modifier.align(Alignment.CenterEnd).pressable(onClick = onDone).height(36.dp)
-                            .glass(LeashShapes.capsule, blur = false).padding(horizontal = 14.dp),
+                        Modifier.align(Alignment.CenterEnd).pressable(onClick = onDone).heightIn(min = 48.dp).padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center,
-                    ) { Text(doneLabel ?: "", style = Leash.type.body.semibold(), color = c.accentControl) }
+                    ) {
+                        // 36 dp drawn inside a 48 dp touch target
+                        Box(Modifier.height(36.dp).glass(LeashShapes.capsule, blur = false).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                            Text(doneLabel ?: "", style = Leash.type.body.semibold(), color = c.accentControl)
+                        }
+                    }
                 }
             }
         }

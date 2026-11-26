@@ -104,7 +104,7 @@ object EmbedHost {
     queued = false;
     var b = document.body; if (!b) return;
     var cs = getComputedStyle(b);
-    var h = Math.ceil(Math.max(b.scrollHeight, b.getBoundingClientRect().height) + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0));
+    var h = Math.ceil(Math.max(d.scrollHeight, b.scrollHeight, b.getBoundingClientRect().bottom + (parseFloat(cs.marginBottom) || 0), b.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0)));
     if (Math.abs(h - last) < 1) return;
     last = h;
     try { window.webkit.messageHandlers.agHost.postMessage({ height: h }); } catch (e) {}
