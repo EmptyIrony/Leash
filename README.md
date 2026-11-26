@@ -30,7 +30,7 @@ node src/index.mjs rotate     # new token (re-pair the phone)
 ```
 
 Config lives in `~/.leash/config.json` (`port`, `token`, `bind`, `agent.command`/`args`).
-`bind: "auto"` listens on 127.0.0.1 plus the Mac's Tailscale address(es); if Tailscale is not up it falls back to `0.0.0.0` (LAN, dev phase) and the pairing QR uses the Mac's LAN IP. Set `bind` to `"127.0.0.1,100.x.y.z"` to pin it.
+`bind: "auto"` listens on 127.0.0.1 plus the Mac's Tailscale (100.x) and 192.168.x LAN addresses (checked again every 30 s); with neither up it falls back to `0.0.0.0`. The pairing QR uses the Tailscale name when Tailscale is up, else the LAN IP. On the LAN the token travels in plain `ws://`. Set `bind` to `"127.0.0.1,100.x.y.z"` to pin it.
 Log of the LaunchAgent: `~/Library/Logs/leash-bridge.log`.
 
 ### Notifications (Bark)

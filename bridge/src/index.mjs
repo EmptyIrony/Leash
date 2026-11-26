@@ -145,9 +145,10 @@ try {
 
 function bindHosts() {
   if (cfg.bind !== 'auto') return String(cfg.bind).split(',').map(s => s.trim()).filter(Boolean);
-  const ts = tailscaleIPs();
-  // No Tailscale yet: fall back to all interfaces so the phone can reach us on the LAN.
-  return ts.length ? ['127.0.0.1', ...ts] : ['0.0.0.0'];
+  // Tailscale (100.64/10) and the home LAN (192.168/16) only, so other interfaces (VPNs, Docker, …) stay closed.
+  const hosts = [...tailscaleIPs(), ...lanIPs().filter(ip => ip.startsWith('192.168.'))];
+  // Neither is up yet: fall back to all interfaces so the phone can reach us at all.
+  return hosts.length ? ['127.0.0.1', ...hosts] : ['0.0.0.0'];
 }
 
 async function bindAll() {
