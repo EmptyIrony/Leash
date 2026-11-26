@@ -764,6 +764,19 @@ class AppModelTest {
         assertTrue(r.link.ensures > 0)
     }
 
+    @Test fun approveAllConfirmationIsAskedOnceAndRemembered() = runTest {
+        val r = Rig(this)
+        r.model.start(); runCurrent()
+        assertTrue(r.model.needsApproveAllConfirmation("turbo"))
+        assertTrue(r.model.needsApproveAllConfirmation("bypassPermissions"))
+        assertFalse(r.model.needsApproveAllConfirmation("plan"))
+        r.model.confirmApproveAll("turbo"); runCurrent()
+        assertFalse(r.model.needsApproveAllConfirmation("turbo"))
+        assertTrue(r.model.needsApproveAllConfirmation("bypassPermissions"))
+        assertTrue(r.settings.value.turboConfirmed)
+        assertFalse(r.settings.value.bypassConfirmed)
+    }
+
     @Test fun configModeAndAutoApproveCalls() = runTest {
         val r = Rig(this)
         connect(r)

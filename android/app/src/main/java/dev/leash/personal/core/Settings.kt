@@ -15,6 +15,9 @@ data class Settings(
     val markedUnread: Set<String> = emptySet(),
     /** Turns that ended before the first launch don't count as unread. */
     val unreadSinceMs: Long? = null,
+    /** The one-time confirmations of the approve-everything modes (Antigravity's Turbo, Claude Code's Bypass permissions). */
+    val turboConfirmed: Boolean = false,
+    val bypassConfirmed: Boolean = false,
 )
 
 interface SettingsStore {

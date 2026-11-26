@@ -125,6 +125,8 @@ data class AppState(
     val drafts: Map<String, String> = emptyMap(),
     val lastSeen: Map<String, Long> = emptyMap(),
     val markedUnread: Set<String> = emptySet(),
+    val turboConfirmed: Boolean = false,
+    val bypassConfirmed: Boolean = false,
 ) {
     val isConfigured: Boolean get() = useDemo || (host.isNotEmpty() && token.isNotEmpty())
     val isConnected: Boolean get() = connection == LinkState.Connected
@@ -206,7 +208,8 @@ class AppModel(
             val st = settings.load()
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
             set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = st.useDemo && demoLink != null,
-                drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread) }
+                drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread,
+                turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed) }
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
             if (s.isConfigured) reconfigure()
@@ -224,7 +227,7 @@ class AppModel(
         scope.launch {
             persistLock.withLock {
                 val x = s
-                settings.save(Settings(x.host, x.port, x.token, x.bridgeName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs))
+                settings.save(Settings(x.host, x.port, x.token, x.bridgeName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs, x.turboConfirmed, x.bypassConfirmed))
             }
         }
     }
@@ -962,6 +965,16 @@ class AppModel(
      * Pick one of the agent's own modes, or (Antigravity only) "turbo": agy's auto mode plus bridge-side auto-approval of
      * every permission prompt.
      */
+    /** Whether [mode] approves everything and has not been confirmed yet: the UI asks once before it is turned on. */
+    fun needsApproveAllConfirmation(mode: String): Boolean =
+        approvesAll(mode) && !(if (mode == "bypassPermissions") s.bypassConfirmed else s.turboConfirmed)
+
+    /** The user confirmed [mode] (see [needsApproveAllConfirmation]); it is not asked again. */
+    fun confirmApproveAll(mode: String) {
+        set { if (mode == "bypassPermissions") copy(bypassConfirmed = true) else copy(turboConfirmed = true) }
+        persist()
+    }
+
     fun choose(mode: String, st: ChatStore) {
         val turbo = mode == "turbo" && s.hasTurbo(st.agent)
         if (turbo != st.autoApprove) {

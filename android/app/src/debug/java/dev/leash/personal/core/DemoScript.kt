@@ -67,22 +67,38 @@ object DemoScript {
         )
     }
 
-    fun permissionRequest(key: String, sessionId: String, agent: String) = jsonObj("op" to "request", "agentId" to agent, "key" to key, "method" to "session/request_permission", "sessionId" to sessionId,
-        "params" to jsonObj("toolCall" to jsonObj("toolCallId" to "t-rm", "title" to "rm -rf build", "kind" to "execute", "rawInput" to jsonObj("command" to "rm -rf build")),
-            "options" to listOf(jsonObj("optionId" to "allow", "name" to "Allow", "kind" to "allow_once"), jsonObj("optionId" to "always", "name" to "Always allow", "kind" to "allow_always"), jsonObj("optionId" to "deny", "name" to "Deny", "kind" to "reject_once"))))
+    /** A parent still waiting on its subagent, which has asked for permission. */
+    fun subagentLiveHistory(): List<JsonElement> {
+        val child = jsonObj("leash" to jsonObj("subagent" to "demo-child"))
+        return listOf(
+            user("Index the repository", "u1"),
+            jsonObj("sessionUpdate" to "subagent_update", "sessionId" to "demo-child", "title" to "Count the source files", "description" to "Explore", "state" to jsonObj("state" to "requires_action")),
+            jsonObj("sessionUpdate" to "session_message", "messageId" to "m-in", "senderSessionId" to "demo-live", "recipientSessionId" to "demo-child", "content" to listOf(text("Count the source files")), "_meta" to child),
+            jsonObj("sessionUpdate" to "tool_call", "toolCallId" to "c-find", "title" to "find . -name '*.kt'", "kind" to "execute", "status" to "pending", "_meta" to child),
+        )
+    }
+
+    fun permissionRequest(key: String, sessionId: String, agent: String, withDiff: Boolean = false, subagent: Boolean = false): JsonElement {
+        val toolCall = if (withDiff) jsonObj("toolCallId" to "t-edit-ask", "title" to "Edit Parser.kt", "kind" to "edit", "locations" to diffTool["locations"], "content" to diffTool["content"])
+        else jsonObj("toolCallId" to "t-rm", "title" to "rm -rf build", "kind" to "execute", "rawInput" to jsonObj("command" to "rm -rf build"))
+        val options = listOf(jsonObj("optionId" to "allow", "name" to "Allow", "kind" to "allow_once"), jsonObj("optionId" to "always", "name" to "Always allow", "kind" to "allow_always"), jsonObj("optionId" to "deny", "name" to "Deny", "kind" to "reject_once"))
+        val fields = linkedMapOf<String, Any?>("op" to "request", "agentId" to agent, "key" to key, "method" to "session/request_permission", "sessionId" to sessionId, "params" to jsonObj("toolCall" to toolCall, "options" to options))
+        if (subagent) fields["subagent"] = jsonObj("sessionId" to "demo-child", "title" to "Count the source files", "description" to "Explore")
+        return j(fields)
+    }
 
     fun questionRequest(key: String, sessionId: String, agent: String) = jsonObj("op" to "request", "agentId" to agent, "key" to key, "method" to "elicitation/create", "sessionId" to sessionId,
         "params" to jsonObj("message" to "Which database should the migration target?",
             "requestedSchema" to jsonObj("type" to "object", "required" to listOf("question_0"), "properties" to jsonObj("question_0" to jsonObj("type" to "string", "title" to "Target database",
                 "oneOf" to listOf(jsonObj("const" to "postgres", "title" to "PostgreSQL", "description" to "Recommended"), jsonObj("const" to "sqlite", "title" to "SQLite")))))))
 
-    fun configOptions(model: String = "sonnet") = listOf(
+    fun configOptions(model: String = "sonnet", effort: String = "medium") = listOf(
         jsonObj("id" to "model", "name" to "Model", "category" to "model", "type" to "select", "currentValue" to model,
             "options" to listOf(jsonObj("value" to "sonnet", "name" to "Sonnet 5.5"), jsonObj("value" to "opus", "name" to "Opus 5.5"))),
-        jsonObj("id" to "thought_level", "name" to "Thinking", "category" to "thought_level", "type" to "select", "currentValue" to "medium",
+        jsonObj("id" to "thought_level", "name" to "Thinking", "category" to "thought_level", "type" to "select", "currentValue" to effort,
             "options" to listOf(jsonObj("value" to "low", "name" to "Low"), jsonObj("value" to "medium", "name" to "Medium"), jsonObj("value" to "high", "name" to "High"))))
 
-    val modes = jsonObj("currentModeId" to "default", "availableModes" to listOf(jsonObj("id" to "default", "name" to "Manual"), jsonObj("id" to "acceptEdits", "name" to "Accept edits"), jsonObj("id" to "plan", "name" to "Plan")))
+    fun modes(current: String = "default") = jsonObj("currentModeId" to current, "availableModes" to listOf(jsonObj("id" to "default", "name" to "Manual"), jsonObj("id" to "acceptEdits", "name" to "Accept edits"), jsonObj("id" to "plan", "name" to "Plan")))
     val commands = listOf(jsonObj("name" to "review", "description" to "Review a pull request", "input" to jsonObj("hint" to "pr-number")), jsonObj("name" to "init", "description" to "Create CLAUDE.md"))
 
     /** The reply to a prompt, streamed word by word. */

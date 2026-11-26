@@ -25,6 +25,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
         val lastSeen = stringPreferencesKey("lastSeen")
         val markedUnread = stringPreferencesKey("markedUnread")
         val unreadSince = longPreferencesKey("unreadSince")
+        val turboConfirmed = booleanPreferencesKey("turboConfirmed")
+        val bypassConfirmed = booleanPreferencesKey("bypassConfirmed")
     }
 
     override suspend fun load(): Settings {
@@ -39,6 +41,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             lastSeen = decode(p[K.lastSeen]).obj?.mapNotNull { (k, v) -> v.long?.let { k to it } }?.toMap() ?: emptyMap(),
             markedUnread = decode(p[K.markedUnread]).array?.mapNotNull { it.string }?.toSet() ?: emptySet(),
             unreadSinceMs = p[K.unreadSince],
+            turboConfirmed = p[K.turboConfirmed] ?: false,
+            bypassConfirmed = p[K.bypassConfirmed] ?: false,
         )
     }
 
@@ -53,6 +57,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             p[K.lastSeen] = j(settings.lastSeen).encoded()
             p[K.markedUnread] = j(settings.markedUnread.toList()).encoded()
             settings.unreadSinceMs?.let { p[K.unreadSince] = it }
+            p[K.turboConfirmed] = settings.turboConfirmed
+            p[K.bypassConfirmed] = settings.bypassConfirmed
         }
     }
 

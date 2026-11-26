@@ -16,6 +16,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        (application as LeashApplication).hooks.view = window.decorView
         // a link that started the activity; after a recreation it was handled already
         if (savedInstanceState == null) handleLink(intent)
         setContent {
@@ -28,6 +29,11 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleLink(intent)
+    }
+
+    override fun onDestroy() {
+        (application as LeashApplication).hooks.run { if (view === window.decorView) view = null }
+        super.onDestroy()
     }
 
     override fun onStart() {

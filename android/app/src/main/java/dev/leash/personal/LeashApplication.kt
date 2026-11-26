@@ -17,9 +17,12 @@ class LeashApplication : Application() {
     lateinit var model: AppModel
         private set
 
+    val hooks = AndroidHooks()
+
     override fun onCreate() {
         super.onCreate()
         model = AppModel(appScope, DataStoreSettings(this), BridgeConnection(appScope, OkHttpTransport()), DemoTransport.factory(appScope))
+        model.hooks = hooks
         model.start()
     }
 }

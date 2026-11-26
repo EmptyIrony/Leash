@@ -27,9 +27,9 @@ class DemoBridgeTest {
         val m = model()
         val s = m.state.value
         assertTrue(s.useDemo && s.isConnected && s.agentReady)
-        assertEquals(11, s.sessions.size)
-        assertEquals(setOf("demo-permission", "demo-queue"), s.running)
-        assertEquals(2, s.pending.size)
+        assertEquals(12, s.sessions.size)
+        assertEquals(setOf("demo-permission", "demo-queue", "demo-subagent-live"), s.running)
+        assertEquals(3, s.pending.size)
         assertEquals(2, s.sessions.first { it.id == "demo-permission" }.pendingCount)
         assertEquals("demo-subagent", s.sessions.first { it.id == "demo-subagent" }.id)
         assertEquals("cli", s.sessions.first { it.id == "demo-locked" }.lockedBy)
@@ -64,7 +64,8 @@ class DemoBridgeTest {
         assertEquals(1, m.state.value.pendingFor("demo-permission").size)
         val q = m.state.value.pendingFor("demo-permission").single()
         m.answerElicitation(q, "accept", mapOf("question_0" to j("postgres"))); runCurrent()
-        assertTrue(m.state.value.pending.isEmpty())
+        // what is left is the request of a subagent in another conversation
+        assertEquals(listOf("demo-subagent-live"), m.state.value.pending.values.map { it.sessionId })
     }
 
     @Test fun theQueueConversationHasQueuedMessagesAndUndoWorks() = runTest {

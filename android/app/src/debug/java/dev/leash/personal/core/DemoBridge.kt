@@ -28,6 +28,10 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         val queue = mutableListOf<JsonElement>()
         var job: Job? = null
         var nextQueue = 1
+        var changedOnce = false
+        var model = "sonnet"
+        var effort = "medium"
+        var mode = "default"
     }
 
     private val sessions = LinkedHashMap<String, Sess>()
@@ -56,6 +60,8 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         // a folder with more than a handful of conversations, for the list's "Show all"
         for (n in 1..5) add("demo-old-$n", "claude", "Older conversation $n", "2026-11-2" + (5 - n) + "T09:00:00Z", events = listOf(DemoScript.user("An older question $n", "u1"), DemoScript.agent("An older answer $n.", "a1")))
         add("demo-empty", "agy", null, "2026-11-24T10:00:00Z")
+        add("demo-subagent-live", "claude", "Index the repository", "2026-11-26T02:20:00Z", events = DemoScript.subagentLiveHistory()).running = true
+        pending["claude:3"] = DemoScript.permissionRequest("claude:3", "demo-subagent-live", "claude", subagent = true)
         pending["claude:1"] = DemoScript.permissionRequest("claude:1", "demo-permission", "claude")
         pending["claude:2"] = DemoScript.questionRequest("claude:2", "demo-permission", "claude")
     }
@@ -115,8 +121,12 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
             "session/new" -> newSession(params)
             "session/prompt" -> prompt(s ?: throw BridgeError(-32004, "attach to the session before prompting"), params)
             "session/cancel" -> { s?.let { cancel(it) }; jsonObj("ok" to true) }
-            "session/set_config_option" -> jsonObj("configOptions" to DemoScript.configOptions(params["value"].string ?: "sonnet"))
-            "session/set_mode" -> jsonObj()
+            "session/set_config_option" -> {
+                val value = params["value"].string ?: "sonnet"
+                s?.let { if (params["configId"].string == "thought_level") it.effort = value else it.model = value }
+                jsonObj("configOptions" to DemoScript.configOptions(s?.model ?: "sonnet", s?.effort ?: "medium"))
+            }
+            "session/set_mode" -> { s?.mode = params["modeId"].string ?: "default"; jsonObj() }
             "bridge/setAutoApprove" -> jsonObj("ok" to true, "autoApprove" to (params["enabled"].bool == true))
             "bridge/unqueue" -> unqueue(s ?: throw BridgeError(-32004, "unknown session"), params["id"].string)
             "bridge/requeue" -> requeue(s ?: throw BridgeError(-32004, "unknown session"), params)
@@ -164,7 +174,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         return jsonObj("sessionId" to s.id, "cwd" to DemoScript.PROJECT, "epoch" to DemoScript.EPOCH, "lastSeq" to s.seq, "reset" to !delta,
             "events" to s.events.mapIndexed { i, u -> jsonObj("seq" to i + 1, "update" to u) }.filter { !delta || it["seq"].int!! > since },
             "running" to s.running, "subagents" to 0, "lastStopReason" to "end_turn", "turnStartedAt" to (if (s.running) Clock.now() - 20_000 else null),
-            "configOptions" to DemoScript.configOptions(), "modes" to DemoScript.modes, "title" to s.title, "autoApprove" to false,
+            "configOptions" to DemoScript.configOptions(s.model, s.effort), "modes" to DemoScript.modes(s.mode), "title" to s.title, "autoApprove" to false,
             "queue" to s.queue, "availableCommands" to DemoScript.commands, "pending" to pending.values.filter { it["sessionId"].string == s.id })
     }
 
@@ -173,7 +183,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         val agent = params["agent"].string ?: "agy"
         sessions[id] = Sess(id, agent, null, "2026-11-26T03:00:00Z").also { it.subscribed = true }
         emit(jsonObj("op" to "session_created", "sessionId" to id, "cwd" to params["cwd"].string))
-        return jsonObj("sessionId" to id, "epoch" to DemoScript.EPOCH, "lastSeq" to 0, "configOptions" to DemoScript.configOptions(), "modes" to DemoScript.modes)
+        return jsonObj("sessionId" to id, "epoch" to DemoScript.EPOCH, "lastSeq" to 0, "configOptions" to DemoScript.configOptions(), "modes" to DemoScript.modes())
     }
 
     // MARK: turns
@@ -198,6 +208,11 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     private suspend fun prompt(s: Sess, params: JsonElement): JsonElement {
         val text = promptText(params)
         val blocks = params["prompt"].array ?: emptyList()
+        // error states for UI checks: the words in the message pick what the demo answers with
+        val low = text.lowercase()
+        if ("locked elsewhere" in low) throw BridgeError(BridgeError.LOCKED_ELSEWHERE, "Open in another client", "cli")
+        if ("changed elsewhere" in low && !s.changedOnce) { s.changedOnce = true; throw BridgeError(BridgeError.CHANGED_ELSEWHERE, "The conversation changed elsewhere") }
+        if ("refuse" in low) throw BridgeError(-32000, "The demo agent refuses this message")
         if (!s.running) {
             val items = takeQueue(s) + listOfNotNull(text.takeIf { blocks.isNotEmpty() })
             if (items.isEmpty()) throw BridgeError(-32602, "prompt required")
@@ -242,7 +257,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
                 record(s, DemoScript.toolUpdate(rid, "completed"))
                 if (items.any { it.contains("permission", ignoreCase = true) }) {
                     val key = s.agent + ":" + nextKey++
-                    val req = DemoScript.permissionRequest(key, s.id, s.agent)
+                    val req = DemoScript.permissionRequest(key, s.id, s.agent, withDiff = items.any { it.contains("diff", ignoreCase = true) })
                     pending[key] = req
                     val answer = CompletableDeferred<JsonElement>().also { answers[key] = it }
                     emit(req)
