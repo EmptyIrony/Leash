@@ -85,7 +85,7 @@ fun FolderSessionsScreen(model: AppModel, agent: String, folder: String, onBack:
             edgeVisible = scrolled,
             navigation = { BackButton(stringResource(R.string.back), onBack) },
         )
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 96.dp).softBottomEdge())
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 80.dp).softBottomEdge(blur = false))
         AnimatedVisibility(!searchOpen, Modifier.align(Alignment.BottomCenter), enter = Motion.popEnter(reduced), exit = Motion.popExit(reduced)) {
             BottomActions(start = { GlassCircleButton(LeashIcons.search, stringResource(R.string.search), { searchOpen = true }, size = 52.dp) })
         }

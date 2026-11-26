@@ -3,6 +3,7 @@ package dev.leash.personal.ui.design.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,7 +82,8 @@ fun TrayHeader(title: String, icon: ImageVector, iconTint: Color, modifier: Modi
 fun CommandPreview(text: String, modifier: Modifier = Modifier) {
     Text(
         text, style = Leash.type.mono, color = Leash.colors.textPrimary, maxLines = 4, overflow = TextOverflow.Ellipsis,
-        modifier = modifier.fillMaxWidth().clip(LeashShapes.inset).background(Leash.colors.bgSunken).padding(10.dp),
+        modifier = modifier.fillMaxWidth().clip(LeashShapes.inset).background(Leash.colors.bgSunken)
+            .border(1.dp, Leash.colors.hairline, LeashShapes.inset).padding(10.dp),
     )
 }
 
@@ -285,7 +287,7 @@ private fun SlabFrame(
     )
     Column(
         modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).glass(LeashShapes.composer, tint = tint, blur = blur)
-            .animateContentSize(Motion.quick()).heightIn(min = 48.dp).padding(horizontal = 6.dp, vertical = 4.dp),
+            .animateContentSize(Motion.quick()).heightIn(min = 48.dp).padding(start = 6.dp, end = 1.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         above?.invoke(this)

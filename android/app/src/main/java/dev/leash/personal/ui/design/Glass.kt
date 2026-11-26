@@ -155,10 +155,14 @@ fun Modifier.softTopEdge(): Modifier {
  * towards the page colour (and blurs it on 32+) so no sharp text shows between the slab and the chips.
  */
 @Composable
-fun Modifier.softBottomEdge(): Modifier {
+fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
     var m = this
+    if (!blur) {
+        // the list: rows stay crisp between the bottom circles, only a light fade towards the page colour
+        return m.background(Brush.verticalGradient(0f to Color.Transparent, 1f to c.bgGradientEnd.copy(alpha = 0.6f)))
+    }
     if (state != null && glassBlurSupported && LocalGlassBlurAllowed.current) {
         m = m.hazeEffect(state, HazeStyle(backgroundColor = c.bgBase, tints = emptyList(), blurRadius = 12.dp, noiseFactor = 0f)) {
             mask = Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 1f to Color.Black)

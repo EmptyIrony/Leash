@@ -27,6 +27,8 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.sp
+import dev.leash.personal.ui.design.capScale
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -87,9 +89,9 @@ fun LeashButton(
     val (fill, ink) = when {
         style == ButtonStyle.Prominent && !enabled -> c.hairline to c.textTertiary
         style == ButtonStyle.Prominent -> c.accentControl to c.onAccent
-        style == ButtonStyle.Tinted -> c.controlFill to c.accentControl
+        style == ButtonStyle.Tinted -> c.controlFill to c.accent
         style == ButtonStyle.Destructive -> c.danger.copy(alpha = 0.12f) to c.danger
-        else -> Color.Transparent to c.accentControl
+        else -> Color.Transparent to c.accent
     }
     val text_ = if (size == ButtonSize.Small) Leash.type.subheadline.semibold() else Leash.type.body.semibold()
     Row(
@@ -227,16 +229,19 @@ fun SegmentedControl(
     ) {
         val segment = maxWidth / options.size.coerceAtLeast(1)
         val x by animateDpAsState(segment * selected, Motion.disclose(), label = "thumb")
+        // labels grow with the font scale up to 1.3x, then shrink to fit their segment rather than cut off
+        val labelStyle = Leash.type.subheadline.medium().capScale(1.3f)
+        val rowHeight = maxOf(28.dp, with(androidx.compose.ui.platform.LocalDensity.current) { labelStyle.lineHeight.toDp() } + 8.dp)
         Box(
             Modifier
                 .offset(x = x)
                 .width(segment)
-                .height(28.dp)
+                .height(rowHeight)
                 .dropShadow(LeashShapes.capsule, Shadow(3.dp, Color.Black, offset = DpOffset(0.dp, 1.dp), alpha = if (c.dark) 0.3f else 0.12f))
                 .clip(LeashShapes.capsule)
                 .background(c.segmentThumb),
         )
-        Row(Modifier.height(28.dp)) {
+        Row(Modifier.height(rowHeight)) {
             options.forEachIndexed { i, label ->
                 Box(
                     Modifier
@@ -248,12 +253,17 @@ fun SegmentedControl(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
+                    androidx.compose.foundation.text.BasicText(
                         label,
-                        style = Leash.type.subheadline.medium(),
-                        color = if (i == selected) c.textPrimary else c.textSecondary,
+                        style = labelStyle.copy(color = if (i == selected) c.textPrimary else c.textSecondary),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        // sizes are sp: 11 visual dp at any font scale, never above the capped label size
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                            minFontSize = minOf((11f / androidx.compose.ui.platform.LocalDensity.current.fontScale).sp.value, labelStyle.fontSize.value).sp,
+                            maxFontSize = labelStyle.fontSize,
+                            stepSize = 0.25.sp,
+                        ),
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 }
@@ -397,7 +407,7 @@ fun Banner(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(LeashIcons.needsYou, null, Modifier.size(16.dp), tint = c.attention)
-        Text(text, style = Leash.type.subheadline.medium(), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(text, style = Leash.type.subheadline.medium().capScale(1.3f), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Icon(LeashIcons.chevronRight, null, Modifier.size(14.dp), tint = c.textTertiary)
     }
 }

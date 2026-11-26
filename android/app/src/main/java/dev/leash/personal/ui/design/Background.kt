@@ -38,7 +38,8 @@ fun SpaceBackground(modifier: Modifier = Modifier, stars: Boolean = true, plain:
                 val x = rng.next() * size.width
                 val y = rng.next() * size.height
                 val r = (0.5f + rng.next() * 0.25f).dp.toPx()
-                val o = 0.25f + rng.next() * 0.35f
+                // dimmer than iOS's 25–60%: at full strength they read as stray punctuation through dark cards and text
+                val o = 0.12f + rng.next() * 0.23f
                 drawCircle(Color.White.copy(alpha = o), r, Offset(x, y))
             }
         }

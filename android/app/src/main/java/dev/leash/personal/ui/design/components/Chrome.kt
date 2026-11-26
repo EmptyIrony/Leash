@@ -314,11 +314,14 @@ fun LeashSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Leash.colors
+    // dark: the 1 px white edge follows the sheet's rounded top (sides and bottom fall on the screen edges)
+    val onePx = with(androidx.compose.ui.platform.LocalDensity.current) { 1f.toDp() }
+    val shape = RoundedCornerShape(topStart = LeashRadius.sheet, topEnd = LeashRadius.sheet)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        modifier = modifier,
+        modifier = if (c.dark) modifier.border(onePx, c.sheetEdge, shape) else modifier,
         sheetState = sheetState,
-        shape = RoundedCornerShape(topStart = LeashRadius.sheet, topEnd = LeashRadius.sheet),
+        shape = shape,
         containerColor = c.bgSheet,
         contentColor = c.textPrimary,
         tonalElevation = 0.dp,
@@ -327,7 +330,6 @@ fun LeashSheet(
             Box(Modifier.padding(top = 6.dp, bottom = 4.dp).size(36.dp, 5.dp).clip(LeashShapes.capsule).background(c.textTertiary.copy(alpha = 0.4f)))
         },
     ) {
-        if (c.dark) Hairline(color = c.sheetEdge)
         if (title != null || onDone != null) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp)) {
                 if (title != null) {
@@ -342,9 +344,13 @@ fun LeashSheet(
                 }
             }
         }
-        content()
+        // grouped cards on a sheet need their own fill in dark mode (raised on the sheet colour is invisible)
+        androidx.compose.runtime.CompositionLocalProvider(LocalOnSheet provides true) { content() }
     }
 }
+
+/** True inside a [LeashSheet]: grouped cards there use the panel fill in dark mode. */
+val LocalOnSheet = androidx.compose.runtime.staticCompositionLocalOf { false }
 
 /** A long-press / overflow menu: a solid panel (menus are separate windows; no fake glass). */
 @Composable

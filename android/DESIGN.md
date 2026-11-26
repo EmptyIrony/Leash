@@ -169,7 +169,7 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
 ## 6. Surfaces, glass and elevation
 
 - **Space background**: vertical gradient bgBase → bgGradientEnd, plus a radial accent @ 10% glow centred on the
-  top-end corner, radius 320 dp; dark mode adds 60 seeded stars (r 0.5–0.75 dp, white @ 25–60%). Reduce
+  top-end corner, radius 320 dp; dark mode adds 60 seeded stars (r 0.5–0.75 dp, white @ 12–35%; iOS's 25–60% read as stray punctuation through dark cards on Android, Fable D2). Reduce
   transparency has no Android switch; the high-contrast setting drops glow and stars.
 - **Raised**: bgRaised fill + 1 dp hairline stroke (cards) or no stroke (grouped list, like iOS).
 - **Sunken**: bgSunken + 1 dp hairline stroke, radius inset.
@@ -449,6 +449,17 @@ style; vector drawables have no blur). Monochrome layer (Android 13 themed icons
 - `src/debug/.../DesignCatalogActivity` — pages × light/dark via intent extras.
 
 ## 15. Review log
+
+- **Fable, D2 final review (emulator screenshots, light + dark + font scale 1.3 / 2.0).** Fixed: dark sheets stroke
+  their rounded top edge (not a rule under the grabber) and grouped cards on a dark sheet use the panel fill; the
+  segmented control grows with its labels and shrinks them to fit (label scale capped at 1.3×); the list's bottom
+  edge is a light fade without blur so rows stay crisp between the circles; the composer slab is 48 dp with the send
+  circle 8 dp from the end; the top soft edge reaches under the other-conversations banner; approval buttons 48 dp,
+  tinted / plain buttons use `accent` text, the command preview has its hairline; settings icon rows align label and
+  separator at 52 dp; dark stars dimmed to 12–35%. Open: the list's trailing quota-ring circle (with the quota sheet,
+  phase 4).
+- **Fable, D2 catalog check.** Dark prominent buttons and the send / shell circles use `onAccent` (#07080D) on the
+  light dark-mode accent; a disabled prominent button turns neutral; dark segmented thumb #3A3D4B.
 
 - **Fable, spec review (D1).** Re-measured the shots at their real scale (402 pt wide) → 44 dp circles, 32 dp
   segmented control, ~70 dp session rows, 1 px separators, 32 dp sheet corners, 52 dp settings rows, 6 dp paragraph

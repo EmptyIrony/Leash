@@ -92,7 +92,7 @@ fun GroupCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.()
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .clip(LeashShapes.group)
-            .background(Leash.colors.bgRaised),
+            .background(groupFill()),
         content = content,
     )
 }
@@ -135,8 +135,12 @@ fun Modifier.groupItem(first: Boolean, last: Boolean): Modifier {
     val shape = androidx.compose.runtime.remember(first, last) {
         dev.leash.personal.ui.design.ContinuousShape(if (first) r else 0.dp, if (first) r else 0.dp, if (last) r else 0.dp, if (last) r else 0.dp)
     }
-    return this.fillMaxWidth().padding(horizontal = 16.dp).clip(shape).background(Leash.colors.bgRaised)
+    return this.fillMaxWidth().padding(horizontal = 16.dp).clip(shape).background(groupFill())
 }
+
+/** A grouped card's fill: raised on the page; on a dark sheet the panel colour, so the card still reads as one. */
+@Composable
+private fun groupFill(): Color = if (Leash.colors.dark && LocalOnSheet.current) Leash.colors.panel else Leash.colors.bgRaised
 
 /** A 1 px separator. */
 @Composable
@@ -234,8 +238,8 @@ fun ValueRow(
 ) {
     val c = Leash.colors
     GroupRow(modifier, last = last, separatorInset = if (icon != null) 52.dp else 16.dp, onClick = onClick) {
-        if (icon != null) Icon(icon, null, Modifier.size(22.dp), tint = labelColor)
-        if (icon != null) Spacer(Modifier.width(4.dp))
+        // label starts 52 dp in, where the separator does: 16 padding + 22 glyph + 14 gap
+        if (icon != null) Icon(icon, null, Modifier.padding(end = 4.dp).size(22.dp), tint = labelColor)
         Text(label, style = Leash.type.body, color = labelColor, modifier = Modifier.weight(1f), maxLines = 2)
         if (value != null) Text(value, style = Leash.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End)
         trailing?.invoke()

@@ -171,13 +171,13 @@ private fun ApprovalBody(model: AppModel, request: PendingRequest, index: Int, t
 @Composable
 private fun PermissionButtonsRow(buttons: PermissionButtons, stacked: Boolean, answer: (PermOption) -> Unit) {
     if (stacked) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (o in buttons.allow) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth(), style = ButtonStyle.Prominent)
-        for (o in buttons.always) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth(), style = ButtonStyle.Tinted)
-        for (o in buttons.deny) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth(), style = ButtonStyle.Destructive)
+        for (o in buttons.allow) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), style = ButtonStyle.Prominent)
+        for (o in buttons.always) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), style = ButtonStyle.Tinted)
+        for (o in buttons.deny) LeashButton(permissionName(o), { answer(o) }, Modifier.fillMaxWidth().heightIn(min = 48.dp), style = ButtonStyle.Destructive)
     } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (o in buttons.deny) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f), style = ButtonStyle.Destructive)
-        for (o in buttons.always) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f), style = ButtonStyle.Tinted)
-        for (o in buttons.allow) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f), style = ButtonStyle.Prominent)
+        for (o in buttons.deny) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Destructive)
+        for (o in buttons.always) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Tinted)
+        for (o in buttons.allow) LeashButton(permissionName(o), { answer(o) }, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Prominent)
     }
 }
 
@@ -219,10 +219,10 @@ private fun QuestionBody(model: AppModel, request: PendingRequest, index: Int, t
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (spec.url != null) {
-                LeashButton(stringResource(R.string.decline), { model.answerElicitation(request, "decline") }, Modifier.weight(1f), style = ButtonStyle.Tinted)
+                LeashButton(stringResource(R.string.decline), { model.answerElicitation(request, "decline") }, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Tinted)
                 LeashButton(stringResource(R.string.done), { model.answerElicitation(request, "accept") }, Modifier.weight(1f))
             } else {
-                LeashButton(stringResource(R.string.skip), skip, Modifier.weight(1f), style = ButtonStyle.Tinted)
+                LeashButton(stringResource(R.string.skip), skip, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Tinted)
                 if (spec.fitsTray) LeashButton(stringResource(R.string.submit), submit, Modifier.weight(1f), enabled = answers.hasAnswer)
                 else LeashButton(stringResource(R.string.answer_ellipsis), { showSheet = true }, Modifier.weight(1f))
             }
@@ -279,7 +279,7 @@ private fun QuestionSheet(spec: ElicitationSpec, answers: ElicitationAnswers, on
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LeashButton(stringResource(R.string.skip), skip, Modifier.weight(1f), style = ButtonStyle.Tinted)
+                LeashButton(stringResource(R.string.skip), skip, Modifier.weight(1f).heightIn(min = 48.dp), style = ButtonStyle.Tinted)
                 LeashButton(stringResource(R.string.submit), submit, Modifier.weight(1f))
             }
         }

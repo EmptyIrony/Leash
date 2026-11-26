@@ -201,7 +201,7 @@ fun SessionListScreen(
             },
         )
         // the bottom: content fades out under the actions; search turns the circles into a field above the keyboard
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 96.dp).softBottomEdge())
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 80.dp).softBottomEdge(blur = false))
         val reduced = LocalReduceMotion.current
         AnimatedVisibility(
             visible = !searchOpen && state.isConfigured, modifier = Modifier.align(Alignment.BottomCenter),

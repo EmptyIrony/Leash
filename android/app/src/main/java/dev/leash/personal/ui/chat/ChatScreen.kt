@@ -78,6 +78,7 @@ import dev.leash.personal.ui.design.Motion
 import dev.leash.personal.ui.design.SpaceBackground
 import dev.leash.personal.ui.design.semibold
 import dev.leash.personal.ui.design.softBottomEdge
+import dev.leash.personal.ui.design.softTopEdge
 import dev.leash.personal.ui.design.components.BackButton
 import dev.leash.personal.ui.design.components.Banner
 import dev.leash.personal.ui.design.components.ButtonSize
@@ -343,12 +344,15 @@ fun ChatScreen(
                 }
             }
 
-            // top: the floating bar, and under it the other conversations that wait on you
-            Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+            // top: the floating bar, and under it the other conversations that wait on you; with the banner the soft
+            // edge reaches below it, so the transcript fades out before it passes under the capsule
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {
+            if (others.isNotEmpty()) Box(Modifier.matchParentSize().softTopEdge())
+            Column(Modifier.fillMaxWidth()) {
                 TopBar(
                     title = title,
                     subtitle = subtitle.ifEmpty { null },
-                    edgeVisible = scrolled || items.isNotEmpty(),
+                    edgeVisible = (scrolled || items.isNotEmpty()) && others.isEmpty(),
                     navigation = { BackButton(stringResource(R.string.back), onBack) },
                     actions = {
                         Box {
@@ -386,6 +390,7 @@ fun ChatScreen(
                         Modifier.padding(horizontal = 16.dp).offset(y = (-20).dp),
                     )
                 }
+            }
             }
 
             // bottom: the dock rides the keyboard; content keeps scrolling under it, faded
