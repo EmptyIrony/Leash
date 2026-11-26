@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LeashRadius
 import dev.leash.personal.ui.design.LeashShapes
 import dev.leash.personal.ui.design.Motion
 import dev.leash.personal.ui.design.PressScale
@@ -122,6 +123,19 @@ fun GroupRow(
         )
         if (!last) Hairline(Modifier.padding(start = separatorInset, end = 16.dp))
     }
+}
+
+/**
+ * One piece of a grouped card that a lazy list splits into items: the card's fill and inset on every piece, its
+ * corners only on the [first] and [last] one, so the pieces read as one card (DESIGN.md §11, inset grouped).
+ */
+@Composable
+fun Modifier.groupItem(first: Boolean, last: Boolean): Modifier {
+    val r = LeashRadius.group
+    val shape = androidx.compose.runtime.remember(first, last) {
+        dev.leash.personal.ui.design.ContinuousShape(if (first) r else 0.dp, if (first) r else 0.dp, if (last) r else 0.dp, if (last) r else 0.dp)
+    }
+    return this.fillMaxWidth().padding(horizontal = 16.dp).clip(shape).background(Leash.colors.bgRaised)
 }
 
 /** A 1 px separator. */

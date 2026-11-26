@@ -81,16 +81,19 @@ fun LeashButton(
     enabled: Boolean = true,
 ) {
     val c = Leash.colors
-    val (fill, ink) = when (style) {
-        ButtonStyle.Prominent -> c.accentControl to Color.White
-        ButtonStyle.Tinted -> c.controlFill to c.accentControl
-        ButtonStyle.Destructive -> c.danger.copy(alpha = 0.12f) to c.danger
-        ButtonStyle.Plain -> Color.Transparent to c.accentControl
+    // white on the light accent; in dark the accent is light, so its label is the page ink (7.4:1 instead of 2.7:1).
+    // A disabled prominent button turns neutral instead of a muddy 40% accent.
+    val (fill, ink) = when {
+        style == ButtonStyle.Prominent && !enabled -> c.hairline to c.textTertiary
+        style == ButtonStyle.Prominent -> c.accentControl to c.onAccent
+        style == ButtonStyle.Tinted -> c.controlFill to c.accentControl
+        style == ButtonStyle.Destructive -> c.danger.copy(alpha = 0.12f) to c.danger
+        else -> Color.Transparent to c.accentControl
     }
     val text_ = if (size == ButtonSize.Small) Leash.type.subheadline.semibold() else Leash.type.body.semibold()
     Row(
         modifier
-            .alpha(if (enabled) 1f else 0.4f)
+            .alpha(if (enabled || style == ButtonStyle.Prominent) 1f else 0.4f)
             .pressable(enabled, if (style == ButtonStyle.Plain) PressScale.Text else PressScale.Compact, onClick = onClick)
             .defaultMinSize(minHeight = if (style == ButtonStyle.Plain) 48.dp else size.height)
             .clip(LeashShapes.capsule)
@@ -160,7 +163,7 @@ fun SendButton(
     )
     val ink by animateColorAsState(
         when (glyph) {
-            SendGlyph.Send, SendGlyph.ShellRun -> Color.White
+            SendGlyph.Send, SendGlyph.ShellRun -> c.onAccent
             SendGlyph.Disabled, SendGlyph.ShellDisabled -> c.textTertiary
             SendGlyph.Stop -> c.bgBase
         }, Motion.quick(), label = "ink",

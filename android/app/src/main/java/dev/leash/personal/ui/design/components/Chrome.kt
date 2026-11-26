@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -112,6 +114,83 @@ fun TopBar(
             }
         }
     }
+}
+
+/**
+ * The search field that the list's bottom search circle turns into (iOS bottom-bar search): a glass capsule with
+ * the search glyph, the field and a clear button. Focuses itself when shown.
+ */
+@Composable
+fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    clearLabel: String,
+    modifier: Modifier = Modifier,
+) {
+    val c = Leash.colors
+    val focus = androidx.compose.runtime.remember { androidx.compose.ui.focus.FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { focus.requestFocus() }
+    Row(
+        modifier.heightIn(min = 48.dp).glass(LeashShapes.capsule).padding(start = 14.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(LeashIcons.search, null, Modifier.size(18.dp), tint = c.textSecondary)
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = Leash.type.body.copy(color = c.textPrimary),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accent),
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+            modifier = Modifier.weight(1f).focusRequester(focus),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(placeholder, style = Leash.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    inner()
+                }
+            },
+        )
+        if (value.isNotEmpty()) {
+            Box(Modifier.size(40.dp).pressable(onClickLabel = clearLabel) { onValueChange("") }, contentAlignment = Alignment.Center) {
+                Icon(LeashIcons.close, clearLabel, Modifier.size(16.dp), tint = c.textSecondary)
+            }
+        }
+    }
+}
+
+/**
+ * Pull to refresh with the platform gesture and Leash's indicator: a small panel circle with an accent arc, shown
+ * [indicatorTop] below the top so it appears under the floating top bar.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LeashRefreshBox(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    indicatorTop: androidx.compose.ui.unit.Dp = 0.dp,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
+) {
+    val c = Leash.colors
+    val state = androidx.compose.material3.pulltorefresh.rememberPullToRefreshState()
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
+        modifier = modifier,
+        state = state,
+        indicator = {
+            androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator(
+                state = state,
+                isRefreshing = refreshing,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = indicatorTop),
+                containerColor = c.panel,
+                color = c.accent,
+            )
+        },
+        content = content,
+    )
 }
 
 /** The large title block that scrolls with a list's content: largeTitle + footnote subtitle, 16 dp from the start. */

@@ -2,63 +2,34 @@ package dev.leash.personal.ui.list
 
 import android.text.format.DateUtils
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PanTool
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,17 +38,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,16 +53,43 @@ import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.AppState
 import dev.leash.personal.core.LinkState
 import dev.leash.personal.core.SessionSummary
-import dev.leash.personal.ui.components.ActivitySpinner
 import dev.leash.personal.ui.components.AgentIcon
-import dev.leash.personal.ui.components.StatusDot
 import dev.leash.personal.ui.components.color
 import dev.leash.personal.ui.components.connectionStatus
-import dev.leash.personal.ui.theme.LeashTheme
+import dev.leash.personal.ui.design.components.GlassCircleButton
+import dev.leash.personal.ui.design.GlassScope
+import dev.leash.personal.ui.design.GlassSource
+import dev.leash.personal.ui.design.Leash
+import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LocalReduceMotion
+import dev.leash.personal.ui.design.Motion
+import dev.leash.personal.ui.design.SpaceBackground
+import dev.leash.personal.ui.design.Spinner
+import dev.leash.personal.ui.design.components.BottomActions
+import dev.leash.personal.ui.design.components.ButtonSize
+import dev.leash.personal.ui.design.components.ButtonStyle
+import dev.leash.personal.ui.design.components.DraftText
+import dev.leash.personal.ui.design.components.EmptyState
+import dev.leash.personal.ui.design.components.LargeTitle
+import dev.leash.personal.ui.design.components.LeashButton
+import dev.leash.personal.ui.design.components.LeashMenu
+import dev.leash.personal.ui.design.components.LeashMenuItem
+import dev.leash.personal.ui.design.components.LeashRefreshBox
+import dev.leash.personal.ui.design.components.LoadingState
+import dev.leash.personal.ui.design.components.RowStatus
+import dev.leash.personal.ui.design.components.SearchField
+import dev.leash.personal.ui.design.components.SectionHeader
+import dev.leash.personal.ui.design.components.SegmentedControl
+import dev.leash.personal.ui.design.components.SessionRow
+import dev.leash.personal.ui.design.components.ShowAllRow
+import dev.leash.personal.ui.design.components.TopBar
+import dev.leash.personal.ui.design.components.UnreadDot
+import dev.leash.personal.ui.design.components.groupItem
+import dev.leash.personal.ui.design.softBottomEdge
+import dev.leash.personal.ui.design.tabular
 import kotlinx.coroutines.launch
 
 /** The conversation list (ios SessionListView): conversations waiting on you first, then one collapsible section per folder. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionListScreen(
     model: AppModel,
@@ -106,6 +99,7 @@ fun SessionListScreen(
     onSettings: () -> Unit,
 ) {
     val state by model.state.collectAsStateWithLifecycle()
+    val c = Leash.colors
     val scope = rememberCoroutineScope()
     var search by rememberSaveable { mutableStateOf("") }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -123,136 +117,129 @@ fun SessionListScreen(
     }
     val expanded = remember(expandedRaw) { expandedRaw?.split('\n')?.filter { it.isNotEmpty() }?.toSet() ?: emptySet() }
     fun setExpanded(ids: Set<String>) { expandedRaw = ids.sorted().joinToString("\n") }
+    val showAgent = multiAgent && agentFilter == "all"
 
-    val scroll = TopAppBarDefaults.pinnedScrollBehavior()
-    Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        containerColor = Color.Transparent,
-        topBar = {
-            if (searchOpen) SearchBar(search, { search = it }, onClose = { searchOpen = false; search = "" })
-            else TopAppBar(
-                title = {
-                    Column {
-                        Text(stringResource(R.string.app_name_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        if (state.settingsLoaded && state.isConfigured) {
-                            val st = connectionStatus(state)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                StatusDot(st.kind.color(), 7.dp)
-                                Spacer(Modifier.width(6.dp))
-                                Text(st.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val list = rememberLazyListState()
+    // the large title is the first item: once it has scrolled away the inline title fades in; the top edge shows as soon as anything is under the bar
+    val titleGone by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 120 } }
+    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    GlassScope(Modifier.fillMaxSize()) {
+        LeashRefreshBox(
+            refreshing = state.sessionsLoading && state.sessions.isNotEmpty(),
+            onRefresh = { scope.launch { model.refreshSessions() } },
+            modifier = Modifier.fillMaxSize(),
+            indicatorTop = top + 56.dp,
+        ) {
+            GlassSource(Modifier.fillMaxSize()) {
+                // the page itself is part of what the glass blurs, or the bands would show a flat colour over the gradient
+                SpaceBackground()
+                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(top = top + 60.dp, bottom = bottom + 96.dp)) {
+                    item("title") {
+                        val sub = if (state.settingsLoaded && state.isConfigured) connectionStatus(state).text else null
+                        LargeTitle(stringResource(R.string.app_name_title), subtitle = sub)
+                    }
+                    if (multiAgent) item("agent-filter") {
+                        val options = listOf("all" to stringResource(R.string.all)) + state.agents.map { it.id to it.label }
+                        SegmentedControl(
+                            options.map { it.second }, options.indexOfFirst { it.first == agentFilter }.coerceAtLeast(0), { agentFilter = options[it].first },
+                            Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp).fillMaxWidth(),
+                        )
+                    }
+                    item("status") { StatusCard(state, model, onSettings) }
+                    if (needsYou.isNotEmpty()) {
+                        item("needs-you-header") { SectionHeader(stringResource(R.string.needs_you), Modifier.padding(top = 12.dp), icon = LeashIcons.needsYou) }
+                        conversationItems(needsYou, "n:", state, model, showAgent, onOpenChat)
+                    }
+                    val ids = groups.map { it.id }.toSet()
+                    groups.forEach { g ->
+                        val open = searching || g.id in expanded
+                        item("h:" + g.id) {
+                            FolderHeader(
+                                g, state, model, showAgent, open, searching,
+                                onToggle = { if (!searching) setExpanded(if (g.id in expanded) expanded - g.id else expanded + g.id) },
+                                onCollapseAll = { setExpanded(expanded - ids) }, onExpandAll = { setExpanded(expanded + ids) },
+                            )
+                        }
+                        if (open) {
+                            val (shown, hidden) = SessionGrouping.visibleItems(g, searching, state.running)
+                            conversationItems(shown, "r:", state, model, showAgent, onOpenChat, lastIsEnd = hidden == 0)
+                            if (hidden > 0) item("more:" + g.id) {
+                                ShowAllRow(stringResource(R.string.show_all_count, g.items.size), { onOpenFolder(g.agent, g.folder) }, Modifier.groupItem(first = false, last = true))
                             }
                         }
                     }
-                },
-                actions = {
-                    if (state.sessions.isNotEmpty()) IconButton(onClick = { searchOpen = true }) { Icon(Icons.Filled.Search, stringResource(R.string.search)) }
-                    IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.settings)) }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
-                scrollBehavior = scroll,
-            )
-        },
-        floatingActionButton = {
-            if (state.isConfigured) ExtendedFloatingActionButton(
-                onClick = { if (state.agentReady) onNew() },
-                icon = { Icon(Icons.Filled.Add, null) },
-                text = { Text(stringResource(R.string.new_conversation)) },
-                containerColor = if (state.agentReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = if (state.agentReady) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-    ) { padding ->
-        PullToRefreshBox(
-            isRefreshing = state.sessionsLoading && state.sessions.isNotEmpty(),
-            onRefresh = { scope.launch { model.refreshSessions() } },
-            modifier = Modifier.padding(padding).fillMaxSize(),
+                    val empty = state.isConfigured && filtered.isEmpty()
+                    if (empty && searching) item("no-match") {
+                        EmptyState(LeashIcons.search, stringResource(R.string.no_matches), Modifier.padding(top = 48.dp), message = stringResource(R.string.no_matches_detail, search))
+                    } else if (empty && state.sessions.isNotEmpty()) item("no-agent-rows") {
+                        EmptyState(LeashIcons.note, stringResource(R.string.no_conversations), Modifier.padding(top = 48.dp))
+                    } else if (empty && state.agentReady && !state.sessionsLoading) item("none") {
+                        EmptyState(
+                            LeashIcons.note, stringResource(R.string.no_conversations), Modifier.padding(top = 48.dp),
+                            message = stringResource(R.string.no_conversations_detail),
+                            actionLabel = stringResource(R.string.new_conversation), onAction = onNew,
+                        )
+                    } else if (empty && state.sessionsLoading && state.sessions.isEmpty()) item("loading") {
+                        LoadingState(stringResource(R.string.starting), Modifier.padding(top = 64.dp))
+                    }
+                }
+            }
+        }
+        TopBar(
+            title = stringResource(R.string.app_name_title),
+            titleVisible = titleGone,
+            edgeVisible = scrolled,
+            navigation = {
+                val st = if (state.isConfigured) connectionStatus(state) else null
+                GlassCircleButton(
+                    LeashIcons.server, stringResource(R.string.settings), onSettings,
+                    badge = st?.let { s -> { Box(Modifier.padding(4.dp).size(9.dp).clip(CircleShape).background(s.kind.color())) } },
+                )
+            },
+        )
+        // the bottom: content fades out under the actions; search turns the circles into a field above the keyboard
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 96.dp).softBottomEdge())
+        val reduced = LocalReduceMotion.current
+        AnimatedVisibility(
+            visible = !searchOpen && state.isConfigured, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = Motion.popEnter(reduced), exit = Motion.popExit(reduced),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
-                if (multiAgent) item("agent-filter") {
-                    AgentFilter(state.agents, agentFilter) { agentFilter = it }
-                }
-                item("status") { StatusCard(state, model, onSettings) }
-                if (needsYou.isNotEmpty()) {
-                    item("needs-you-header") {
-                        Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.PanTool, null, Modifier.size(16.dp), tint = LeashTheme.colors.attention)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(R.string.needs_you), style = MaterialTheme.typography.titleSmall, color = LeashTheme.colors.attention)
-                        }
-                    }
-                    items(needsYou, key = { "n:" + it.id }) { s -> SessionItem(s, state, model, multiAgent && agentFilter == "all", onOpenChat) }
-                }
-                val ids = groups.map { it.id }.toSet()
-                groups.forEach { g ->
-                    val open = searching || g.id in expanded
-                    item("h:" + g.id) {
-                        FolderHeader(g, state, model, multiAgent && agentFilter == "all", open,
-                            onToggle = { if (!searching) setExpanded(if (g.id in expanded) expanded - g.id else expanded + g.id) },
-                            onCollapseAll = { setExpanded(expanded - ids) }, onExpandAll = { setExpanded(expanded + ids) }, searching = searching)
-                    }
-                    if (open) {
-                        val (shown, hidden) = SessionGrouping.visibleItems(g, searching, state.running)
-                        items(shown, key = { "r:" + it.id }) { s -> SessionItem(s, state, model, multiAgent && agentFilter == "all", onOpenChat) }
-                        if (hidden > 0) item("more:" + g.id) {
-                            Text(
-                                stringResource(R.string.show_all_count, g.items.size),
-                                Modifier.fillMaxWidth().clickable { onOpenFolder(g.agent, g.folder) }.padding(horizontal = 20.dp, vertical = 14.dp),
-                                color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall,
-                            )
-                            HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                    }
-                }
-                val empty = state.isConfigured && filtered.isEmpty()
-                if (empty && searching) item("no-match") { EmptyState(Icons.Filled.Search, stringResource(R.string.no_matches), stringResource(R.string.no_matches_detail, search)) }
-                else if (empty && state.sessions.isNotEmpty()) item("no-agent-rows") { EmptyState(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.no_conversations), null) }
-                else if (empty && state.agentReady && !state.sessionsLoading) item("none") {
-                    EmptyState(Icons.Outlined.ChatBubbleOutline, stringResource(R.string.no_conversations), stringResource(R.string.no_conversations_detail))
-                } else if (empty && state.sessionsLoading && state.sessions.isEmpty()) item("loading") {
-                    Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { ActivitySpinner(28.dp) }
-                }
+            BottomActions(
+                start = if (state.sessions.isNotEmpty()) ({ GlassCircleButton(LeashIcons.search, stringResource(R.string.search), { searchOpen = true }, size = 52.dp) }) else null,
+                end = {
+                    GlassCircleButton(
+                        LeashIcons.squareAndPencil, stringResource(R.string.new_conversation), { if (state.agentReady) onNew() },
+                        size = 52.dp, tint = if (state.agentReady) c.accentControl else c.textTertiary, enabled = state.agentReady,
+                    )
+                },
+            )
+        }
+        AnimatedVisibility(
+            visible = searchOpen, modifier = Modifier.align(Alignment.BottomCenter),
+            enter = Motion.popEnter(reduced), exit = Motion.popExit(reduced),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SearchField(search, { search = it }, stringResource(R.string.search_conversations), stringResource(R.string.clear), Modifier.weight(1f))
+                GlassCircleButton(LeashIcons.close, stringResource(R.string.close_search), { searchOpen = false; search = "" }, size = 48.dp)
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun SearchBar(value: String, onChange: (String) -> Unit, onClose: () -> Unit) {
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    TopAppBar(
-        navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.close_search)) } },
-        title = {
-            TextField(
-                value, onChange, Modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
-                placeholder = { Text(stringResource(R.string.search_conversations)) },
-                colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(),
-            )
-        },
-        actions = { if (value.isNotEmpty()) IconButton(onClick = { onChange("") }) { Icon(Icons.Filled.Close, stringResource(R.string.clear)) } },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-    )
-}
-
-@Composable
-private fun AgentFilter(agents: List<AgentInfo>, selected: String, onSelect: (String) -> Unit) {
-    val options = listOf("all" to stringResource(R.string.all)) + agents.map { it.id to it.label }
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        options.forEachIndexed { i, (id, label) ->
-            SegmentedButton(selected == id, { onSelect(id) }, SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label, maxLines = 1) }
-        }
-    }
-}
-
-@Composable
-private fun EmptyState(icon: ImageVector, title: String, detail: String?, action: (@Composable () -> Unit)? = null) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 56.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.outline)
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        action?.invoke()
+/** Rows of one grouped card, split into lazy items. The card ends with the last row unless a "Show all" row follows ([lastIsEnd]). */
+internal fun LazyListScope.conversationItems(
+    rows: List<SessionSummary>, keyPrefix: String, state: AppState, model: AppModel, showAgent: Boolean,
+    onOpen: (String) -> Unit, lastIsEnd: Boolean = true,
+) {
+    itemsIndexed(rows, key = { _, s -> keyPrefix + s.id }) { i, s ->
+        val last = i == rows.lastIndex && lastIsEnd
+        ConversationItem(s, state, model, showAgent, onOpen, Modifier.groupItem(first = i == 0, last = last), separator = !last)
     }
 }
 
@@ -260,24 +247,23 @@ private fun EmptyState(icon: ImageVector, title: String, detail: String?, action
 @Composable
 private fun StatusCard(state: AppState, model: AppModel, onSettings: () -> Unit) {
     if (!state.settingsLoaded) return
-    val scheme = MaterialTheme.colorScheme
+    val c = Leash.colors
     if (!state.isConfigured) {
-        Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainer) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.QrCodeScanner, null, tint = scheme.primary)
-                    Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.pair_with_bridge), style = MaterialTheme.typography.titleMedium)
-                }
-                Text(stringResource(R.string.pair_with_bridge_detail), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
-                Button(onClick = onSettings) { Text(stringResource(R.string.settings)) }
-            }
+        Column(
+            Modifier.padding(top = 16.dp).groupItem(first = true, last = true).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(LeashIcons.scan, null, Modifier.size(28.dp), tint = c.accent)
+            Text(stringResource(R.string.pair_with_bridge), style = Leash.type.title3, color = c.textPrimary)
+            Text(stringResource(R.string.pair_with_bridge_detail), style = Leash.type.subheadline, color = c.textSecondary)
+            Spacer(Modifier.height(4.dp))
+            LeashButton(stringResource(R.string.settings), onSettings, Modifier.fillMaxWidth())
         }
         return
     }
     val failed = state.connection as? LinkState.Failed
     if (failed != null) {
-        Notice(Icons.Filled.ErrorOutline, failed.reason, scheme.error)
+        Notice(LeashIcons.failed, failed.reason, c.danger)
         return
     }
     if (state.isConnected) {
@@ -285,132 +271,114 @@ private fun StatusCard(state: AppState, model: AppModel, onSettings: () -> Unit)
             if (state.agentState == "ready") emptyList() else listOf(AgentInfo("agy", "Antigravity", state.agentState, state.agentError))
         } else state.agents.filter { !it.isReady }
         if (down.isNotEmpty()) {
-            Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = MaterialTheme.shapes.medium, color = scheme.surfaceContainer) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    down.forEach { a ->
-                        Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            if (a.state == "starting") ActivitySpinner(18.dp) else AgentIcon(a.id, 18.dp)
-                            Column(Modifier.weight(1f)) {
-                                Text(if (a.state == "starting") stringResource(R.string.agent_starting, a.label) else stringResource(R.string.agent_not_running, a.label), style = MaterialTheme.typography.bodyMedium)
-                                a.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-                            }
-                            if (a.state == "down") OutlinedButton(onClick = { model.restartAgent(a.id) }) { Text(stringResource(R.string.restart)) }
+            Column(Modifier.padding(top = 16.dp).groupItem(first = true, last = true).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                down.forEach { a ->
+                    Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (a.state == "starting") Spinner(size = 18.dp) else AgentIcon(a.id, 18.dp)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (a.state == "starting") stringResource(R.string.agent_starting, a.label) else stringResource(R.string.agent_not_running, a.label),
+                                style = Leash.type.body, color = c.textPrimary,
+                            )
+                            a.error?.let { Text(it, style = Leash.type.footnote, color = c.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis) }
                         }
+                        if (a.state == "down") LeashButton(stringResource(R.string.restart), { model.restartAgent(a.id) }, style = ButtonStyle.Tinted, size = ButtonSize.Small)
                     }
                 }
             }
             return
         }
     }
-    state.sessionsError?.let { Notice(Icons.Filled.ErrorOutline, it, LeashTheme.colors.attention) }
+    state.sessionsError?.let { Notice(LeashIcons.warning, it, c.attention) }
 }
 
 @Composable
 private fun Notice(icon: ImageVector, text: String, tint: Color) {
-    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(icon, null, tint = tint)
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = tint)
-        }
+    Row(
+        Modifier.padding(top = 16.dp).groupItem(first = true, last = true).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(icon, null, Modifier.size(20.dp), tint = tint)
+        Text(text, style = Leash.type.subheadline.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Medium), color = Leash.colors.textPrimary)
     }
 }
 
 /** The collapsed header also says how many conversations the folder holds and whether one is working. Long-press: collapse or expand all. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderHeader(
     g: FolderGroup, state: AppState, model: AppModel, showAgent: Boolean, open: Boolean, searching: Boolean,
     onToggle: () -> Unit, onCollapseAll: () -> Unit, onExpandAll: () -> Unit,
 ) {
+    val c = Leash.colors
     val (title, general) = SessionGrouping.folderTitle(g.folder, state.home(g.agent))
     val running = g.items.count { it.running || it.id in state.running }
     val unread = g.items.count { model.isUnread(it) }
     var menu by remember { mutableStateOf(false) }
-    Box {
-        Row(
-            Modifier.fillMaxWidth().combinedClickable(onClick = onToggle, onLongClick = { if (!searching) menu = true }).padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (showAgent) { AgentIcon(g.agent, 14.dp); Spacer(Modifier.width(8.dp)) }
-            Icon(if (general) Icons.Filled.Inbox else Icons.Filled.Folder, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(8.dp))
-            Text(if (general) stringResource(R.string.general) else title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!open) {
-                if (running > 0) { ActivitySpinner(12.dp); Spacer(Modifier.width(8.dp)) }
-                if (unread > 0) {
-                    StatusDot(MaterialTheme.colorScheme.primary, 7.dp, Modifier.semantics { contentDescription = "$unread" })
-                    Spacer(Modifier.width(8.dp))
+    Box(Modifier.padding(top = 12.dp)) {
+        SectionHeader(
+            if (general) stringResource(R.string.general) else title,
+            icon = if (general) LeashIcons.general else LeashIcons.folder,
+            leading = if (showAgent) ({ AgentIcon(g.agent, 14.dp) }) else null,
+            expanded = open,
+            onClick = onToggle,
+            onLongClick = { if (!searching) menu = true },
+            trailing = if (open) null else ({
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (running > 0) Spinner(size = 12.dp)
+                    if (unread > 0) UnreadDot(true, Modifier.semantics { contentDescription = "$unread" }, size = 7.dp)
+                    Text(g.items.size.toString(), style = Leash.type.subheadline.tabular(), color = c.textTertiary)
                 }
-                Text(g.items.size.toString(), style = MaterialTheme.typography.bodyMedium, color = LeashTheme.colors.textTertiary)
-                Spacer(Modifier.width(4.dp))
-            }
-            val rotation by androidx.compose.animation.core.animateFloatAsState(if (open) 0f else -90f, label = "chevron")
-            Icon(Icons.Filled.ExpandMore, null, Modifier.size(20.dp).graphicsRotate(rotation), tint = LeashTheme.colors.textTertiary)
-        }
-        DropdownMenu(menu, { menu = false }) {
-            DropdownMenuItem(text = { Text(stringResource(R.string.collapse_all)) }, onClick = { menu = false; onCollapseAll() })
-            DropdownMenuItem(text = { Text(stringResource(R.string.expand_all)) }, onClick = { menu = false; onExpandAll() })
-        }
-    }
-}
-
-private fun Modifier.graphicsRotate(deg: Float) = this.then(Modifier.graphicsLayer { rotationZ = deg })
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SessionItem(s: SessionSummary, state: AppState, model: AppModel, showAgent: Boolean, onOpen: (String) -> Unit) {
-    val unread = model.isUnread(s)
-    var menu by remember { mutableStateOf(false) }
-    Box {
-        SessionRow(
-            s, showAgent, state.drafts[s.id], unread, running = s.running || s.id in state.running,
-            modifier = Modifier.combinedClickable(onClick = { onOpen(s.id) }, onLongClick = { menu = true }),
+            }),
         )
-        DropdownMenu(menu, { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(stringResource(if (unread) R.string.mark_read else R.string.mark_unread)) },
-                onClick = { menu = false; model.setUnread(s.id, !unread) },
-            )
+        LeashMenu(menu, { menu = false }) {
+            LeashMenuItem(stringResource(R.string.collapse_all), { menu = false; onCollapseAll() })
+            LeashMenuItem(stringResource(R.string.expand_all), { menu = false; onExpandAll() })
         }
     }
-    HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/** One conversation: the unread dot in a gutter every row keeps, the title, "Draft: …" and the age, and a status glyph. */
+/** One conversation row with its long-press menu (mark as read / unread). */
 @Composable
-fun SessionRow(s: SessionSummary, showAgent: Boolean, draft: String?, unread: Boolean, running: Boolean, modifier: Modifier = Modifier) {
-    val scheme = MaterialTheme.colorScheme
-    val attention = LeashTheme.colors.attention
-    Row(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(9.dp).background(if (unread) scheme.primary else Color.Transparent, CircleShape).semantics { if (unread) contentDescription = "Unread" })
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(s.displayTitle, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (showAgent) { AgentIcon(s.agent, 12.dp); Spacer(Modifier.width(5.dp)) }
-                val first = draft?.lineSequence()?.firstOrNull()?.trim()?.take(120)
-                if (!first.isNullOrEmpty()) {
-                    Text(stringResource(R.string.draft_prefix, first), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    if (s.updatedAtMs != null) Text(" · ", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-                }
-                s.updatedAtMs?.let {
-                    Text(
-                        System.currentTimeMillis().let { now -> DateUtils.getRelativeTimeSpanString(minOf(it, now), now, DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE).toString() },   // a clock a little ahead of the bridge's must not read "in 1 minute"
-                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
-                    )
-                }
-                s.lockedBy?.let {
-                    Text(" · " + stringResource(R.string.open_in_other, it), style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        when {
-            s.pendingCount > 0 -> Box(Modifier.size(26.dp).background(attention.copy(alpha = 0.15f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.PanTool, stringResource(R.string.needs_you), Modifier.size(14.dp), tint = attention)
-            }
-            running -> ActivitySpinner(18.dp)
-            s.lockedBy != null -> Icon(Icons.Filled.Lock, stringResource(R.string.locked_on_computer), Modifier.size(18.dp), tint = LeashTheme.colors.textTertiary)
+internal fun ConversationItem(s: SessionSummary, state: AppState, model: AppModel, showAgent: Boolean, onOpen: (String) -> Unit, modifier: Modifier, separator: Boolean) {
+    val unread = model.isUnread(s)
+    val running = s.running || s.id in state.running
+    var menu by remember { mutableStateOf(false) }
+    Box(modifier) {
+        SessionRow(
+            s.displayTitle,
+            unread = unread,
+            status = when {
+                s.pendingCount > 0 -> RowStatus.NeedsYou
+                running -> RowStatus.Running
+                s.lockedBy != null -> RowStatus.Locked
+                else -> RowStatus.None
+            },
+            last = !separator,
+            onClick = { onOpen(s.id) },
+            onLongClick = { menu = true },
+        ) { ConversationMeta(s, showAgent, state.drafts[s.id]) }
+        LeashMenu(menu, { menu = false }) {
+            LeashMenuItem(stringResource(if (unread) R.string.mark_read else R.string.mark_unread), { menu = false; model.setUnread(s.id, !unread) })
         }
     }
+}
+
+/** The row's meta line: agent glyph, "Draft: …" or the age, and who holds it. */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ConversationMeta(s: SessionSummary, showAgent: Boolean, draft: String?) {
+    if (showAgent) AgentIcon(s.agent, 12.dp)
+    val first = draft?.lineSequence()?.firstOrNull()?.trim()?.take(120)
+    if (!first.isNullOrEmpty()) {
+        val label = stringResource(R.string.draft_prefix, "").trim()
+        DraftText(label, first, Modifier.weight(1f, fill = false))
+        if (s.updatedAtMs != null) Text("·")
+    }
+    s.updatedAtMs?.let { Text(relativeAge(it), maxLines = 1) }
+    s.lockedBy?.let { Text("· " + stringResource(R.string.open_in_other, it), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+}
+
+/** "5 min. ago" in the system language; a phone clock a little behind the bridge's must not read "in 1 minute". */
+internal fun relativeAge(ms: Long): String {
+    val now = System.currentTimeMillis()
+    return DateUtils.getRelativeTimeSpanString(minOf(ms, now), now, DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE).toString()
 }

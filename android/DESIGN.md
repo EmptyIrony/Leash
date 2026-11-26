@@ -312,21 +312,22 @@ spinner; locked = lock.fill tertiary; else a 12 dp chevron.right tertiary. Min h
 "Show all (15)" row: body accent + chevron.
 
 **Segmented control.** Capsule track `textPrimary @ 6%` (dark: white @ 8%), 32 dp high (minimum; 48 dp touch
-target), 2 dp padding, so the thumb is 28 dp; thumb is a capsule in bgRaised (dark: #2A2D3A) with the thumb shadow, sliding between segments with the disclose spring;
+target), 2 dp padding, so the thumb is 28 dp; thumb is a capsule in bgRaised (dark: #3A3D4B) with the thumb shadow, sliding between segments with the disclose spring;
 labels subheadline Medium, selected textPrimary, others textSecondary. No check marks, no outline.
 
 **Buttons.**
-- *Prominent*: accentControl fill, white text body SemiBold, capsule, height 50 dp (large) / 44 dp (regular) /
+- *Prominent*: accentControl fill, `onAccent` text (white in light, #07080D in dark: white on the light dark-mode accent is 2.7:1) body SemiBold, capsule, height 50 dp (large) / 44 dp (regular) /
   32 dp (small, subheadline SemiBold, for "Send Now" in the queue tray).
 - *Tinted* (iOS bordered): `textPrimary @ 6%` fill, accent text; *destructive tinted*: danger @ 12% fill, danger text.
 - *Plain*: accent text only, 48 dp hit area (settings actions like "Save & connect", "Try Again").
 - *Glass circle*: 44 dp drawn / 48 dp touch (toolbar), 52 dp (list bottom actions), 36 dp (scroll-to-bottom), glass
   surface, 22/18 dp icon textPrimary.
-- *Send / stop*: one 34 dp circle that morphs (quick spring): send = accent fill + arrow.up white (shell: shell fill +
-  return glyph); disabled = hairline fill + tertiary glyph, scale 0.92; stop = textPrimary fill + stop.fill in bgBase.
+- *Send / stop*: one 34 dp circle that morphs (quick spring): send = accent fill + arrow.up in `onAccent` (shell: shell fill +
+  return glyph, same ink); disabled = hairline fill + tertiary glyph, scale 0.92; stop = textPrimary fill + stop.fill in bgBase.
   While running with a draft, a 28 dp secondary stop (hairline 1.5 dp ring, stop glyph secondary) pops out of the
   send circle's leading side (trailingPop). Long-press on send while running = "Interrupt and send" menu.
-- Disabled = 40% alpha (iOS dims to 0.5 on the composer).
+- Disabled = 40% alpha (iOS dims to 0.5 on the composer); a disabled prominent button turns neutral instead
+  (hairline fill, textTertiary label).
 
 **Chips (composer row).** Glass capsule 32 dp, 12 dp horizontal padding, 14 dp icon + footnote Medium text + 9 dp
 chevron.down at 60% alpha; tints: turbo (approve-all), running (plan); quota chip shows a 14 dp ring + "Week 77%"

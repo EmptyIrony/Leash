@@ -129,7 +129,7 @@ data class LeashDesignColors(
                 sheetEdge = if (dark) Color.White.copy(alpha = 0.08f) else Color.Transparent,
                 panel = if (dark) Color(0xFF1C1F2B) else Color.White,
                 segmentTrack = if (dark) Color.White.copy(alpha = 0.08f) else ink.copy(alpha = 0.06f),
-                segmentThumb = if (dark) Color(0xFF2A2D3A) else Color.White,
+                segmentThumb = if (dark) Color(0xFF3A3D4B) else Color.White,
                 shadow = if (dark) Color.Black else Color(0xFF1E2250),
                 scrim = if (dark) Color.Black.copy(alpha = 0.5f) else Color(0xFF0B1020).copy(alpha = 0.25f),
                 glint = lerp(accent, ink, 0.5f),
