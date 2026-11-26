@@ -32,7 +32,7 @@ node src/index.mjs rotate     # new token (re-pair the phone)
 
 Config lives in `~/.leash/config.json` (`port`, `token`, `bind`, optionally `agents`; `%USERPROFILE%\.leash` on Windows).
 **Agents are detected**: without `agents` in the config the bridge starts what it finds, Antigravity (`agy` on PATH or in the usual install
-folders) and a local Claude Code adapter (see below), and says nothing about the rest. Once `agents` is in the file (`add-claude`, `add-agy`,
+folders) and a local Claude Code adapter (see below). One it does not find is logged once at startup with an install hint and is not shown in the app. Once `agents` is in the file (`add-claude`, `add-agy`,
 `remove-claude` write it) the list is authoritative: an agent whose command is missing is reported once in the log and shows in the app as
 down with the reason and what to install (`Restart` in the app looks again); it is never restarted in a loop.
 `bind: "auto"` listens on 127.0.0.1 plus the Mac's Tailscale (100.x) and 192.168.x LAN addresses (checked again every 30 s); with neither up it falls back to `0.0.0.0`. The pairing QR uses the Tailscale name when Tailscale is up, else the LAN IP. On the LAN the token travels in plain `ws://`. Set `bind` to `"127.0.0.1,100.x.y.z"` to pin it.
@@ -50,7 +50,7 @@ For a colleague whose machine has only Antigravity (`agy`) and no Claude Code, o
 6. Keep it running: `bash scripts/install-launchagent.sh` on macOS (a systemd user unit or `pm2` on Linux).
 
 What differs on a machine without the author's setup:
-* Only `agy` found: only `agy` runs; nothing about Claude Code is shown in the app. `agy acp` gets `--app-data-dir antigravity` only when `~/.gemini/antigravity` (the desktop app's data) exists, otherwise plain `agy acp`. If `agy` answers *Authentication required* with that flag, set the args to `["acp"]` (agent `args` in the config; see google-antigravity/antigravity-cli#1672).
+* Only `agy` found: only `agy` runs; nothing about Claude Code is shown in the app (the log says once that it was not detected). If nothing at all is found, the app shows one agent, `agy`, as down with the install hint. `agy acp` gets `--app-data-dir antigravity` only when `~/.gemini/antigravity` (the desktop app's data) exists, otherwise plain `agy acp`. If `agy` answers *Authentication required* with that flag, set the args to `["acp"]` (agent `args` in the config; see google-antigravity/antigravity-cli#1672).
 * Quota (`agy` status line) needs `script`; the busy lock needs `lsof`, `ps` and `sqlite3` and the desktop data dir. A missing one turns that feature off with one log line, nothing else changes.
 * Claude Code on the same computer: `npm install --prefix ~/.leash/claude-acp @agentclientprotocol/claude-agent-acp` (the claude CLI must be installed and logged in), then restart the bridge; it is found automatically (also `$LEASH_CLAUDE_ACP_DIR`, `bridge/node_modules`, or a global `claude-agent-acp`). `add-claude` with no arguments pins it in the config. Nothing is ever fetched by `npx`.
 * Claude Code on another host needs explicit arguments, see "Claude Code" below.
@@ -76,9 +76,10 @@ First-run checklist on the Windows PC (untested on real Windows so far):
 4. Stop in the app, then check Task Manager: no `agy` / `cmd.exe` left behind (`taskkill /T` path).
 5. `!dir` or `!Get-Location` in a conversation runs in PowerShell in that folder; non-ASCII output (Chinese) is intact.
 6. Attach a photo from the phone: it lands in `%USERPROFILE%\.leash\uploads\<id>\` and the agent can open it (`file:///C:/...`).
-7. If the agent writes an HTML widget (`<agent-embed src="file:///C:/Users/...`) the app shows it.
-8. `install-windows-task.ps1`: after logging off and on, the phone reconnects without a console window; `%USERPROFILE%\.leash\bridge.log` has entries; kill `node.exe` and it comes back within a minute or two.
-9. Bark: `node src\index.mjs bark <key>` sends a test push.
+7. `!echo "a b"` (a command with double quotes) prints a b.
+8. If the agent writes an HTML widget (`<agent-embed src="file:///C:/Users/...`) the app shows it.
+9. `install-windows-task.ps1`: after logging off and on, the phone reconnects without a console window; `%USERPROFILE%\.leash\bridge.log` has entries; kill `node.exe` and it comes back within a minute or two.
+10. Bark: `node src\index.mjs bark <key>` sends a test push.
 
 ### Notifications (Bark)
 

@@ -180,6 +180,7 @@ const { createServer } = await import('./server.mjs');
 const plan = planAgents(cfg, d);
 const logged = new Set();
 const logOnce = msg => { if (!logged.has(msg)) { logged.add(msg); log(msg); } };
+for (const a of plan.absent) log('not detected: ' + a.id + ' (' + a.label + '). ' + a.hint);
 log(plan.explicit ? 'agents from config: ' + plan.agents.map(a => a.id).join(', ') : 'no "agents" in config; detected: ' + plan.agents.map(a => a.id + (a.ok ? '' : ' (not found)')).join(', '));
 
 const hubs = plan.agents.map(p => {

@@ -246,21 +246,30 @@ test('index.mjs serve: explicit config with a missing agent -> reported once, sh
   } finally { p.child.kill('SIGTERM'); await p.done; }
 });
 
-test('index.mjs: fresh machine (empty home, PATH without agents) -> add-claude local writes no personal paths; remote needs explicit args; doctor exits 1 and writes nothing', async () => {
+test('index.mjs: doctor writes nothing and exits 1 when no agent can run; add-claude is local by default, remote needs explicit args', async () => {
+  // what the machine has installed is not controlled here (PATH is only part of the search), so the assertions hold either way
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-fresh-'));
-  const env = { LEASH_HOME: path.join(home, '.leash'), HOME: home, USERPROFILE: home, PATH: path.dirname(process.execPath), LEASH_AGENT_CMD: '', LEASH_PORT: String(await freePort()) };
+  const env = { LEASH_HOME: path.join(home, '.leash'), HOME: home, USERPROFILE: home, LEASH_AGENT_CMD: '', LEASH_PORT: String(await freePort()) };
   const doctor = await runIndex(['doctor'], env).done;
-  assert.equal(doctor.code, 1, doctor.out);
-  assert.match(doctor.out, /\[missing\]\s+agy/);
+  assert.match(doctor.out, /Leash bridge doctor/);
   assert.equal(fs.existsSync(path.join(home, '.leash', 'config.json')), false, 'doctor must not create the config');
   const bad = await runIndex(['add-claude', '--fn', 'ubuntu'], env).done;
   assert.equal(bad.code, 2); assert.match(bad.out, /--repo/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(home, '.leash', 'config.json'), 'utf8')).agents, undefined, 'a refused add-claude writes no agents');
   const add = await runIndex(['add-claude'], env).done;
   assert.equal(add.code, 0, add.out);
-  const saved = JSON.parse(fs.readFileSync(path.join(home, '.leash', 'config.json'), 'utf8'));
-  assert.deepEqual(saved.agents, [localClaudeEntry()]);
-  assert.match(add.out, /Not usable yet: Claude Code adapter not found/);
-  assert.equal(fs.readFileSync(path.join(home, '.leash', 'config.json'), 'utf8').includes('/config'), false);
+  const raw = fs.readFileSync(path.join(home, '.leash', 'config.json'), 'utf8');
+  assert.deepEqual(JSON.parse(raw).agents.at(-1), localClaudeEntry());
+  assert.equal(raw.includes('/config/workspace') || raw.includes('ubuntu'), false);
+});
+
+test('index.mjs doctor: exit 1 and the reason when the configured agent is not installed', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'leash-doc-'));
+  fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ token: 't', port: await freePort(), bind: '127.0.0.1', agents: [{ id: 'agy', command: path.join(home, 'no-agy'), args: ['acp'] }] }));
+  const r = await runIndex(['doctor'], { LEASH_HOME: home, HOME: home, USERPROFILE: home }).done;
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /\[missing\]\s+agy/);
+  assert.match(r.out, /Not ready yet/);
 });
 
 test('index.mjs: LEASH_LOG_FILE gets the console output too (the Windows scheduled task has no console)', async () => {
