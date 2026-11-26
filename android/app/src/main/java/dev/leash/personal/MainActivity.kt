@@ -1,10 +1,13 @@
 package dev.leash.personal
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.LeashLink
 import dev.leash.personal.ui.LeashRoot
@@ -12,11 +15,14 @@ import dev.leash.personal.ui.theme.LeashTheme
 
 class MainActivity : ComponentActivity() {
     private val model: AppModel get() = (application as LeashApplication).model
+    private val app: LeashApplication get() = application as LeashApplication
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        (application as LeashApplication).hooks.view = window.decorView
+        app.hooks.view = window.decorView
+        app.hooks.permissionAsker = { if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
         // a link that started the activity; after a recreation it was handled already
         if (savedInstanceState == null) handleLink(intent)
         setContent {
@@ -32,17 +38,22 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        (application as LeashApplication).hooks.run { if (view === window.decorView) view = null }
+        app.hooks.run {
+            if (view === window.decorView) { view = null; permissionAsker = null }
+        }
         super.onDestroy()
     }
 
     override fun onStart() {
         super.onStart()
         model.sceneChanged(true)
+        app.background.sceneChanged(true)
     }
 
     override fun onStop() {
         model.sceneChanged(false)
+        // a rotation stops and restarts the activity: that is not leaving
+        app.background.sceneChanged(false, leaving = !isChangingConfigurations)
         super.onStop()
     }
 

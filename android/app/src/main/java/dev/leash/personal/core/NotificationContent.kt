@@ -44,7 +44,9 @@ object NotificationContent {
         val tool = ToolItem(p.params["toolCall"]["toolCallId"].string ?: p.key)
         tool.apply(p.params["toolCall"] ?: JsonNull)
         val title = if (tool.title == "Tool") p.toolTitle else tool.title
-        val body = listOfNotNull(title, tool.commandPreview?.take(300)).joinToString("\n")
+        // a title that already says the command (Claude Code names the tool call after it) needs no second line
+        val preview = tool.commandPreview?.take(300)?.takeIf { it.isNotEmpty() && !title.contains(it) }
+        val body = listOfNotNull(title, preview).joinToString("\n")
         val opts = (p.params["options"].array ?: emptyList()).mapNotNull { o -> o["optionId"].string?.let { (o["kind"].string ?: "") to it } }
         val (allow, deny) = quickAnswers(opts)
         return RequestAlert("$agentLabel needs approval", conversation, body, allow, if (allow != null) deny else null, url)

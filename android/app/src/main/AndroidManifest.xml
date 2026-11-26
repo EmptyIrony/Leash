@@ -4,6 +4,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 16 Live Updates: the ongoing notification asks to be promoted -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
@@ -22,6 +27,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -35,5 +41,20 @@
                 <data android:scheme="leash" android:host="session" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps the connection to the bridge alive while a turn works or a request waits; its notification is the ongoing one. -->
+        <service
+            android:name=".notify.LeashService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps a websocket to the user's own bridge open so agent approvals and results reach the phone" />
+        </service>
+
+        <!-- Allow / Deny buttons of a request notification: answered without opening the app. Only the system's notification can send to it. -->
+        <receiver
+            android:name=".notify.NotificationActionReceiver"
+            android:exported="false" />
     </application>
 </manifest>

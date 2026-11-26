@@ -227,4 +227,30 @@
     <string name="shown_on_computer">Added to Claude Code’s /resume</string>
     <string name="couldnt_show_on_computer">Couldn’t show it on the computer</string>
     <string name="another_needs_approval">Another conversation needs approval</string>
+
+    <!-- notifications -->
+    <string name="channel_needs_you">Needs you</string>
+    <string name="channel_needs_you_detail">An agent asks for approval or has a question</string>
+    <string name="channel_turn_finished">Turn finished</string>
+    <string name="channel_turn_finished_detail">An agent finished, stopped or hit an error</string>
+    <string name="channel_background">Working in the background</string>
+    <string name="channel_background_detail">Shown while Leash follows your agents so requests reach you with the app closed</string>
+    <string name="notif_allowed">Allowed</string>
+    <string name="notif_denied">Denied</string>
+    <string name="notif_unreachable">Couldn’t reach the bridge</string>
+    <string name="notif_answer_failed">Couldn’t send your answer</string>
+    <string name="notif_open_to_answer">Open Leash to answer.</string>
+    <string name="notif_hidden_title">Leash needs you</string>
+    <string name="notif_connected_title">Connected to the bridge</string>
+    <string name="notif_connected_text">Leash keeps listening for a little while after you leave</string>
+    <string name="notif_others">+%1$d more</string>
+    <!-- notification settings -->
+    <string name="notifications_section">Notifications</string>
+    <string name="notifications_on">On: Leash tells you when an agent needs you or finishes while you are away.</string>
+    <string name="notifications_off">Off: you won’t hear from an agent while Leash is closed.</string>
+    <string name="notifications_blocked_type">Some kinds are turned off in the system settings.</string>
+    <string name="allow_notifications">Allow notifications</string>
+    <string name="notification_settings">Notification settings</string>
+    <string name="keep_alive">Keep running while an agent works</string>
+    <string name="keep_alive_detail">Shows an ongoing notification and keeps the connection to the bridge alive after you leave the app, so approvals and results reach you.</string>
 </resources>

@@ -175,6 +175,7 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onScan: () -> Unit) {
                     OutlinedButton(onClick = { model.restartAgent(a.id) }, enabled = state.isConnected, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.restart_agent, a.label)) }
                 }
             }
+            NotificationsSection(model, state.keepAlive)
             if (model.demoAvailable) Section(null) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -199,7 +200,7 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onScan: () -> Unit) {
 }
 
 @Composable
-private fun Section(title: String?, content: @Composable () -> Unit) {
+internal fun Section(title: String?, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (title != null) Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         content()

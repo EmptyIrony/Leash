@@ -42,6 +42,13 @@ class NotificationContentTest {
         assertEquals("Edit Parser.kt", a.body)
     }
 
+    @Test fun aTitleThatAlreadyHoldsTheCommandIsNotRepeated() {
+        val p = permission(listOf(opt("o", "allow_once")), jsonObj("title" to "rm -rf build", "rawInput" to jsonObj("command" to "rm -rf build")))
+        assertEquals("rm -rf build", NotificationContent.request(p, "Claude Code", null).body)
+        val q = permission(listOf(opt("o", "allow_once")), jsonObj("title" to "Run `rm -rf build`", "rawInput" to jsonObj("command" to "rm -rf build")))
+        assertEquals("Run `rm -rf build`", NotificationContent.request(q, "Claude Code", null).body)
+    }
+
     @Test fun theCommandInTheBodyIsCapped() {
         val p = permission(listOf(opt("o", "allow_once")), jsonObj("title" to "Bash", "rawInput" to jsonObj("command" to "x".repeat(900))))
         assertEquals("Bash\n" + "x".repeat(300), NotificationContent.request(p, "Claude Code", null).body)
