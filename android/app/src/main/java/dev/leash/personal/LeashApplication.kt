@@ -3,6 +3,7 @@ package dev.leash.personal
 import android.app.Application
 import android.net.ConnectivityManager
 import android.net.Network
+import android.util.Log
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BridgeConnection
 import dev.leash.personal.core.DataStoreSettings
@@ -44,7 +45,14 @@ class LeashApplication : Application() {
     private fun watchNetwork() {
         val change = NetworkChange()
         getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { appScope.launch { if (change.available(network)) model.networkChanged() } }
+            override fun onAvailable(network: Network) {
+                appScope.launch {
+                    if (change.available(network)) {
+                        Log.i("LeashNetwork", "the default network changed: reconnecting to the bridge")
+                        model.networkChanged()
+                    }
+                }
+            }
             override fun onLost(network: Network) { appScope.launch { change.lost(network) } }
         })
     }
