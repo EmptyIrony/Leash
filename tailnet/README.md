@@ -55,7 +55,39 @@ use it with `-trimpath -ldflags "-s -w"`. If a tailscale upgrade breaks a tag, r
 
 - `./build-android.sh` needs the Android SDK with an NDK (`ANDROID_HOME`, or `ANDROID_NDK_HOME`).
   Output `build/tailnet.aar` (arm64-v8a + x86_64, API 29, Java package `dev.leash.personal.tailnet`).
-- `./build-ios.sh` runs on the Mac with Xcode. Output `../ios/Frameworks/Tailnet.xcframework`
-  (device + simulator, iOS 16), git-ignored.
+- `./build-ios.sh` runs on the Mac with Xcode (see "iOS" below). Output `../ios/Frameworks/Tailnet.xcframework`
+  (device + simulator, iOS 17) and `../ios/Frameworks/Tailnet.xcconfig`, both git-ignored.
 
 Both install `gomobile`/`gobind` from the version pinned in `go.mod` (`tools.go`).
+
+## iOS
+
+The Swift side is in `ios/Leash/Core/TailnetNode.swift` (the only file that imports the framework, behind
+`#if canImport(Tailnet)`), `TailnetController.swift` and `Views/TailnetSettingsSection.swift`.
+
+Mac steps (Xcode with the iOS and Simulator SDKs, Go on PATH, e.g. `brew install go`):
+
+    cd ~/workspace/Leash/tailnet && ./build-ios.sh      # a few minutes; builds device + simulator slices
+    open ~/workspace/Leash/ios/Leash.xcodeproj           # build and run the Leash scheme as usual
+
+In the app: Settings > Built-in Tailscale > turn on, paste a Tailscale auth key (tskey-auth-..., from the admin
+console), Save & connect. Under Advanced a Headscale control URL can be set. The bridge address is then its Tailscale
+IP or MagicDNS name.
+
+How the framework is linked: the xcframework contains static frameworks, so it is linked, not embedded, and only
+into the Leash app target. A hard file reference to a framework that is not built yet would break every build, so
+the project does not reference it. `ios/Config/Leash.xcconfig` (base configuration of the Leash target) does
+`#include? "../Frameworks/Tailnet.xcconfig"`; build-ios.sh writes that file with the per-SDK framework search paths
+and `-framework Tailnet`. Without it the app builds with the feature disabled and Settings says so.
+
+Notes:
+
+- `gomobile init` is deliberately not run: in this gomobile it installs `gobind@latest` over the pinned version, and
+  `bind` needs nothing else for iOS.
+- The 5a failure "can't find export data" (e.g. "bufio: buffer full") on `GOOS=ios` was a damaged Go build cache,
+  not the tags: with an empty `GOCACHE`, `GOOS=ios GOARCH=arm64 CGO_ENABLED=0 go build -tags "ios,$(cat build-tags.txt)" ./...`
+  succeeds in the Linux container. `go clean -cache` fixes it. The real cgo/Xcode link was not run here (no Xcode).
+- If the app's link step reports undefined symbols from the Go runtime, add the named system framework to
+  `OTHER_LDFLAGS` in build-ios.sh.
+- The node runs only while Leash is on screen, kept alive by the Live Activity audio, or doing background work
+  (`AppModel.connectionWanted`); otherwise `AppModel.backgroundWork` closes the socket and stops it.
