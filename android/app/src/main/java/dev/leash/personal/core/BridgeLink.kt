@@ -3,6 +3,8 @@ package dev.leash.personal.core
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
+typealias TunnelRoute = suspend (host: String, port: Int) -> Int?
+
 /** The state of the link to the bridge. */
 sealed interface LinkState {
     data object Idle : LinkState
@@ -41,6 +43,14 @@ interface BridgeLink {
 
     /** Leash is on screen. The bridge holds Bark pushes back only for a client on screen, so it has to hear when it is not. */
     var visible: Boolean
+
+    /**
+     * Built-in Tailscale: the loopback port that reaches host:port through the tailnet, or null to connect to the bridge
+     * directly. Asked on every attempt, because the port changes whenever the node restarts. May throw [TunnelError].
+     */
+    var route: TunnelRoute?
+        get() = null
+        set(_) {}
 
     fun configure(host: String, port: Int, token: String)
     fun connect()

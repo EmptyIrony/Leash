@@ -186,6 +186,8 @@ class AppModel(
     /** Debug builds: the scripted demo bridge. */
     private val demoLink: (() -> BridgeLink)? = null,
     var hooks: AppHooks = object : AppHooks {},
+    /** Built-in Tailscale (Settings): the bridge connection goes through the node it runs in-process. Null in tests that do not need it. */
+    val tailnet: TailnetController? = null,
 ) {
     private val _state = MutableStateFlow(AppState())
     val state: StateFlow<AppState> = _state
@@ -217,6 +219,7 @@ class AppModel(
 
     /** Loads the stored settings and, when paired (or in demo), connects. */
     fun start() {
+        tailnet?.start()
         scope.launch {
             val st = settings.load()
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
@@ -262,8 +265,15 @@ class AppModel(
     }
 
     fun reconfigure() {
+        val t = tailnet
+        if (t != null) {
+            t.configChanged()
+            // the node runs only while Leash has a reason to be connected (on screen, or the foreground service): a connection
+            // attempt is what starts it, and releaseConnection / the end of the grace stops it
+            link.route = if (t.enabled) ({ host, port -> t.proxyPort(host, port) }) else null
+        }
         link.configure(s.host, s.port, s.token)
-        if (s.isConfigured) link.connect()
+        if (s.isConfigured) link.connect() else t?.warmUp()
     }
 
     /** Switch between the real bridge and the scripted demo bridge; live state does not carry over. */
@@ -288,11 +298,30 @@ class AppModel(
         reconfigure()
     }
 
+    // MARK: built-in Tailscale (Settings)
+
+    fun setTailnetEnabled(on: Boolean) {
+        val t = tailnet ?: return
+        scope.launch { t.setEnabled(on); reconfigure() }
+    }
+
+    /** Saves the typed key (blank keeps the saved one) and control URL, and connects with them. */
+    fun saveTailnet(authKey: String, controlUrl: String) {
+        val t = tailnet ?: return
+        scope.launch { t.saveConfig(authKey, controlUrl); reconfigure() }
+    }
+
+    fun tailnetLogout() {
+        val t = tailnet ?: return
+        scope.launch { t.logout(); reconfigure() }
+    }
+
     fun pair(info: PairingInfo) = setConnection(info.host, info.port, info.token, info.name)
 
     /** Forget the bridge: no host, no token, disconnected. */
     fun unpair() {
         link.disconnect()
+        tailnet?.stop()
         resetLive()
         set { copy(host = "", token = "", bridgeName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Idle) }
         persist()
@@ -346,6 +375,7 @@ class AppModel(
     fun releaseConnection() {
         if (sceneActive || link.state == LinkState.Idle) return
         link.disconnect()
+        tailnet?.stop()
         set { copy(connection = LinkState.Idle) }
     }
 

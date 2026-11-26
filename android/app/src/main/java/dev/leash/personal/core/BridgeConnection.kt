@@ -2,6 +2,7 @@ package dev.leash.personal.core
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -39,6 +40,10 @@ class BridgeConnection(
     private var retryJob: Job? = null
     private var watchdogJob: Job? = null
     private var endpoint: Endpoint? = null
+    private var targetHost = ""
+    private var targetPort = 0
+    private var routeJob: Job? = null
+    override var route: TunnelRoute? = null
 
     override fun configure(host: String, port: Int, token: String) {
         val h = host.trim()
@@ -63,6 +68,8 @@ class BridgeConnection(
         }
         val bracketed = if (':' in h && !h.startsWith("[")) "[$h]" else h
         endpoint = Endpoint("ws://$bracketed:$port/ws", t)
+        targetHost = h.removeSurrounding("[", "]")
+        targetPort = port
     }
 
     override fun connect() {
@@ -71,6 +78,27 @@ class BridgeConnection(
         teardown(null)
         val gen = ++generation
         state = LinkState.Connecting
+        val route = route
+        if (route == null) { openSocket(ep, gen); return }
+        // With built-in Tailscale the node may have to start first (seconds); the watchdog runs only once the socket is open.
+        routeJob = scope.launch {
+            try {
+                val tunnel = route(targetHost, targetPort)
+                if (gen != generation) return@launch
+                openSocket(if (tunnel == null) ep else ep.copy(url = "ws://127.0.0.1:$tunnel/ws"), gen)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: TunnelError) {
+                if (gen != generation) return@launch
+                if (e.retry) scheduleRetry(e.message) else state = LinkState.Failed(e.message)
+            } catch (e: Exception) {
+                if (gen == generation) scheduleRetry(e.message ?: e.toString())
+            }
+        }
+    }
+
+    /** Opens the WebSocket to `ep` (the bridge, or its loopback port through the tailnet). The token is the bridge's own either way. */
+    private fun openSocket(ep: Endpoint, gen: Int) {
         val s = try {
             transport.open(ep, Listener(gen))
         } catch (e: Exception) {
@@ -111,6 +139,7 @@ class BridgeConnection(
     }
 
     private fun teardown(reason: String?) {
+        routeJob?.cancel(); routeJob = null
         watchdogJob?.cancel(); watchdogJob = null
         socket?.close()
         socket = null
@@ -148,9 +177,13 @@ class BridgeConnection(
             state = LinkState.Failed("Token rejected by the bridge (401). Re-pair in Settings.")
             return
         }
+        scheduleRetry(error.message ?: error.toString())
+    }
+
+    private fun scheduleRetry(message: String) {
         val delayMs = retryDelayMs
         retryDelayMs = minOf(retryDelayMs * 2, MAX_RETRY_MS)
-        state = LinkState.Waiting(error.message ?: error.toString())
+        state = LinkState.Waiting(message)
         retryJob = scope.launch {
             delay(delayMs)
             connect()

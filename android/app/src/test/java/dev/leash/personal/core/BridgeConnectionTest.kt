@@ -246,4 +246,84 @@ class BridgeConnectionTest {
         assertEquals(LinkState.Waiting("boom"), r.link.state)
         advanceUntilIdle().also { r.transport.openError = null }
     }
+
+    // MARK: built-in Tailscale
+
+    @Test fun withoutARouteItConnectsDirectly() = runTest {
+        val r = rig()
+        r.link.connect()
+        assertEquals("ws://bridge.example.ts.net:8787/ws", r.transport.last.endpoint.url)
+    }
+
+    @Test fun aRouteSendsTheConnectionThroughTheLoopbackPortWithTheBridgesToken() = runTest {
+        val r = rig()
+        val asked = mutableListOf<Pair<String, Int>>()
+        r.link.route = { h, p -> asked += h to p; 40123 }
+        r.link.connect()
+        assertEquals(LinkState.Connecting, r.link.state)
+        runCurrent()
+        assertEquals(listOf("bridge.example.ts.net" to 8787), asked)
+        assertEquals(Endpoint("ws://127.0.0.1:40123/ws", "tok-123"), r.transport.last.endpoint)
+        r.transport.last.ready(); runCurrent()
+        assertEquals(LinkState.Connected, r.link.state)
+    }
+
+    @Test fun aRouteThatReturnsNothingConnectsDirectly() = runTest {
+        val r = rig()
+        r.link.route = { _, _ -> null }
+        r.link.connect(); runCurrent()
+        assertEquals("ws://bridge.example.ts.net:8787/ws", r.transport.last.endpoint.url)
+    }
+
+    @Test fun anIpv6BridgeIsAskedWithoutBrackets() = runTest {
+        val r = rig()
+        r.link.configure("fd7a:115c:a1e0::1", 8787, "tok-123")
+        var host = ""
+        r.link.route = { h, _ -> host = h; 5000 }
+        r.link.connect(); runCurrent()
+        assertEquals("fd7a:115c:a1e0::1", host)
+    }
+
+    @Test fun aRouteThatNeedsTheUserStopsTheRetries() = runTest {
+        val r = rig()
+        r.link.route = { _, _ -> throw TunnelError("Built-in Tailscale needs a new auth key. Enter one in Settings.", retry = false) }
+        r.link.connect(); runCurrent()
+        assertEquals(LinkState.Failed("Built-in Tailscale needs a new auth key. Enter one in Settings."), r.link.state)
+        advanceTimeBy(60_000)
+        assertTrue(r.transport.sockets.isEmpty())
+    }
+
+    @Test fun aRouteThatFailsLaterTriesAgainWithBackoff() = runTest {
+        val r = rig()
+        var attempts = 0
+        r.link.route = { _, _ -> if (++attempts < 3) throw TunnelError("Tailscale did not connect", retry = true) else 4000 }
+        r.link.connect(); runCurrent()
+        assertEquals(LinkState.Waiting("Tailscale did not connect"), r.link.state)
+        advanceTimeBy(1_001); runCurrent()
+        assertEquals(2, attempts)
+        advanceTimeBy(2_001); runCurrent()
+        assertEquals(3, attempts)
+        assertEquals("ws://127.0.0.1:4000/ws", r.transport.last.endpoint.url)
+    }
+
+    @Test fun disconnectingWhileTheNodeStartsOpensNoSocket() = runTest {
+        val r = rig()
+        val gate = kotlinx.coroutines.CompletableDeferred<Int?>()
+        r.link.route = { _, _ -> gate.await() }
+        r.link.connect(); runCurrent()
+        r.link.disconnect()
+        gate.complete(4000); runCurrent()
+        assertTrue(r.transport.sockets.isEmpty())
+        assertEquals(LinkState.Idle, r.link.state)
+    }
+
+    @Test fun aSecondConnectWhileTheNodeStartsOnlyOpensOneSocket() = runTest {
+        val r = rig()
+        val gate = kotlinx.coroutines.CompletableDeferred<Int?>()
+        r.link.route = { _, _ -> gate.await() }
+        r.link.connect(); runCurrent()
+        r.link.connect(); runCurrent()
+        gate.complete(4000); runCurrent()
+        assertEquals(1, r.transport.sockets.size)
+    }
 }
