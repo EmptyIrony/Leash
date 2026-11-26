@@ -22,6 +22,7 @@ iPhone (SwiftUI)  ──WebSocket + token, over Tailscale──▶  bridge (Node
 ```bash
 cd ~/workspace/Leash/bridge
 npm install
+node src/index.mjs doctor     # what this machine has: Node, agents, addresses, Bark; run it first on a new computer
 node src/index.mjs            # foreground; prints a pairing QR code
 # or keep it running in the background (login item, auto-restart):
 bash scripts/install-launchagent.sh
@@ -29,9 +30,55 @@ node src/index.mjs pair       # show the QR again
 node src/index.mjs rotate     # new token (re-pair the phone)
 ```
 
-Config lives in `~/.leash/config.json` (`port`, `token`, `bind`, `agent.command`/`args`).
+Config lives in `~/.leash/config.json` (`port`, `token`, `bind`, optionally `agents`; `%USERPROFILE%\.leash` on Windows).
+**Agents are detected**: without `agents` in the config the bridge starts what it finds, Antigravity (`agy` on PATH or in the usual install
+folders) and a local Claude Code adapter (see below), and says nothing about the rest. Once `agents` is in the file (`add-claude`, `add-agy`,
+`remove-claude` write it) the list is authoritative: an agent whose command is missing is reported once in the log and shows in the app as
+down with the reason and what to install (`Restart` in the app looks again); it is never restarted in a loop.
 `bind: "auto"` listens on 127.0.0.1 plus the Mac's Tailscale (100.x) and 192.168.x LAN addresses (checked again every 30 s); with neither up it falls back to `0.0.0.0`. The pairing QR uses the Tailscale name when Tailscale is up, else the LAN IP. On the LAN the token travels in plain `ws://`. Set `bind` to `"127.0.0.1,100.x.y.z"` to pin it.
 Log of the LaunchAgent: `~/Library/Logs/leash-bridge.log`.
+
+## Set up on another computer
+
+For a colleague whose machine has only Antigravity (`agy`) and no Claude Code, on macOS or Linux (Windows: next section):
+
+1. Install Node.js 20 or newer (the current LTS).
+2. Copy or clone the `bridge/` folder anywhere (the rest of the repo is not needed).
+3. `cd bridge && npm install`
+4. `node src/index.mjs doctor`: prints the Node version, which agents it found (with versions), the addresses it will listen on (Tailscale / LAN), Bark and the config path, and ends with what is missing. It changes nothing.
+5. `node src/index.mjs pair` and scan the QR code in the app. Install Tailscale on both devices to reach the computer away from home.
+6. Keep it running: `bash scripts/install-launchagent.sh` on macOS (a systemd user unit or `pm2` on Linux).
+
+What differs on a machine without the author's setup:
+* Only `agy` found: only `agy` runs; nothing about Claude Code is shown in the app. `agy acp` gets `--app-data-dir antigravity` only when `~/.gemini/antigravity` (the desktop app's data) exists, otherwise plain `agy acp`. If `agy` answers *Authentication required* with that flag, set the args to `["acp"]` (agent `args` in the config; see google-antigravity/antigravity-cli#1672).
+* Quota (`agy` status line) needs `script`; the busy lock needs `lsof`, `ps` and `sqlite3` and the desktop data dir. A missing one turns that feature off with one log line, nothing else changes.
+* Claude Code on the same computer: `npm install --prefix ~/.leash/claude-acp @agentclientprotocol/claude-agent-acp` (the claude CLI must be installed and logged in), then restart the bridge; it is found automatically (also `$LEASH_CLAUDE_ACP_DIR`, `bridge/node_modules`, or a global `claude-agent-acp`). `add-claude` with no arguments pins it in the config. Nothing is ever fetched by `npx`.
+* Claude Code on another host needs explicit arguments, see "Claude Code" below.
+
+## Set up on Windows
+
+Windows is supported for `agy` (and a local Claude Code adapter); the bridge runs the same code with these differences: `agy.cmd` / `agy.exe`
+are found through PATH and PATHEXT plus the usual install folders (`%LOCALAPPDATA%\agy\bin`, `%APPDATA%\npm`, winget links), `.cmd` shims are started
+through `cmd.exe`, the `!` shell is PowerShell (`pwsh`, else `powershell.exe`), file paths accept `C:\`, `/C:/` and `file:///C:/` forms, and
+the Antigravity quota and busy lock are off (they need `script` / `lsof` / `sqlite3`).
+
+1. Install Node.js LTS (nodejs.org), open a new PowerShell. Install the Antigravity CLI (`agy`) and sign in once (`agy`).
+2. Copy the `bridge` folder, e.g. to `C:\leash\bridge`, then `cd C:\leash\bridge; npm install`.
+3. `node src\index.mjs doctor`; fix what it lists.
+4. `node src\index.mjs pair`, scan the QR code. Tailscale for Windows gives the phone a route from anywhere.
+5. Autostart: `powershell -ExecutionPolicy Bypass -File scripts\install-windows-task.ps1` (scheduled task *LeashBridge*: at logon, hidden, restarted after a crash, log `%USERPROFILE%\.leash\bridge.log`; `-Uninstall` removes it). No administrator rights needed.
+6. **Windows Firewall** asks about Node.js the first time the bridge listens: allow it on *Private* networks, or the phone cannot connect.
+
+First-run checklist on the Windows PC (untested on real Windows so far):
+1. `node src\index.mjs doctor` shows `agy` as `[ok]` with a path and version (`agy.exe` or `agy.cmd`), and `Quota` / `Busy lock` as off.
+2. `node src\index.mjs` logs `agent ready: {...}` for `agy`; the phone lists it as ready. If it says *Authentication required*, set the `agy` args to `["acp"]` in `%USERPROFILE%\.leash\config.json`.
+3. In the app: start a conversation in a folder under your user profile (browse works, a folder on another drive is refused); send a prompt; approve a tool call.
+4. Stop in the app, then check Task Manager: no `agy` / `cmd.exe` left behind (`taskkill /T` path).
+5. `!dir` or `!Get-Location` in a conversation runs in PowerShell in that folder; non-ASCII output (Chinese) is intact.
+6. Attach a photo from the phone: it lands in `%USERPROFILE%\.leash\uploads\<id>\` and the agent can open it (`file:///C:/...`).
+7. If the agent writes an HTML widget (`<agent-embed src="file:///C:/Users/...`) the app shows it.
+8. `install-windows-task.ps1`: after logging off and on, the phone reconnects without a console window; `%USERPROFILE%\.leash\bridge.log` has entries; kill `node.exe` and it comes back within a minute or two.
+9. Bark: `node src\index.mjs bark <key>` sends a test push.
 
 ### Notifications (Bark)
 
@@ -81,15 +128,18 @@ plaintext; "Decryption Failed" on the phone means the key in Bark does not match
 
 ## Claude Code (second agent, on another host)
 
-The bridge can drive several ACP agents at once (`agents` in `~/.leash/config.json`). Claude Code runs on the
-Ubuntu box and is reached from the Mac through the `ubuntu` zsh function (ssh):
+The bridge can drive several ACP agents at once (`agents` in `~/.leash/config.json`). In the author's setup Claude Code runs on an
+Ubuntu box and is reached from the Mac through a zsh function (`ubuntu`, an ssh wrapper); it can also run on the bridge's own computer (see above):
 
 ```
 Mac bridge ──zsh -c 'source ~/.zshrc; ubuntu …/bridge/remote/run-acp.sh'──▶ claude-agent-acp ──▶ official claude CLI
 ```
 
 * Host setup (once, on the Ubuntu box): `mkdir -p ~/.leash/claude-acp && cd ~/.leash/claude-acp && npm i @agentclientprotocol/claude-agent-acp`
-* Mac: `node src/index.mjs add-claude` (or `add-claude --fn <zsh-function>` / `add-claude ssh -T user@host`), then restart the bridge.
+* Mac: `node src/index.mjs add-claude --fn <zsh-function> --repo <Leash checkout on that host> --home <its home directory>` (or
+  `add-claude --repo <path> --home <home> ssh -T user@host`), then restart the bridge. Nothing is assumed: `--repo` and `--home` are required;
+  add `--code-mode` to resume sessions started in Claude Code's experimental Code Mode. `add-claude` with no arguments sets up Claude Code on the
+  bridge's own computer instead (adapter in `~/.leash/claude-acp`).
 * `bridge/remote/helper.mjs` runs on the host for folder browsing, file reads/uploads and quota (`claude -p /usage`: a local command, 0 tokens).
 * Sessions started in Claude Code's Code Mode are resumed by passing `settings.env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` through `_meta.claudeCode.options`.
 * The adapter uses your own Claude login on that machine (`ANTHROPIC_API_KEY` is unset in `run-acp.sh`).
@@ -110,7 +160,7 @@ Mac bridge ──zsh -c 'source ~/.zshrc; ubuntu …/bridge/remote/run-acp.sh'�
   bridge loaded it, the bridge drops its copy and a prompt gets `-32021`; the app reloads and resends. The check fails
   open on errors. Disable per agent with `"lock": false`.
 
-**Antigravity busy lock** (`bridge/src/agylock.mjs`, local to the Mac): a conversation is refused on the phone while the
+**Antigravity busy lock** (`bridge/src/agylock.mjs`, local to the computer; off where `lsof` / `sqlite3` are missing and on Windows): a conversation is refused on the phone while the
 desktop app is *running a turn* in it. Signals (found with `tools/probe-agy*-mac.sh`): the desktop `language_server`
 holds `~/.gemini/antigravity/presence/<id>.lock` open for every conversation it has loaded (until the app quits), and
 `conversation_summaries.db` has `status = CASCADE_RUN_STATUS_RUNNING` / `not_fully_idle = 1` for the whole turn.
