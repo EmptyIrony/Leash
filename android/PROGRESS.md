@@ -422,6 +422,12 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
   there fail at `packageDebug`; everything else compiles. Still so 5 h later with no Gradle 8 daemon running (only
   9.4.1), so some other process holds it (not identified). Build with `project="leash-haze2"` until the handle is gone
   (a restart of the Windows host should drop it).
+- **R8 strict full mode broke the QR scanner** in minified builds (found after the upgrade commit): ML Kit's component
+  registrars are created by reflection and lost their constructors, so opening the scanner threw a NullPointerException.
+  Fixed with a keep rule in `proguard-rules.pro`; the scanner screen opens in `releaseLike` (decoding a real code was not
+  tried: the emulator camera is blank). Other reflective libraries may hide the same problem on screens not opened.
+- AGP 9 creates unit test tasks for the tested build type only: `compileReleaseUnitTestKotlin` needs
+  `-Pandroid.onlyEnableUnitTestForTheTestedBuildType=false` (run that way after the upgrade: passes).
 - Verified: 304 unit tests; debug, `releaseLike` (installed, main and catalog activities launched, no crash) and signed
   release builds (same certificate; `go.Seq`, the tailnet classes and `libgojni.so` are in the APK); catalog screenshots
   before / after differ only by an emulator focus ring; scroll frame times on the catalog chat page unchanged.

@@ -12,5 +12,10 @@
 # WebView JavaScript interface of the <agent-embed> host (called from JS by name)
 -keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
 
+# ML Kit (the QR scanner) creates its component registrars by reflection. Its own rules keep the classes, and R8's strict
+# full mode (the default since AGP 9) no longer keeps a kept class's constructor with it: without this, opening the scanner
+# throws a NullPointerException in release builds.
+-keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
+
 # kotlinx.serialization (only JsonElement is used, no @Serializable classes), OkHttp/Okio, ML Kit, CameraX, DataStore, Compose and
 # coroutines ship their own consumer rules, which AGP merges.

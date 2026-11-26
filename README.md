@@ -233,7 +233,7 @@ Create a keystore once with `keytool -genkeypair -v -keystore android/signing/le
 **Back up the keystore and the properties file**: an APK signed with another key cannot update the installed app (uninstall, data lost). `./gradlew verifyReleaseSignature` builds the
 release APK and prints its signer certificates (`apksigner verify --print-certs`).
 
-**Tests**: `cd android && ./gradlew testDebugUnitTest` (JVM unit tests: core reducers, bridge connection against a fake transport and MockWebServer, the demo bridge driven through the real AppModel, notifications policy, tailnet controller, ...). `./gradlew compileReleaseUnitTestKotlin` checks the release stubs.
+**Tests**: `cd android && ./gradlew testDebugUnitTest` (JVM unit tests: core reducers, bridge connection against a fake transport and MockWebServer, the demo bridge driven through the real AppModel, notifications policy, tailnet controller, ...). `./gradlew compileReleaseKotlin` checks the release stubs; to compile the unit tests against them too: `./gradlew compileReleaseUnitTestKotlin -Pandroid.onlyEnableUnitTestForTheTestedBuildType=false` (AGP 9 does not create that task by default).
 
 **Tailnet AAR.** The built-in Tailscale node is the Go module `tailnet/` built by the `:tailnet` Gradle module with `gomobile bind` (debug: android/amd64, release: android/arm64, API 29, Java package `dev.leash.personal.tailnet`).
 It needs the pinned NDK `27.2.12479018` (SDK Manager, or `sdkmanager "ndk;27.2.12479018"`, or `ANDROID_NDK_HOME`); Gradle downloads the pinned Go toolchain (1.27.4, sha256 checked) and `gomobile` itself,
