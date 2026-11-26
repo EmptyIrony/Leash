@@ -396,7 +396,7 @@ fun SessionRow(s: SessionSummary, showAgent: Boolean, draft: String?, unread: Bo
                 }
                 s.updatedAtMs?.let {
                     Text(
-                        DateUtils.getRelativeTimeSpanString(it, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE).toString(),
+                        System.currentTimeMillis().let { now -> DateUtils.getRelativeTimeSpanString(minOf(it, now), now, DateUtils.MINUTE_IN_MILLIS, DateUtils.FORMAT_ABBREV_RELATIVE).toString() },   // a clock a little ahead of the bridge's must not read "in 1 minute"
                         style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1,
                     )
                 }
