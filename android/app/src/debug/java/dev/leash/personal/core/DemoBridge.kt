@@ -53,6 +53,8 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         }
         add("demo-subagent", "claude", "Audit the build scripts", "2026-11-25T20:00:00Z", events = DemoScript.subagentHistory())
         add("demo-locked", "claude", "Open in the terminal", "2026-11-25T10:00:00Z", locked = "cli")
+        // a folder with more than a handful of conversations, for the list's "Show all"
+        for (n in 1..5) add("demo-old-$n", "claude", "Older conversation $n", "2026-11-2" + (5 - n) + "T09:00:00Z", events = listOf(DemoScript.user("An older question $n", "u1"), DemoScript.agent("An older answer $n.", "a1")))
         add("demo-empty", "agy", null, "2026-11-24T10:00:00Z")
         pending["claude:1"] = DemoScript.permissionRequest("claude:1", "demo-permission", "claude")
         pending["claude:2"] = DemoScript.questionRequest("claude:2", "demo-permission", "claude")

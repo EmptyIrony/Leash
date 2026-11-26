@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -286,7 +287,9 @@ fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12) {
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraSmall, color = colors.sunken) {
         Column(Modifier.padding(vertical = 6.dp)) {
             if (path.isNotEmpty()) Text(path.substringAfterLast('/'), Modifier.padding(horizontal = 10.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
-            Column(Modifier.horizontalScroll(rememberScrollState())) {
+            androidx.compose.foundation.layout.BoxWithConstraints {
+              val minWidth = maxWidth
+              Column(Modifier.horizontalScroll(rememberScrollState()).widthIn(min = minWidth).width(androidx.compose.foundation.layout.IntrinsicSize.Max)) {
                 shown.forEach { l ->
                     val (prefix, text, bg) = when (l) {
                         is DiffLine.Add -> Triple("+", l.text, colors.success.copy(alpha = 0.14f))
@@ -294,8 +297,9 @@ fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12) {
                         is DiffLine.Same -> Triple(" ", l.text, Color.Transparent)
                         is DiffLine.Gap -> Triple("⋯", stringResource(R.string.more_lines, l.skipped), Color.Transparent)
                     }
-                    Text(prefix + " " + text, Modifier.background(bg).padding(horizontal = 10.dp), style = mono, softWrap = false, color = if (l is DiffLine.Gap) colors.textTertiary else scheme.onBackground)
+                    Text(prefix + " " + text, Modifier.fillMaxWidth().background(bg).padding(horizontal = 10.dp), style = mono, softWrap = false, color = if (l is DiffLine.Gap) colors.textTertiary else scheme.onBackground)
                 }
+              }
             }
             if (lines.size > maxLines && !all) Text(stringResource(R.string.show_all_diff, lines.size), Modifier.clickable { all = true }.padding(horizontal = 10.dp, vertical = 4.dp), style = MaterialTheme.typography.labelLarge, color = scheme.primary)
         }

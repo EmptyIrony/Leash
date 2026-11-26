@@ -27,7 +27,7 @@ class DemoBridgeTest {
         val m = model()
         val s = m.state.value
         assertTrue(s.useDemo && s.isConnected && s.agentReady)
-        assertEquals(6, s.sessions.size)
+        assertEquals(11, s.sessions.size)
         assertEquals(setOf("demo-permission", "demo-queue"), s.running)
         assertEquals(2, s.pending.size)
         assertEquals(2, s.sessions.first { it.id == "demo-permission" }.pendingCount)

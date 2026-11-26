@@ -40,11 +40,9 @@
     <string name="expand_all">Expand all</string>
     <string name="general">General</string>
     <string name="try_again">Try again</string>
-    <string name="conversations_count">%1$d conversations</string>
     <string name="start_conversation_here">Start conversation here</string>
     <string name="folders">Folders</string>
     <string name="no_subfolders">No subfolders</string>
-    <string name="files_count">%1$d files</string>
     <string name="git_repository">git</string>
     <string name="recent_folders">Recent folders</string>
     <string name="browse_the_mac">Browse the bridge…</string>

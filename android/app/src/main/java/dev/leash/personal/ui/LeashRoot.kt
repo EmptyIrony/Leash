@@ -10,8 +10,10 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -65,6 +67,8 @@ fun LeashRoot(model: AppModel) {
         }
     }
 
+    // the Scaffolds are transparent over the gradient, so the text colour comes from here
+    CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {
     Box(
         Modifier
             .fillMaxSize()
@@ -125,6 +129,7 @@ fun LeashRoot(model: AppModel) {
                 ScannerScreen(onResult = { info -> model.pair(info); nav.popBackStack("list", inclusive = false) }, onBack = { nav.popBackStack() })
             }
         }
+    }
     }
 }
 
