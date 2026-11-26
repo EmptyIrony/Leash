@@ -1,5 +1,6 @@
 package dev.leash.personal.ui.design
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -48,6 +49,9 @@ class ContinuousShape(
         }
         return Outline.Generic(path)
     }
+
+    /** The same radii with circular corners: liquid glass refracts along a plain rounded rectangle only. */
+    fun rounded() = RoundedCornerShape(topStart, topEnd, bottomEnd, bottomStart)
 
     override fun equals(other: Any?): Boolean =
         other is ContinuousShape && other.topStart == topStart && other.topEnd == topEnd &&

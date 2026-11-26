@@ -418,10 +418,31 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 - **When a remote build is silent for 30 min** the MCP client gives up but Gradle keeps running, and later Gradle calls on
   the same workspace queue behind it. Calls on another workspace (`project=`) still run, so `--status` there shows the
   BUSY daemon; `--stop` there stops every daemon of that Gradle version, so check first that they are all ours.
-- The old `android` workspace could not delete `app/build/outputs/apk/debug` right after the upgrade (cause not
-  proven; probably the idle Gradle 8.14.8 daemon still watching it), so the upgrade was verified in a second workspace,
-  `project="leash-haze2"`.
+- **Open**: the `android` workspace on the host cannot delete its (empty) `app/build/outputs/apk/debug`, so debug builds
+  there fail at `packageDebug`; everything else compiles. Still so 5 h later with no Gradle 8 daemon running (only
+  9.4.1), so some other process holds it (not identified). Build with `project="leash-haze2"` until the handle is gone
+  (a restart of the Windows host should drop it).
 - Verified: 304 unit tests; debug, `releaseLike` (installed, main and catalog activities launched, no crash) and signed
   release builds (same certificate; `go.Seq`, the tailnet classes and `libgojni.so` are in the APK); catalog screenshots
   before / after differ only by an emulator focus ring; scroll frame times on the catalog chat page unchanged.
   Not verified: a real phone, and the built-in Tailscale node in the arm64 release APK at run time.
+
+## Liquid glass (haze-glass 2.1.0)
+
+- `Modifier.glass` draws `hazeGlass` on API 33+ (DESIGN.md §6 has the three renderings and the tuning); call sites only
+  gained `interactive` (circles, chips, banner). API 32 keeps the blur: haze-glass's fallback has none.
+- Two library defaults had to be overridden: compact-control optics left sharp mirrored text behind labels
+  (`depth` fixed at 1, smaller refraction), and `edgeSoftness` 1 dp showed the dark drop shadow as a black line
+  inside the rim (now 0).
+- Debug catalog: new `glass` page (hard stripes under every surface); `--ez lens false` draws the API 32 look.
+- Also fixed here (separate commit; it happened without liquid glass too): a quick tap could leave a control stuck in
+  its pressed look (`LeashIndication` compared with `Animatable.targetValue` before the launched animation had set it).
+  Seen after the toolchain upgrade; the build before it was not checked.
+- Verified on the emulator (API 35, full renderer): catalog pages light / dark; demo bridge in the app (list, approval
+  tray, queue tray, banner, typing with the composer, a sheet); 304 unit tests; `releaseLike` (glass renders under R8,
+  no crash) and the signed release build. Frame time, catalog chat page, scripted scrolling, phase pinned, three rounds:
+  P50 5–7 ms without refraction, 8–10 ms with it, no real jank. Unpinned runs jump between about 7 and 18 ms with or
+  without refraction (the emulator).
+- Not verified: a real phone (frame rate, battery, GPU); API 32 on a device (only through `lens false`); the press light
+  while a finger is down; frames in the middle of the tray / navigation transitions; a bright image under the dark dock;
+  the side-question tint.

@@ -150,7 +150,7 @@ fun GlassCircleSlot(
             .pressable(enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(size).glass(CircleShape, blur = blur), contentAlignment = Alignment.Center, content = content)
+        Box(Modifier.size(size).glass(CircleShape, blur = blur, interactive = enabled), contentAlignment = Alignment.Center, content = content)
         if (badge != null) Box(Modifier.size(size), contentAlignment = Alignment.BottomEnd) { badge() }
     }
 }
@@ -371,7 +371,7 @@ fun Chip(
         modifier
             .pressable(onClick = onClick)
             .heightIn(min = 32.dp)
-            .glass(LeashShapes.capsule, tint = if (tint.isSpecified) tint.copy(alpha = 0.25f) else Color.Unspecified, blur = blur)
+            .glass(LeashShapes.capsule, tint = if (tint.isSpecified) tint.copy(alpha = 0.25f) else Color.Unspecified, blur = blur, interactive = true)
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -421,7 +421,7 @@ fun Banner(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier
             .pressable(scale = PressScale.Row, onClick = onClick)
             .heightIn(min = 40.dp)
-            .glass(LeashShapes.capsule, tint = c.attention.copy(alpha = 0.25f))
+            .glass(LeashShapes.capsule, tint = c.attention.copy(alpha = 0.25f), interactive = true)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,

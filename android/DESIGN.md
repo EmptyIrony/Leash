@@ -79,6 +79,7 @@ Derived:
 - `pressedOverlay` textPrimary @ 6% (full-width rows only, see press feedback).
 - `diffAddBg` success @ 15%, `diffDelBg` danger @ 15%.
 - `needsYouBadge` attention @ 15% circle behind the hand glyph.
+- `glassLensTint` (liquid glass, API 33+) white @ 40% (light) / #262A3A @ 65% (dark).
 - `glassTint` white @ 60% (light) / #262A3A @ 70% (dark); `glassFallback` (blur off) white @ 94% / #1C1F2B @ 96%.
 - `glassRim` (the edge carries the shape, not the fill): light = 1 px (`Dp.Hairline`) outer line #0B1020 @ 12% plus an
   inner top highlight white 80% → 0 over 6 dp; dark = 1 px line white 14% at the top fading to 4% at the bottom.
@@ -149,7 +150,7 @@ older versions snap to the nearest face.
 
 ## 5. Shapes
 
-All rounded rectangles are **continuous** (squircle) corners: `ContinuousShape(radius, smoothing = 0.6)`, a
+All rounded rectangles are **continuous** (squircle) corners (except liquid glass on API 33+, §6): `ContinuousShape(radius, smoothing = 0.6)`, a
 figma-squircle style curve (cubic → arc → cubic per corner) that matches iOS `.continuous`. Radii larger than half
 the short side clamp to a capsule. Per-corner radii supported (bubble tail).
 
@@ -174,12 +175,28 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
 - **Raised**: bgRaised fill + 1 dp hairline stroke (cards) or no stroke (grouped list, like iOS).
 - **Sunken**: bgSunken + 1 dp hairline stroke, radius inset.
 - **Glass** (where iOS uses Liquid Glass: toolbar circles, composer slab, chips, trays, scroll-to-bottom, banner,
-  "starting" capsule): `glassTint` fill + `glassRim` + floating shadow. The backdrop blur (Haze: `hazeSource` on the
-  scrolling content, `hazeEffect` on the glass; 24 dp, noise 0) has a **budget**: only the *bands* blur — the top edge,
-  the bottom dock (composer + chips + trays) and a tray standing alone; circles and chips inside a band draw tint and
-  rim only. Blur needs API 32+ (Haze leaves out 31) and is off in battery saver and with the app's future "Reduce
-  transparency" switch; then the solid `glassFallback`. Glass never sits on glass. Tints only for meaning: shell slab
-  shell @ 16%, side question accent @ 14%, turbo chip turbo @ 25%, banner attention @ 25%.
+  "starting" capsule): always through `Modifier.glass`; the content it sees is marked `GlassSource`. Glass never sits
+  on glass. Tints only for meaning: shell slab shell @ 16%, side question accent @ 14%, turbo chip turbo @ 25%, banner
+  attention @ 25%. Three renderings:
+  - **API 33+, liquid glass** (haze-glass `hazeGlass`): *every* glass surface over a source blurs and refracts it, with
+    shader highlights, `glassLensTint`, the hairline of `glassRim` (no painted highlight) and the floating shadow.
+    Optics are Regular made calmer (`LeashOptics`): fully diffused at every size (depth 1, blur 24 dp) and refraction
+    24 dp over a 14 dp edge. As shipped, controls under 64 dp mix the sharp backdrop back in and bend it by up to 48 dp,
+    which left readable, mirrored transcript text behind the composer's placeholder and the chips. `edgeSoftness` is
+    0 (a softened rim showed the dark-mode drop shadow as a black inner line that swallowed the hairline) and
+    `edgeShadow` black @ 10%. Light / dark values follow the **app** theme; the library's own follow the system.
+    Corners are **circular**, not continuous (the shader only bends a plain rounded rectangle): capsules and circles look
+    the same, composer and trays differ by under 1 dp. Interactive surfaces (circles, chips, banner) also light up under
+    the finger; the 4% shrink and dim stay with `pressable`.
+  - **API 32, blur** (`hazeBlur`; haze-glass's own fallback has no blur, so it is not used): `glassTint` +
+    `glassRim` + shadow, 24 dp, noise 0, on a **budget**: only the *bands* blur (top edge, bottom dock with composer +
+    chips + trays, a tray standing alone); circles and chips inside a band draw tint and rim only
+    (`blur = false`). The debug catalog's `--ez lens false` shows this rendering on API 33+.
+  - **Solid** `glassFallback`: API 31 and below (Haze's blur is unreliable on 31), outside a `GlassScope`, and when
+    `LocalGlassBlurAllowed` is off (meant for battery saver and a "Reduce transparency" switch; nothing sets it yet).
+  - Not done: merging / morphing shapes (iOS `GlassEffectContainer`; `hazeGlassContainer` takes at most four members
+    and warns about cost in scrolling layouts), and adapting to the content underneath. `--es page glass` in the debug
+    catalog shows every glass surface over hard stripes.
 - **Menus and sheets** are separate windows (Haze can't see the activity behind them): solid `panel` / `bgSheet`
   with the floating shadow, never fake glass.
 - **Top edge**: content scrolls under a transparent top bar; API 33+ a progressive blur (opaque at the status bar,
@@ -449,6 +466,13 @@ style; vector drawables have no blur). Monochrome layer (Android 13 themed icons
 - `src/debug/.../DesignCatalogActivity` — pages × light/dark via intent extras.
 
 ## 15. Review log
+
+- **Fable, liquid glass (emulator, API 35).** Kept: liquid glass on every floating surface, the calmer optics, circular
+  corners (rim differs by 2 px at most on a tray corner), no morphing, solid menus and sheets. Fixed: the dark rim on
+  straight edges (the review blamed `edgeShadow`; pixels showed `edgeSoftness` was the cause, both changed) and the
+  dark lens tint 55% → 65%. Open: dock chips sample the transcript directly, past the bottom scrim (legible in every
+  state seen; not seen with a bright image under a dark dock); the attention banner's chevron (textTertiary) is faint,
+  as before this change.
 
 - **Fable, D2 final review (emulator screenshots, light + dark + font scale 1.3 / 2.0).** Fixed: dark sheets stroke
   their rounded top edge (not a rule under the grabber) and grouped cards on a dark sheet use the panel fill; the

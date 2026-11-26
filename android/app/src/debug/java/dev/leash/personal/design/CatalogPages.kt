@@ -91,10 +91,42 @@ private fun Label(text: String) {
 
 @Composable
 fun IndexPage(open: (String) -> Unit) {
-    val pages = listOf("colors", "type", "shapes", "controls", "list", "settings", "chat", "activity", "trays", "states", "sheet", "icon")
+    val pages = listOf("glass", "colors", "type", "shapes", "controls", "list", "settings", "chat", "activity", "trays", "states", "sheet", "icon")
     Page("Design catalog", "Leash design system") {
         GroupCard {
             pages.forEachIndexed { i, p -> ValueRow(p, last = i == pages.lastIndex, chevron = true, onClick = { open(p) }) }
+        }
+    }
+}
+
+/**
+ * Hard-edged stripes under every kind of glass surface: refraction bends the stripes at the rims, which a calm page
+ * hides. Scroll to move them; compare with `--ez lens false`.
+ */
+@Composable
+fun GlassPage() {
+    val c = Leash.colors
+    val stripes = listOf(c.accent, c.bgRaised, c.attention, c.textPrimary, c.success, c.bgRaised, c.danger)
+    GlassScope(Modifier.fillMaxSize()) {
+        GlassSource(Modifier.fillMaxSize()) {
+            SpaceBackground()
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                repeat(80) { Box(Modifier.fillMaxWidth().height(if (it % 2 == 0) 22.dp else 12.dp).background(stripes[it % stripes.size])) }
+            }
+        }
+        Column(Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                GlassCircleButton(LeashIcons.search, "Search", {}, size = 52.dp)
+                GlassCircleButton(LeashIcons.more, "More", {})
+                Chip("Sonnet 5.5", {})
+                Chip("High", {})
+            }
+            Box(Modifier.fillMaxWidth().height(48.dp).glass(LeashShapes.composer), contentAlignment = Alignment.CenterStart) {
+                Text("Composer slab", Modifier.padding(start = 20.dp), style = Leash.type.body, color = c.textPrimary)
+            }
+            Box(Modifier.fillMaxWidth().height(180.dp).glass(LeashShapes.tray).padding(16.dp)) {
+                Text("Tray", style = Leash.type.headline, color = c.textPrimary)
+            }
         }
     }
 }

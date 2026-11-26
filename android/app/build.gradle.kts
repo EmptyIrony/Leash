@@ -138,6 +138,7 @@ dependencies {
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.haze)
     implementation(libs.haze.blur)
+    implementation(libs.haze.glass)
     if (tailnetLinked) {
         // builtBy takes the task provider, not its path: looking a path up while a task runs deadlocks Gradle 9 (lintVital did)
         val bindDebug = tailnet.tasks.named("bindTailnetDebug")

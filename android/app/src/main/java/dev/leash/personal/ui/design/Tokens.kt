@@ -60,6 +60,8 @@ data class LeashDesignColors(
     val diffDelBg: Color,
     val needsYouBadge: Color,
     val glassTint: Color,
+    /** The tint of liquid glass (API 33+): thinner than [glassTint], so the refraction shows through. */
+    val glassLensTint: Color,
     val glassFallback: Color,
     /** The glass edge: a 1 px outer line (light) or a top-to-bottom fading line (dark), plus a top inner highlight. */
     val glassLineTop: Color,
@@ -119,6 +121,7 @@ data class LeashDesignColors(
                 diffDelBg = danger.copy(alpha = 0.15f),
                 needsYouBadge = attention.copy(alpha = 0.15f),
                 glassTint = if (dark) Color(0xFF262A3A).copy(alpha = 0.70f) else Color.White.copy(alpha = 0.60f),
+                glassLensTint = if (dark) Color(0xFF262A3A).copy(alpha = 0.65f) else Color.White.copy(alpha = 0.40f),
                 glassFallback = if (dark) Color(0xFF1C1F2B).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.94f),
                 glassLineTop = if (dark) Color.White.copy(alpha = 0.14f) else Color(0xFF0B1020).copy(alpha = 0.12f),
                 glassLineBottom = if (dark) Color.White.copy(alpha = 0.04f) else Color(0xFF0B1020).copy(alpha = 0.12f),
