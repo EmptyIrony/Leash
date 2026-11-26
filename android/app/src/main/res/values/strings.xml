@@ -48,6 +48,7 @@
     <string name="browse_the_bridge">Browse the bridge…</string>
     <string name="browse_agent_host">Browse %1$s host…</string>
     <string name="starting">Starting…</string>
+    <string name="loading">Loading…</string>
     <string name="empty_folder">Empty folder</string>
     <string name="cant_open_folder">Can’t open folder</string>
     <string name="new_conversation_title">New conversation</string>
