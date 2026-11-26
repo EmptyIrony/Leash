@@ -1,0 +1,68 @@
+<resources>
+    <plurals name="files_count">
+        <item quantity="other">%1$d 个文件</item>
+    </plurals>
+    <plurals name="conversations_count">
+        <item quantity="other">%1$d 个对话</item>
+    </plurals>
+    <plurals name="queued_count">
+        <item quantity="other">%1$d 条已排队</item>
+    </plurals>
+    <plurals name="agents_running">
+        <item quantity="other">%1$d 个 agent 仍在运行</item>
+    </plurals>
+    <plurals name="questions_count">
+        <item quantity="other">%1$d 个问题</item>
+    </plurals>
+    <plurals name="others_need_you">
+        <item quantity="other">另有 %1$d 个对话需要你处理</item>
+    </plurals>
+    <plurals name="steps_count">
+        <item quantity="other">%1$d 步</item>
+    </plurals>
+    <plurals name="files_changed">
+        <item quantity="other">改了 %1$d 个文件</item>
+    </plurals>
+    <plurals name="read_files">
+        <item quantity="other">读取了 %1$d 个文件</item>
+    </plurals>
+    <plurals name="show_earlier_steps">
+        <item quantity="other">显示前面的 %1$d 步</item>
+    </plurals>
+    <plurals name="unchanged_lines">
+        <item quantity="other">%1$d 行未改动</item>
+    </plurals>
+    <plurals name="status_agents_ready">
+        <item quantity="other">%1$s · %2$d 个 agent 就绪</item>
+    </plurals>
+    <plurals name="status_agents_some_ready">
+        <item quantity="other">%1$s · %2$d/%3$d 个 agent 就绪</item>
+    </plurals>
+    <plurals name="summary_agents">
+        <item quantity="other">运行了 %1$d 个 agent</item>
+    </plurals>
+    <plurals name="summary_explored">
+        <item quantity="other">查看了 %1$d 个文件</item>
+    </plurals>
+    <plurals name="summary_ran">
+        <item quantity="other">运行了 %1$d 条命令</item>
+    </plurals>
+    <plurals name="summary_edited">
+        <item quantity="other">编辑了 %1$d 个文件</item>
+    </plurals>
+    <plurals name="summary_browsed">
+        <item quantity="other">浏览了 %1$d 个网页</item>
+    </plurals>
+    <plurals name="summary_tools">
+        <item quantity="other">使用了 %1$d 个工具</item>
+    </plurals>
+    <plurals name="ago_minutes">
+        <item quantity="other">%1$d 分钟前</item>
+    </plurals>
+    <plurals name="ago_hours">
+        <item quantity="other">%1$d 小时前</item>
+    </plurals>
+    <plurals name="ago_days">
+        <item quantity="other">%1$d 天前</item>
+    </plurals>
+</resources>
