@@ -251,7 +251,7 @@ object MarkdownImages {
     private fun percentDecode(s: String): String = runCatching { java.net.URLDecoder.decode(s.replace("+", "%2B"), "UTF-8") }.getOrDefault(s)
 }
 
-/** Antigravity's generative-UI widget: `<agent-embed src="...">`. Rendering the WebView is phase 4; the block is parsed now. */
+/** Antigravity's generative-UI widget: `<agent-embed src="...">`. Drawn by [dev.leash.personal.ui.embed.AgentEmbedView]. */
 object AgentEmbed {
     sealed interface Piece {
         data class Text(val text: String) : Piece

@@ -125,11 +125,13 @@ fun ImageTile(data: ByteArray, modifier: Modifier = Modifier, description: Strin
 fun FileChip(ref: FileRef, modifier: Modifier = Modifier) {
     val open = LocalOpenFile.current
     val c = Leash.colors
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     val desc = stringResource(R.string.attachment_desc, ref.name)
     val hint = stringResource(R.string.attachment_hint)
     Row(
         modifier.widthIn(max = 260.dp).heightIn(min = 48.dp).clip(LeashShapes.row).background(c.accent.copy(alpha = 0.16f))
-            .pressable(scale = PressScale.Compact, onClickLabel = hint) { open(ref.path) }
+            .pressable(scale = PressScale.Compact, onClickLabel = hint, onLongClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("path", ref.path))) } }) { open(ref.path) }
             .semantics { contentDescription = desc }.padding(horizontal = 12.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically,
     ) {

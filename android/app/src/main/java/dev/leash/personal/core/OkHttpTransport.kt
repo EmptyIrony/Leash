@@ -11,7 +11,7 @@ import okio.ByteString
 /**
  * OkHttp WebSocket. The 15 s ping doubles as the dead-link detector (no pong: onFailure). Incoming frames have no size
  * limit (iOS allows 64 MB; attach snapshots are the big ones). NOTE: OkHttp refuses to queue more than 16 MiB of outgoing
- * frames at once, so a base64 upload over about 12 MB of file needs chunking or another route (phase 4).
+ * frames at once, so uploads are capped at [FileLimits.MAX_UPLOAD_BYTES] (11 MB of file); more needs a chunked upload in the bridge.
  */
 class OkHttpTransport(
     private val client: OkHttpClient = OkHttpClient.Builder()
