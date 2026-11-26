@@ -180,6 +180,9 @@ class AppModel(
     var link: BridgeLink = realLink
         private set
 
+    /** the scripted demo bridge exists in this build (debug) */
+    val demoAvailable: Boolean get() = demoLink != null
+
     private val stores = mutableMapOf<String, ChatStore>()
     /** the conversation currently on screen (set by the chat screen) */
     var visibleSessionId: String? = null
