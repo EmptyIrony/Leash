@@ -971,6 +971,30 @@ class AppModelTest {
         assertEquals(ensures + 1, r.link.ensures)
     }
 
+    @Test fun anAnswerFromANotificationOnAColdProcessWaitsForTheSettingsAndTheReadyFrame() = runTest {
+        val r = Rig(this)
+        var outcome: RemoteOutcome? = null
+        launch { r.model.awaitSettings(); outcome = r.model.answer("claude:1", "allow") }
+        runCurrent()
+        assertNull(outcome)
+        r.model.start(); runCurrent()
+        assertEquals(1, r.link.connects)
+        r.link.set(LinkState.Connected)
+        r.link.emit(readyFrame(pending = listOf(permission("claude:1", "a"))))
+        advanceTimeBy(300); runCurrent()
+        assertEquals(RemoteOutcome.Done, outcome)
+        val reply = r.link.callsOf("reply!").single()
+        assertEquals("claude:1", reply["key"].string)
+        assertEquals("allow", reply["result"]["outcome"]["optionId"].string)
+    }
+
+    @Test fun anAnswerForARequestTheNewReadyFrameDoesNotListIsAlreadyAnswered() = runTest {
+        val r = Rig(this)
+        connect(r)
+        assertEquals(RemoteOutcome.AlreadyAnswered, r.model.answer("claude:42", "allow"))
+        assertTrue(r.link.callsOf("reply!").isEmpty())
+    }
+
     @Test fun anActionThatStartedTheProcessWaitsForTheStoredSettings() = runTest {
         val r = Rig(this)
         var settled = false
