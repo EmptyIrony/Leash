@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -113,7 +115,10 @@ fun TrayActions(actions: List<TrayAction>, modifier: Modifier = Modifier) {
 fun OptionRow(title: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, detail: String? = null, multi: Boolean = false) {
     val c = Leash.colors
     Row(
-        modifier.fillMaxWidth().pressable(scale = PressScale.Row, onClick = onClick).heightIn(min = 48.dp)
+        modifier.fillMaxWidth()
+            .pressable(scale = PressScale.Row, role = if (multi) androidx.compose.ui.semantics.Role.Checkbox else androidx.compose.ui.semantics.Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
+            .heightIn(min = 48.dp)
             .clip(LeashShapes.row).background(if (selected) c.selectedFill else c.restFill).padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
@@ -133,7 +138,8 @@ fun QueueHeader(title: String, actionLabel: String, onAction: () -> Unit, modifi
     Row(modifier.fillMaxWidth().heightIn(min = 36.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(LeashIcons.queued, null, Modifier.size(17.dp), tint = Leash.colors.textSecondary)
         Text(title, style = Leash.type.subheadline.semibold().tabular(), color = Leash.colors.textPrimary, modifier = Modifier.weight(1f))
-        LeashButton(actionLabel, onAction, style = ButtonStyle.Prominent, size = ButtonSize.Small, enabled = enabled)
+        // its trailing edge lines up with the rows' × and Undo below it
+        LeashButton(actionLabel, onAction, Modifier.padding(end = 6.dp), style = ButtonStyle.Prominent, size = ButtonSize.Small, enabled = enabled)
     }
 }
 

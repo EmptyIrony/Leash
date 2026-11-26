@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -259,6 +260,43 @@ fun SegmentedControl(
             }
         }
     }
+}
+
+/**
+ * A free-text answer: a sunken well (inset radius, hairline) with body text and a secondary placeholder, growing up to
+ * [maxLines]. Replaces Material's outlined text field.
+ */
+@Composable
+fun TextArea(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = false,
+    maxLines: Int = 6,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+) {
+    val c = Leash.colors
+    androidx.compose.foundation.text.BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = singleLine,
+        maxLines = if (singleLine) 1 else maxLines,
+        textStyle = Leash.type.body.copy(color = c.textPrimary),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(c.accent),
+        keyboardOptions = keyboardOptions,
+        modifier = modifier.fillMaxWidth(),
+        decorationBox = { inner ->
+            Box(
+                Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(LeashShapes.inset).background(c.bgSunken)
+                    .border(1.dp, c.hairline, LeashShapes.inset).padding(horizontal = 12.dp, vertical = 11.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (value.isEmpty()) Text(placeholder, style = Leash.type.body, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                inner()
+            }
+        },
+    )
 }
 
 /** The stock M3 switch in Leash's colours (iOS uses the stock Toggle too). */

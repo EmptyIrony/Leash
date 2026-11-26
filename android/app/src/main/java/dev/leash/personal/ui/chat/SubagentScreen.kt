@@ -1,50 +1,44 @@
 package dev.leash.personal.ui.chat
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CallSplit
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,18 +46,32 @@ import dev.leash.personal.R
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.DisplayItem
 import dev.leash.personal.core.StepRowModel
-import dev.leash.personal.ui.components.ActivitySpinner
 import dev.leash.personal.ui.components.LocalChatVersion
-import dev.leash.personal.ui.components.pulse
-import dev.leash.personal.ui.theme.LeashTheme
+import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.GlassScope
+import dev.leash.personal.ui.design.GlassSource
+import dev.leash.personal.ui.design.Leash
+import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LeashShapes
+import dev.leash.personal.ui.design.LiveDots
+import dev.leash.personal.ui.design.PressScale
+import dev.leash.personal.ui.design.SpaceBackground
+import dev.leash.personal.ui.design.medium
+import dev.leash.personal.ui.design.pressable
+import dev.leash.personal.ui.design.rememberLivePhase
+import dev.leash.personal.ui.design.shimmer
+import dev.leash.personal.ui.design.softBottomEdge
+import dev.leash.personal.ui.design.components.BackButton
+import dev.leash.personal.ui.design.components.EmptyState
+import dev.leash.personal.ui.design.components.TopBar
 
 /** A subagent's own transcript, opened from its row: the parent's prompt as a quote, its steps (flat, already open), its reply. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () -> Unit, onOpenSubagent: (String) -> Unit) {
     val store = remember(rootId) { model.store(rootId) }
     val state by model.state.collectAsStateWithLifecycle()
     val version by store.version.collectAsStateWithLifecycle()
+    val c = Leash.colors
     // live updates keep coming while the chat underneath is hidden
     LaunchedEffect(store) { if (!store.attached) model.attach(store) }
     DisposableEffect(store) {
@@ -74,51 +82,31 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
     val rows = remember(version) { item?.let { foldSubagent(it) } ?: emptyList() }
     val title = item?.displayTitle ?: stringResource(R.string.subagent)
     val subtitle = item?.let { listOfNotNull(it.agentType.takeIf { t -> t != it.title }, it.model).joinToString(" · ") } ?: ""
-    val live = item?.isRunning == true
     val needsAction = item?.needsAction == true
     val liveAction = item?.activity?.liveAction
     // this agent's requests and those of agents it launched (the bridge files them under the root conversation)
     val requests = if (item == null) emptyList() else state.pendingFor(rootId).filter { r -> r.subagent?.sessionId in item.lineage }
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            if (requests.isNotEmpty()) Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 12.dp, vertical = 8.dp)) {
-                RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
-            }
-        },
-        topBar = {
-            TopAppBar(
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
-                title = {
-                    Column {
-                        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-            )
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            if (item == null) Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Filled.CallSplit, null, tint = MaterialTheme.colorScheme.outline)
-                Text(stringResource(R.string.agent_not_loaded), Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium)
-            } else CompositionLocalProvider(LocalChatVersion provides version, LocalOpenFile provides {}) {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val list = rememberLazyListState()
+    val scrolled by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 0 } }
+    var dockPx by remember { mutableIntStateOf(0) }
+    val dockHeight = with(LocalDensity.current) { dockPx.toDp() }
+
+    GlassScope(Modifier.fillMaxSize()) {
+        GlassSource(Modifier.fillMaxSize()) {
+            SpaceBackground()
+            if (item == null) EmptyState(LeashIcons.subagent, stringResource(R.string.agent_not_loaded), Modifier.fillMaxSize().padding(top = 200.dp))
+            else CompositionLocalProvider(LocalChatVersion provides version, LocalOpenFile provides {}) {
+                LazyColumn(
+                    Modifier.fillMaxSize(), state = list,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = topBarSpace(), bottom = dockHeight + 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     items(rows, key = { it.id }) { d ->
                         when (d) {
                             is DisplayItem.User -> PromptQuote(d.item.text)
                             is DisplayItem.Activity -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val g = d.group
-                                if (g.live) Row(verticalAlignment = Alignment.CenterVertically) {
-                                    ActivitySpinner(11.dp)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        if (needsAction) stringResource(R.string.waiting_approval) else (liveAction ?: g.liveAction),
-                                        Modifier.pulse(!needsAction), style = MaterialTheme.typography.bodySmall,
-                                        color = if (needsAction) LeashTheme.colors.attention else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
-                                    )
-                                }
+                                if (g.live) LiveLine(if (needsAction) stringResource(R.string.waiting_approval) else (liveAction ?: g.liveAction), needsAction)
                                 val checklist = g.checklist
                                 if (checklist.isNotEmpty()) ChecklistView(checklist)
                                 val steps = StepRowModel.build(g.steps)
@@ -133,6 +121,35 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
                 }
             }
         }
+        TopBar(
+            title = title, subtitle = subtitle.ifEmpty { null }, edgeVisible = scrolled,
+            navigation = { BackButton(stringResource(R.string.back), onBack) },
+        )
+        if (requests.isNotEmpty()) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
+            Box(Modifier.matchParentSize().softBottomEdge())
+            Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 8.dp)) {
+                RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
+            }
+        }
+    }
+}
+
+/** The subagent's current action: live dots and the shimmer band on one clock, or the hand while it waits for you. */
+@Composable
+private fun LiveLine(text: String, blocked: Boolean) {
+    val c = Leash.colors
+    val phase = rememberLivePhase(!blocked)
+    var width by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(Modifier.width(18.dp), contentAlignment = Alignment.Center) {
+            if (blocked) Icon(LeashIcons.needsYou, null, Modifier.size(15.dp), tint = c.attention)
+            else LiveDots(phase, with(density) { width.toDp() })
+        }
+        Text(
+            text, style = Leash.type.footnote.medium(), color = if (blocked) c.attention else c.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
+            modifier = Modifier.onSizeChanged { width = it.width }.shimmer(!blocked, phase, leadingInset = 26.dp),
+        )
     }
 }
 
@@ -140,19 +157,19 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
 @Composable
 fun PromptQuote(text: String) {
     dev.leash.personal.ui.components.ObserveChat()
+    val c = Leash.colors
     var expanded by rememberSaveable(text.length) { mutableStateOf(false) }
     val trimmed = text.trim()
     val long = trimmed.length > 240 || trimmed.count { it == '\n' } > 2
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(LeashTheme.colors.hairline, MaterialTheme.shapes.extraSmall))
-        Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.prompt_label), style = MaterialTheme.typography.labelMedium, color = LeashTheme.colors.textTertiary)
-            Text(trimmed, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.padding(vertical = 2.dp).width(2.dp).fillMaxHeight().clip(LeashShapes.capsule).background(c.accent.copy(alpha = 0.35f)))
+        Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.prompt_label), style = Leash.type.caption.medium(), color = c.textTertiary)
+            Text(trimmed, style = Leash.type.subheadline, color = c.textSecondary, maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis)
             if (long) Text(
-                stringResource(if (expanded) R.string.show_less else R.string.show_more), Modifier.clickable { expanded = !expanded },
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                stringResource(if (expanded) R.string.show_less else R.string.show_more), Modifier.pressable(scale = PressScale.Text) { expanded = !expanded }.padding(vertical = 4.dp),
+                style = Leash.type.caption.medium(), color = c.accent,
             )
         }
     }
 }
-
