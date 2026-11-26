@@ -94,7 +94,7 @@ fun UserBubble(item: MessageItem, modifier: Modifier = Modifier) {
         }
         segments.forEach { s ->
             when (s) {
-                is UserSegment.Text -> UserBubbleView(s.text, selectable = true)
+                is UserSegment.Text -> MessageMenu(s.text, markdown = false) { UserBubbleView(s.text) }
                 is UserSegment.ShellInput -> {
                     val desc = stringResource(R.string.shell_command_desc, s.command)
                     ShellBubble(s.command, Modifier.semantics { contentDescription = desc })
@@ -259,7 +259,7 @@ fun AnswerView(item: MessageItem) {
     ObserveChat()
     val open = LocalOpenFile.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SelectionContainer { MarkdownView(item.text, open) }
+        MessageMenu(item.text, markdown = true) { MarkdownView(item.text, open) }
         item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), "image " + (i + 1), "image-" + (i + 1) + ".png") }
         item.files.forEach { FileChip(it) }
     }

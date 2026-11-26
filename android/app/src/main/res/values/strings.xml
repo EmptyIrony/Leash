@@ -332,4 +332,5 @@
     <string name="quota_rings_desc">%1$s quota, %2$d percent left</string>
     <string name="quota_bucket_desc">%1$s, %2$d percent left</string>
     <string name="quota_chip">Quota</string>
+    <string name="select_text">Select text</string>
 </resources>

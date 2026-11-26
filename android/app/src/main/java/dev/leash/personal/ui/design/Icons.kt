@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.rounded.OpenInFull
 import androidx.compose.material.icons.outlined.AutoFixHigh
@@ -175,6 +176,7 @@ object LeashIcons {
     val newFile = Icons.AutoMirrored.Outlined.NoteAdd
     val embed = Icons.Outlined.ViewInAr
     val fullscreen = Icons.Rounded.OpenInFull
+    val selectText = Icons.Outlined.TextFields
 
     /** The glyph for a tool call kind (ios ToolIcon.name). */
     fun forTool(kind: String?): ImageVector = when (kind) {
