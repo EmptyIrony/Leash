@@ -48,6 +48,7 @@ import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
 import dev.leash.personal.ui.design.LeashRadius
 import dev.leash.personal.ui.design.LeashShapes
+import dev.leash.personal.ui.design.LocalGlassState
 import dev.leash.personal.ui.design.PressScale
 import dev.leash.personal.ui.design.glass
 import dev.leash.personal.ui.design.pressable
@@ -345,27 +346,30 @@ fun LeashSheet(
             Box(Modifier.padding(top = 6.dp, bottom = 4.dp).size(36.dp, 5.dp).clip(LeashShapes.capsule).background(c.textTertiary.copy(alpha = 0.4f)))
         },
     ) {
-        if (title != null || onDone != null) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp)) {
-                if (leadingAction != null) Box(Modifier.align(Alignment.CenterStart)) { leadingAction() }
-                if (title != null) {
-                    Text(title, style = Leash.type.headline, color = c.textPrimary, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
-                }
-                if (onDone != null) {
-                    Box(
-                        Modifier.align(Alignment.CenterEnd).pressable(onClick = onDone).heightIn(min = 48.dp).padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // 36 dp drawn inside a 48 dp touch target
-                        Box(Modifier.height(36.dp).glass(LeashShapes.capsule, blur = false).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                            Text(doneLabel ?: "", style = Leash.type.body.semibold(), color = c.accentControl)
+        // a sheet is a window of its own: nothing in it may sample the page behind (the Done capsule draws its plain tint)
+        androidx.compose.runtime.CompositionLocalProvider(LocalGlassState provides null) {
+            if (title != null || onDone != null) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp)) {
+                    if (leadingAction != null) Box(Modifier.align(Alignment.CenterStart)) { leadingAction() }
+                    if (title != null) {
+                        Text(title, style = Leash.type.headline, color = c.textPrimary, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
+                    }
+                    if (onDone != null) {
+                        Box(
+                            Modifier.align(Alignment.CenterEnd).pressable(onClick = onDone).heightIn(min = 48.dp).padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            // 36 dp drawn inside a 48 dp touch target
+                            Box(Modifier.height(36.dp).glass(LeashShapes.capsule, blur = false).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                                Text(doneLabel ?: "", style = Leash.type.body.semibold(), color = c.accentControl)
+                            }
                         }
                     }
                 }
             }
+            // grouped cards on a sheet need their own fill in dark mode (raised on the sheet colour is invisible)
+            androidx.compose.runtime.CompositionLocalProvider(LocalOnSheet provides true) { content() }
         }
-        // grouped cards on a sheet need their own fill in dark mode (raised on the sheet colour is invisible)
-        androidx.compose.runtime.CompositionLocalProvider(LocalOnSheet provides true) { content() }
     }
 }
 
