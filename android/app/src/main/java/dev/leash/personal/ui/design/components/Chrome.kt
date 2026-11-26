@@ -50,6 +50,7 @@ import dev.leash.personal.ui.design.LeashShapes
 import dev.leash.personal.ui.design.PressScale
 import dev.leash.personal.ui.design.glass
 import dev.leash.personal.ui.design.pressable
+import dev.leash.personal.ui.design.capScale
 import dev.leash.personal.ui.design.semibold
 import dev.leash.personal.ui.design.softTopEdge
 
@@ -86,9 +87,10 @@ fun TopBar(
                 enter = androidx.compose.animation.fadeIn(),
                 exit = androidx.compose.animation.fadeOut(),
             ) {
+                // the bar has a fixed height: like a platform toolbar its text grows with the font scale only up to 1.3×
                 Column(horizontalAlignment = if (titleAlign == TitleAlign.Center) Alignment.CenterHorizontally else Alignment.Start) {
-                    Text(title.orEmpty(), style = Leash.type.headline, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (subtitle != null) Text(subtitle, style = Leash.type.footnote, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(title.orEmpty(), style = Leash.type.headline.capScale(1.3f), color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (subtitle != null) Text(subtitle, style = Leash.type.footnote.capScale(1.3f), color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

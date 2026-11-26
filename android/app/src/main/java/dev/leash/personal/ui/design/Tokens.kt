@@ -193,6 +193,15 @@ fun TextStyle.medium() = copy(fontWeight = FontWeight.Medium)
 fun TextStyle.semibold() = copy(fontWeight = FontWeight.SemiBold)
 fun TextStyle.bold() = copy(fontWeight = FontWeight.Bold)
 fun TextStyle.italic() = copy(fontStyle = FontStyle.Italic)
+/** This style with its size following the system font scale only up to [max] (fixed-height chrome like the top bar). */
+@Composable
+fun TextStyle.capScale(max: Float): TextStyle {
+    val scale = androidx.compose.ui.platform.LocalDensity.current.fontScale
+    if (scale <= max) return this
+    val f = max / scale
+    return copy(fontSize = fontSize * f, lineHeight = lineHeight * f)
+}
+
 /** Tabular digits for numbers that tick (elapsed time, counters, quota). */
 fun TextStyle.tabular() = copy(fontFeatureSettings = "tnum")
 

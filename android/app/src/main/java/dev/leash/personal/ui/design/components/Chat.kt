@@ -144,7 +144,7 @@ fun ActivityHeader(
             Modifier.weight(1f).pressable(scale = PressScale.Text, onClick = onClick),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Box(Modifier.width(18.dp).height(19.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.width(18.dp).height(with(density) { Leash.type.subheadline.lineHeight.toDp() }), contentAlignment = Alignment.Center) {
                 AnimatedContent(state, transitionSpec = { fadeIn(swap) togetherWith fadeOut(swap) }, label = "glyph") { s ->
                     when (s) {
                         ActivityState.Live -> LiveDots(phase, with(density) { titleWidth.toDp() })
