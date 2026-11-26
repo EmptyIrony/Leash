@@ -17,6 +17,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            // lets a second debug build (e.g. -PleashIdSuffix=.design) install beside the main one on a shared emulator
+            applicationIdSuffix = providers.gradleProperty("leashIdSuffix").orNull
+        }
         release {
             isMinifyEnabled = false
         }
