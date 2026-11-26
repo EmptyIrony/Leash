@@ -294,6 +294,8 @@ private fun SlabFrame(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         above?.invoke(this)
+        // bottom-aligned so the buttons stay on the last line: leading box and one-line field are as tall as the 48 dp send
+        // target, which puts all three on one centre line
         Row(verticalAlignment = Alignment.Bottom) {
             if (showLeading) {
                 val (icon, ink) = when (mode) {
@@ -301,12 +303,12 @@ private fun SlabFrame(
                     ComposerMode.SideQuestion -> LeashIcons.sideQuestion to c.accent
                     ComposerMode.Normal -> LeashIcons.plus to c.textSecondary
                 }
-                Box(Modifier.size(40.dp).pressable(enabled, onClickLabel = leadingLabel, onClick = onLeading), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(width = 40.dp, height = 48.dp).pressable(enabled, onClickLabel = leadingLabel, onClick = onLeading), contentAlignment = Alignment.Center) {
                     Icon(icon, leadingLabel, Modifier.size(22.dp), tint = ink)
                     leadingMenu?.invoke()
                 }
             }
-            Box(Modifier.weight(1f).padding(top = 9.dp, bottom = 9.dp, start = if (showLeading) 2.dp else 12.dp)) {
+            Box(Modifier.weight(1f).padding(top = 13.dp, bottom = 13.dp, start = if (showLeading) 2.dp else 12.dp)) {
                 field(textStyle, SolidColor(if (mode == ComposerMode.Shell) c.shell else c.accent), keyboard)
             }
             Row(verticalAlignment = Alignment.CenterVertically, content = action)
