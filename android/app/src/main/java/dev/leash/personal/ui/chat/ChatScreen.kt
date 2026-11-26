@@ -69,7 +69,7 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
+import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
@@ -447,7 +447,7 @@ private fun OtherSessionsBanner(sessionIds: List<String>, open: (String) -> Unit
         Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Filled.PanTool, null, Modifier.size(16.dp), tint = attention)
             Text(
-                if (sessionIds.size > 1) pluralStringResource(R.plurals.others_need_you, sessionIds.size, sessionIds.size) else stringResource(R.string.another_needs_approval),
+                if (sessionIds.size > 1) pluralText(R.plurals.others_need_you, sessionIds.size) else stringResource(R.string.another_needs_approval),
                 Modifier.weight(1f), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = LeashTheme.colors.textTertiary)

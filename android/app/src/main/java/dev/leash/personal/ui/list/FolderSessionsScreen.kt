@@ -31,7 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.pluralStringResource
+import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
@@ -61,7 +61,7 @@ fun FolderSessionsScreen(model: AppModel, agent: String, folder: String, onBack:
                 title = {
                     Column {
                         Text(title, style = MaterialTheme.typography.titleLarge)
-                        Text(pluralStringResource(R.plurals.conversations_count, all.size, all.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(pluralText(R.plurals.conversations_count, all.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
                 actions = { IconButton(onClick = { searchOpen = true }) { Icon(Icons.Filled.Search, stringResource(R.string.search)) } },

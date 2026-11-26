@@ -60,7 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.pluralStringResource
+import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -243,7 +243,7 @@ private fun QuestionBody(model: AppModel, request: PendingRequest, index: Int, t
                 if (spec.custom(q) != null) TextButton(onClick = { showSheet = true }) { Text(stringResource(R.string.other_answer)) }
             } else {
                 val n = spec.questions.size
-                Text(pluralStringResource(R.plurals.questions_count, n, n), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                Text(pluralText(R.plurals.questions_count, n), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -347,7 +347,7 @@ fun SubagentsTray(agents: List<SubagentItem>, collapsed: Boolean, onOpen: (Strin
             Row(Modifier.heightIn(min = 32.dp).padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(16.dp), contentAlignment = Alignment.Center) { ActivitySpinner(11.dp) }
                 Spacer(Modifier.width(8.dp))
-                Text(pluralStringResource(R.plurals.agents_running, agents.size, agents.size), style = MaterialTheme.typography.titleSmall)
+                Text(pluralText(R.plurals.agents_running, agents.size), style = MaterialTheme.typography.titleSmall)
             }
             if (!collapsed) {
                 agents.take(shown).forEach { SubagentStepRow(it, onOpen) }

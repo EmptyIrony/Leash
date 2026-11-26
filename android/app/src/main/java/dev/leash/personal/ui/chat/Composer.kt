@@ -63,7 +63,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.res.pluralStringResource
+import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -270,7 +270,7 @@ fun QueueTray(
             if (items.isNotEmpty()) Row(Modifier.heightIn(min = 40.dp).padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Schedule, null, Modifier.size(18.dp), tint = scheme.onSurfaceVariant)
                 Spacer(Modifier.width(8.dp))
-                Text(pluralStringResource(R.plurals.queued_count, items.size, items.size), style = MaterialTheme.typography.titleSmall)
+                Text(pluralText(R.plurals.queued_count, items.size), style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
                 Button(onClick = sendNow, enabled = enabled, contentPadding = ButtonDefaults.ContentPadding, modifier = Modifier.height(36.dp)) {
                     Text(stringResource(if (running) R.string.interrupt_and_send else R.string.send_now), fontWeight = FontWeight.Bold, maxLines = 1)

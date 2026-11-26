@@ -49,7 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.pluralStringResource
+import dev.leash.personal.ui.components.pluralText
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -239,7 +239,7 @@ fun FolderBrowserScreen(model: AppModel, controller: NewSessionController, path:
                     }
                     if (r.dirs.isEmpty()) item("nodirs") { Text(stringResource(R.string.no_subfolders), Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (r.files.isNotEmpty()) {
-                        item("files-h") { SectionLabel(pluralStringResource(R.plurals.files_count, r.files.size, r.files.size)) }
+                        item("files-h") { SectionLabel(pluralText(R.plurals.files_count, r.files.size)) }
                         items(r.files.take(30), key = { "x:$it" }) { f ->
                             Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.InsertDriveFile, null, Modifier.size(20.dp), tint = LeashTheme.colors.textTertiary)
