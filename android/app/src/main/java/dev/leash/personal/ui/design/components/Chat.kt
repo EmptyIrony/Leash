@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,18 +59,24 @@ import dev.leash.personal.ui.design.semibold
 import dev.leash.personal.ui.design.shimmer
 import dev.leash.personal.ui.design.tabular
 
-/** The user's message: accent-tinted bubble, tail corner bottom-end, ≥ 48 dp free on its leading side. */
+/**
+ * The user's message: accent-tinted bubble, tail corner bottom-end, ≥ 48 dp free on its leading side. [selectable]
+ * lets a long-press select its text (the platform's selection) instead of [onLongClick].
+ */
 @Composable
-fun UserBubble(text: String, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+fun UserBubble(text: String, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, selectable: Boolean = false) {
     Row(modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) {
         var m: Modifier = Modifier
         if (onLongClick != null) m = m.pressable(scale = PressScale.Row, role = null, onLongClick = onLongClick, onClick = {})
-        Text(
-            text,
-            style = Leash.type.reading,
-            color = Leash.colors.textPrimary,
-            modifier = m.clip(LeashShapes.bubble).background(Leash.colors.bubbleFill).padding(horizontal = 14.dp, vertical = 10.dp),
-        )
+        val bubble: @Composable () -> Unit = {
+            Text(
+                text,
+                style = Leash.type.reading,
+                color = Leash.colors.textPrimary,
+                modifier = m.clip(LeashShapes.bubble).background(Leash.colors.bubbleFill).padding(horizontal = 14.dp, vertical = 10.dp),
+            )
+        }
+        if (selectable) androidx.compose.foundation.text.selection.SelectionContainer { bubble() } else bubble()
     }
 }
 
@@ -208,6 +215,7 @@ fun StepRow(
     failed: Boolean = false,
     running: Boolean = false,
     onClick: () -> Unit = {},
+    annotatedTitle: androidx.compose.ui.text.AnnotatedString? = null,
     detail: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val c = Leash.colors
@@ -224,7 +232,8 @@ fun StepRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(icon, null, Modifier.size(16.dp), tint = c.textTertiary)
-            Text(title, style = style, maxLines = if (open) Int.MAX_VALUE else 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f))
+            if (annotatedTitle != null) Text(annotatedTitle, style = style, maxLines = if (open) Int.MAX_VALUE else 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f))
+            else Text(title, style = style, maxLines = if (open) Int.MAX_VALUE else 1, overflow = TextOverflow.MiddleEllipsis, modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (adds != null) Text("+$adds", style = Leash.type.monoSmall, color = c.success)
                 if (dels != null) Text("−$dels", style = Leash.type.monoSmall, color = c.danger)
@@ -239,13 +248,23 @@ fun StepRow(
     }
 }
 
-/** The rail along an opened activity's steps: a 1.5 dp hairline at x = 9 dp. */
+/**
+ * The rail along an opened activity's steps: a 1.5 dp hairline at x = 9 dp, drawn behind the rows (no intrinsic
+ * measurement, so rows may hold lazy or constraint-reading content like a diff).
+ */
 @Composable
 fun StepRail(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Row(modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        Box(Modifier.padding(start = 9.dp, top = 4.dp, bottom = 4.dp).width(1.5.dp).fillMaxHeight().background(Leash.colors.hairline))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
-    }
+    val hairline = Leash.colors.hairline
+    Column(
+        modifier.fillMaxWidth()
+            .drawBehind {
+                val x = 9.75.dp.toPx()
+                drawLine(hairline, androidx.compose.ui.geometry.Offset(x, 4.dp.toPx()), androidx.compose.ui.geometry.Offset(x, size.height - 4.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+            }
+            .padding(start = 10.5.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        content = content,
+    )
 }
 
 /** A line in a [DiffBlock]. */
@@ -282,7 +301,10 @@ fun DiffBlock(
             Text("+$adds", style = Leash.type.monoSmall.copy(fontSize = Leash.type.caption.fontSize), color = c.success)
             Text("−$dels", style = Leash.type.monoSmall.copy(fontSize = Leash.type.caption.fontSize), color = c.danger)
         }
-        Column(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+        // every line as wide as the widest (or the box), so the add/del tints run edge to edge while it scrolls sideways
+        androidx.compose.foundation.layout.BoxWithConstraints {
+          val boxWidth = maxWidth
+          Column(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp).widthIn(min = boxWidth).width(IntrinsicSize.Max)) {
             lines.forEach { l ->
                 when (l) {
                     is DiffLineModel.Gap -> Text(l.label, style = Leash.type.caption2, color = c.textTertiary, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
@@ -295,11 +317,12 @@ fun DiffBlock(
                         }
                         Text(
                             "$sign $text", style = Leash.type.monoSmall, color = c.textPrimary, softWrap = false,
-                            modifier = Modifier.widthIn(min = 320.dp).background(bg).padding(horizontal = 8.dp, vertical = 1.dp),
+                            modifier = Modifier.fillMaxWidth().background(bg).padding(horizontal = 8.dp, vertical = 1.dp),
                         )
                     }
                 }
             }
+          }
         }
         if (toggleLabel != null) {
             Text(toggleLabel, style = Leash.type.caption, color = c.accent, modifier = Modifier.pressable(scale = PressScale.Text, onClick = onToggle).padding(8.dp))
@@ -350,12 +373,12 @@ fun CardHeader(title: String, icon: ImageVector, modifier: Modifier = Modifier, 
     }
 }
 
-/** "N files changed +a −d": sunken row, row radius, hairline, 44 dp. */
+/** "N files changed +a −d": sunken row, row radius, hairline, 44 dp; a chevron only when it opens something. */
 @Composable
-fun ChangesRow(text: String, adds: Int, dels: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ChangesRow(text: String, adds: Int, dels: Int, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
     val c = Leash.colors
     Row(
-        modifier.fillMaxWidth().pressable(scale = PressScale.Row, onClick = onClick).heightIn(min = 44.dp)
+        modifier.fillMaxWidth().then(if (onClick != null) Modifier.pressable(scale = PressScale.Row, onClick = onClick) else Modifier).heightIn(min = 44.dp)
             .clip(LeashShapes.row).background(c.bgSunken).border(1.dp, c.hairline, LeashShapes.row).padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -364,7 +387,7 @@ fun ChangesRow(text: String, adds: Int, dels: Int, onClick: () -> Unit, modifier
         Text(text, style = Leash.type.subheadline, color = c.textPrimary, modifier = Modifier.weight(1f))
         Text("+$adds", style = Leash.type.footnote.tabular(), color = c.success)
         Text("−$dels", style = Leash.type.footnote.tabular(), color = c.danger)
-        Icon(LeashIcons.chevronRight, null, Modifier.size(16.dp), tint = c.textTertiary)
+        if (onClick != null) Icon(LeashIcons.chevronRight, null, Modifier.size(16.dp), tint = c.textTertiary)
     }
 }
 

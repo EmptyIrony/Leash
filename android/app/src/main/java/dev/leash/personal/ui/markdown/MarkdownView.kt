@@ -2,42 +2,44 @@ package dev.leash.personal.ui.markdown
 
 import android.content.ClipData
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Widgets
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -46,146 +48,190 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withAnnotation
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import dev.leash.personal.R
-import dev.leash.personal.ui.theme.LeashTheme
+import dev.leash.personal.ui.design.Leash
+import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LeashShapes
+import dev.leash.personal.ui.design.components.CodeBlock as CodeBlockView
+import dev.leash.personal.ui.design.components.Hairline
+import dev.leash.personal.ui.design.semibold
 import kotlinx.coroutines.launch
 
-/** Inline markdown as styled text; links open in the browser, file paths call [onOpenFile]. */
+/** The annotation tag that marks inline code; [InlineText] paints its rounded background. */
+internal const val CODE_TAG = "leash.code"
+
+/** Inline markdown as styled text; links open in the browser, file paths call [onOpenFile]. Inline code is tagged [CODE_TAG]. */
 @Composable
 fun rememberInline(text: String, onOpenFile: (String) -> Unit, baseColor: Color = Color.Unspecified): AnnotatedString {
-    val scheme = MaterialTheme.colorScheme
-    val colors = LeashTheme.colors
+    val c = Leash.colors
     val spans = remember(text) { MarkdownInline.parse(text) }
-    val linkStyle = TextLinkStyles(SpanStyle(color = scheme.primary, textDecoration = TextDecoration.Underline))
-    return remember(spans, scheme, colors, baseColor) {
+    val linkStyle = TextLinkStyles(SpanStyle(color = c.accent))
+    return remember(spans, c, baseColor) {
         buildAnnotatedString {
             for (s in spans) {
                 val style = SpanStyle(
-                    color = if (s.code) colors.codeInk else baseColor,
+                    color = if (s.code) c.codeInk else baseColor,
                     fontWeight = if (s.bold) FontWeight.SemiBold else null,
                     fontStyle = if (s.italic) FontStyle.Italic else null,
                     textDecoration = if (s.strike) TextDecoration.LineThrough else null,
                     fontFamily = if (s.code) FontFamily.Monospace else null,
-                    fontSize = if (s.code) 14.sp else androidx.compose.ui.unit.TextUnit.Unspecified,
-                    background = if (s.code) colors.codeBg else Color.Unspecified,
+                    fontSize = if (s.code) 0.92.em else androidx.compose.ui.unit.TextUnit.Unspecified,
                 )
+                val emit: AnnotatedString.Builder.() -> Unit = {
+                    if (s.code) withAnnotation(CODE_TAG, "") { withStyle(style) { append(s.text) } } else withStyle(style) { append(s.text) }
+                }
                 val path = s.filePath
                 when {
-                    path != null -> withLink(LinkAnnotation.Clickable("file", linkStyle) { onOpenFile(path) }) { withStyle(style) { append(s.text) } }
-                    s.href != null -> withLink(LinkAnnotation.Url(s.href, linkStyle)) { withStyle(style) { append(s.text) } }
-                    else -> withStyle(style) { append(s.text) }
+                    path != null -> withLink(LinkAnnotation.Clickable("file", linkStyle) { onOpenFile(path) }) { emit() }
+                    s.href != null -> withLink(LinkAnnotation.Url(s.href, linkStyle)) { emit() }
+                    else -> emit()
                 }
             }
         }
     }
 }
 
+/**
+ * Text whose inline code gets iOS's look: a codeBg fill with 4 dp continuous-looking corners, inset from the line box
+ * so wrapped lines don't fuse into one block (a SpanStyle background can't do either).
+ */
+@Composable
+fun InlineText(text: AnnotatedString, style: TextStyle, color: Color, modifier: Modifier = Modifier, textAlign: TextAlign? = null) {
+    val codeBg = Leash.colors.codeBg
+    val ranges = remember(text) { text.getStringAnnotations(CODE_TAG, 0, text.length).map { it.start to it.end } }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val m = if (ranges.isEmpty()) modifier else modifier.drawBehind {
+        val l = layout ?: return@drawBehind
+        val r = 4.dp.toPx()
+        val vInset = 2.dp.toPx()
+        val hPad = 2.dp.toPx()
+        for ((start, end) in ranges) {
+            if (start >= end || end > l.layoutInput.text.length) continue
+            val first = l.getLineForOffset(start)
+            val last = l.getLineForOffset(end - 1)
+            for (line in first..last) {
+                val s = maxOf(start, l.getLineStart(line))
+                val e = minOf(end, l.getLineEnd(line, visibleEnd = true))
+                if (s >= e) continue
+                val x1 = l.getHorizontalPosition(s, usePrimaryDirection = true)
+                val x2 = l.getHorizontalPosition(e, usePrimaryDirection = true)
+                val left = minOf(x1, x2) - hPad
+                val right = maxOf(x1, x2) + hPad
+                val top = l.getLineTop(line) + vInset
+                val bottom = l.getLineBottom(line) - vInset
+                drawRoundRect(codeBg, Offset(left, top), Size(right - left, bottom - top), CornerRadius(r, r))
+            }
+        }
+    }
+    Text(text, m, style = style, color = color, textAlign = textAlign, onTextLayout = { layout = it })
+}
+
 /** An agent's markdown: headings, lists, quotes, code, tables, rules (ios MarkdownView). Images and embeds are placeholders until phase 4. */
 @Composable
-fun MarkdownView(text: String, onOpenFile: (String) -> Unit, modifier: Modifier = Modifier, textColor: Color = MaterialTheme.colorScheme.onBackground) {
+fun MarkdownView(text: String, onOpenFile: (String) -> Unit, modifier: Modifier = Modifier, textColor: Color = Leash.colors.textPrimary) {
     val blocks = remember(text) { MarkdownParser.parse(text) }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { b -> MarkdownBlock(b, onOpenFile, textColor) }
     }
 }
 
-private val bodyStyle = TextStyle(fontSize = 16.sp, lineHeight = 24.sp)
-
 @Composable
 private fun MarkdownBlock(b: Block, onOpenFile: (String) -> Unit, color: Color) {
-    val scheme = MaterialTheme.colorScheme
+    val c = Leash.colors
+    val body = Leash.type.reading
     when (b) {
         is Block.Heading -> {
-            val size = when (b.level) { 1 -> 22.sp; 2 -> 19.sp; 3 -> 17.sp; else -> 16.sp }
-            Text(rememberInline(b.text, onOpenFile), Modifier.padding(top = 4.dp), style = bodyStyle.copy(fontSize = size, lineHeight = size * 1.3f, fontWeight = FontWeight.SemiBold), color = color)
+            val style = when (b.level) {
+                1 -> Leash.type.title3
+                2 -> Leash.type.headline.copy(fontSize = Leash.type.headline.fontSize * 1.0625f, lineHeight = Leash.type.title3.lineHeight)
+                else -> Leash.type.headline
+            }
+            InlineText(rememberInline(b.text, onOpenFile), style.semibold(), color, Modifier.padding(top = 6.dp))
         }
-        is Block.Paragraph -> Text(rememberInline(b.text, onOpenFile), style = bodyStyle, color = color)
+        is Block.Paragraph -> InlineText(rememberInline(b.text, onOpenFile), body, color)
         is Block.Bullet -> Row(Modifier.padding(start = (b.indent * 16).dp)) {
-            Text("•", Modifier.width(20.dp), style = bodyStyle, color = scheme.onSurfaceVariant)
-            Text(rememberInline(b.text, onOpenFile), Modifier.weight(1f), style = bodyStyle, color = color)
+            // a 4 dp tertiary dot centred on the first line
+            Box(Modifier.width(20.dp).height(with(androidx.compose.ui.platform.LocalDensity.current) { body.lineHeight.toDp() }), contentAlignment = Alignment.CenterStart) {
+                Box(Modifier.padding(start = 4.dp).size(4.dp).clip(LeashShapes.capsule).background(c.textTertiary))
+            }
+            InlineText(rememberInline(b.text, onOpenFile), body, color, Modifier.weight(1f))
         }
         is Block.Numbered -> Row(Modifier.padding(start = (b.indent * 16).dp)) {
-            Text(b.number + ".", Modifier.width(26.dp), style = bodyStyle, color = scheme.onSurfaceVariant)
-            Text(rememberInline(b.text, onOpenFile), Modifier.weight(1f), style = bodyStyle, color = color)
+            Text(b.number + ".", Modifier.width(26.dp), style = body.copy(fontFeatureSettings = "tnum"), color = c.textSecondary)
+            InlineText(rememberInline(b.text, onOpenFile), body, color, Modifier.weight(1f))
         }
         is Block.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
-            Box(Modifier.width(3.dp).fillMaxHeight().background(LeashTheme.colors.hairline, MaterialTheme.shapes.extraSmall))
-            Spacer(Modifier.width(10.dp))
-            Text(rememberInline(b.text, onOpenFile), style = bodyStyle, color = scheme.onSurfaceVariant)
+            Box(Modifier.padding(vertical = 2.dp).width(2.dp).fillMaxHeight().clip(LeashShapes.capsule).background(c.accent.copy(alpha = 0.35f)))
+            InlineText(rememberInline(b.text, onOpenFile), body, c.textSecondary, Modifier.padding(start = 12.dp))
         }
         is Block.Code -> CodeBlock(b.code, b.lang)
         is Block.Table -> MarkdownTable(b, onOpenFile, color)
-        Block.Rule -> HorizontalDivider(color = scheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
-        is Block.Embed -> Placeholder(Icons.Filled.Widgets, stringResource(R.string.embed_placeholder))
-        is Block.Image -> Placeholder(Icons.Filled.Image, stringResource(R.string.image_placeholder, b.alt.ifBlank { b.src.substringAfterLast('/') }))
+        Block.Rule -> Hairline(Modifier.padding(vertical = 8.dp))
+        is Block.Embed -> Placeholder(LeashIcons.openExternal, stringResource(R.string.embed_placeholder))
+        is Block.Image -> Placeholder(LeashIcons.photo, stringResource(R.string.image_placeholder, b.alt.ifBlank { b.src.substringAfterLast('/') }))
         is Block.MentionedImages -> Unit   // shown only when they load (phase 4)
     }
 }
 
 @Composable
-private fun Placeholder(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
-    Surface(shape = MaterialTheme.shapes.small, color = LeashTheme.colors.sunken) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+private fun Placeholder(icon: ImageVector, label: String) {
+    val c = Leash.colors
+    Row(
+        Modifier.clip(LeashShapes.row).background(c.bgSunken).border(1.dp, c.hairline, LeashShapes.row).padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(icon, null, Modifier.size(16.dp), tint = c.textSecondary)
+        Text(label, style = Leash.type.subheadline, color = c.textSecondary)
     }
 }
 
+/** A fenced code block: the design system's sunken block with the language and a copy button. */
 @Composable
 fun CodeBlock(code: String, lang: String, modifier: Modifier = Modifier) {
-    val colors = LeashTheme.colors
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small, color = colors.codeBg) {
-        Column {
-            Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(lang, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = colors.textTertiary)
-                IconButton(onClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("code", code))) } }, Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.ContentCopy, stringResource(R.string.copy), Modifier.size(16.dp), tint = colors.textTertiary)
-                }
-            }
-            Text(
-                code, Modifier.horizontalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = if (lang.isEmpty()) 12.dp else 0.dp),
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 19.sp), color = colors.codeInk, softWrap = false,
-            )
-        }
-    }
+    CodeBlockView(
+        code, modifier, language = lang.ifEmpty { null }, copyLabel = stringResource(R.string.copy),
+        onCopy = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("code", code))) } },
+    )
 }
 
-/** GFM table as an inset card: columns sized to their longest cell, scrolls sideways when it must. */
+/** GFM table as a raised card: columns sized to their longest cell, scrolls sideways when it must. */
 @Composable
 private fun MarkdownTable(t: Block.Table, onOpenFile: (String) -> Unit, color: Color) {
+    val c = Leash.colors
     val n = t.header.size
     val widths = remember(t) {
-        (0 until n).map { c ->
-            val longest = (listOf(t.header) + t.rows).maxOf { r -> (r.getOrNull(c) ?: "").length }
+        (0 until n).map { col ->
+            val longest = (listOf(t.header) + t.rows).maxOf { r -> (r.getOrNull(col) ?: "").length }
             (longest * 8 + 28).coerceIn(64, 260).dp
         }
     }
     val numeric = remember(t) {
-        (0 until n).map { c -> t.align.getOrElse(c) { 0 } == 0 && t.rows.isNotEmpty() && t.rows.all { r -> (r.getOrNull(c) ?: "").trim().let { it.isNotEmpty() && it.all { ch -> ch.isDigit() || ch in ".,%+-−kMB " } } } }
+        (0 until n).map { col -> t.align.getOrElse(col) { 0 } == 0 && t.rows.isNotEmpty() && t.rows.all { r -> (r.getOrNull(col) ?: "").trim().let { it.isNotEmpty() && it.all { ch -> ch.isDigit() || ch in ".,%+-−kMB " } } } }
     }
-    Surface(shape = MaterialTheme.shapes.small, color = LeashTheme.colors.sunken, border = androidx.compose.foundation.BorderStroke(0.5.dp, LeashTheme.colors.hairline)) {
+    Box(Modifier.clip(LeashShapes.card).background(c.bgRaised).border(1.dp, c.hairline, LeashShapes.card)) {
         Column(Modifier.horizontalScroll(rememberScrollState())) {
             (listOf(t.header) + t.rows).forEachIndexed { ri, row ->
                 Row {
-                    for (c in 0 until n) {
-                        val a = t.align.getOrElse(c) { 0 }
-                        val align = when { a == 1 -> TextAlign.Center; a == 2 || numeric[c] -> TextAlign.End; else -> TextAlign.Start }
-                        Text(
-                            rememberInline(row.getOrNull(c) ?: "", onOpenFile), Modifier.width(widths[c]).padding(horizontal = 10.dp, vertical = 8.dp),
-                            style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = if (ri == 0) FontWeight.SemiBold else FontWeight.Normal),
-                            color = if (ri == 0) MaterialTheme.colorScheme.onSurfaceVariant else color, textAlign = align,
+                    for (col in 0 until n) {
+                        val a = t.align.getOrElse(col) { 0 }
+                        val align = when { a == 1 -> TextAlign.Center; a == 2 || numeric[col] -> TextAlign.End; else -> TextAlign.Start }
+                        InlineText(
+                            rememberInline(row.getOrNull(col) ?: "", onOpenFile),
+                            if (ri == 0) Leash.type.subheadline.semibold() else Leash.type.subheadline.copy(fontFeatureSettings = if (numeric[col]) "tnum" else null),
+                            if (ri == 0) c.textSecondary else color,
+                            Modifier.width(widths[col]).padding(horizontal = 12.dp, vertical = 9.dp),
+                            textAlign = align,
                         )
                     }
                 }
-                if (ri < t.rows.size) HorizontalDivider(color = LeashTheme.colors.hairline, thickness = 0.5.dp)
+                if (ri < t.rows.size) Box(Modifier.width(widths.fold(0.dp) { acc, w -> acc + w }).height(with(androidx.compose.ui.platform.LocalDensity.current) { 1f.toDp() }).background(c.hairline))
             }
         }
     }
