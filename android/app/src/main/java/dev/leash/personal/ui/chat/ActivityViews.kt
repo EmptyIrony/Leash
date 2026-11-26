@@ -263,6 +263,7 @@ fun StepRow(row: StepRowModel, store: ChatStore, onOpenSubagent: (String) -> Uni
 
 @Composable
 private fun ToolDetail(t: ToolItem) {
+    ObserveChat()
     val scheme = MaterialTheme.colorScheme
     val openFile = LocalOpenFile.current
     val cmd = t.commandPreview

@@ -63,8 +63,9 @@ fun ActivitySpinner(size: Dp = 16.dp, modifier: Modifier = Modifier, color: Colo
 /** Every row that shows a mutable transcript item reads this: core items change in place and only the store's version moves. */
 val LocalChatVersion = compositionLocalOf { 0L }
 
+/** Inline on purpose: the read must happen in the calling row's own scope, or a change of the version would only re-run this helper and the row (given the same item instance) would be skipped. */
 @Composable
-fun ObserveChat() { LocalChatVersion.current }
+inline fun ObserveChat(): Long = LocalChatVersion.current
 
 enum class StatusKind { Ok, Warn, Bad, Idle }
 

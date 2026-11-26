@@ -129,7 +129,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
 /** The parent agent's instructions to a subagent: a quote, not a user bubble (the user didn't write it). */
 @Composable
 fun PromptQuote(text: String) {
-    ObserveChatKey()
+    dev.leash.personal.ui.components.ObserveChat()
     var expanded by rememberSaveable(text.length) { mutableStateOf(false) }
     val trimmed = text.trim()
     val long = trimmed.length > 240 || trimmed.count { it == '\n' } > 2
@@ -146,5 +146,3 @@ fun PromptQuote(text: String) {
     }
 }
 
-@Composable
-private fun ObserveChatKey() { dev.leash.personal.ui.components.ObserveChat() }
