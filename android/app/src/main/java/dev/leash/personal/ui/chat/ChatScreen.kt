@@ -129,6 +129,8 @@ fun ChatScreen(
     val context = LocalContext.current
 
     LaunchedEffect(store) { if (!store.attached) model.attach(store) }
+    // quota for the chip and the model picker (the bridge reuses what is younger than two minutes)
+    LaunchedEffect(store) { model.refreshQuota() }
     DisposableEffect(store) {
         model.watch(store)
         onDispose { model.unwatch(store) }

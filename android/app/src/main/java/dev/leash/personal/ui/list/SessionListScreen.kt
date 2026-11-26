@@ -57,6 +57,10 @@ import dev.leash.personal.ui.components.AgentIcon
 import dev.leash.personal.ui.components.color
 import dev.leash.personal.ui.components.connectionStatus
 import dev.leash.personal.ui.design.components.GlassCircleButton
+import dev.leash.personal.ui.design.components.GlassCircleSlot
+import dev.leash.personal.ui.quota.QuotaRings
+import dev.leash.personal.ui.quota.QuotaSheet
+import dev.leash.personal.ui.quota.quotaRingsDescription
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.Leash
@@ -188,10 +192,17 @@ fun SessionListScreen(
                 }
             }
         }
+        var quotaOpen by rememberSaveable { mutableStateOf(false) }
         TopBar(
             title = stringResource(R.string.app_name_title),
             titleVisible = titleGone,
             edgeVisible = scrolled,
+            actions = {
+                if (state.isConfigured) {
+                    val pool = state.tightestPool
+                    GlassCircleSlot(quotaRingsDescription(pool), { quotaOpen = true }) { QuotaRings(pool, known = state.quotas.isNotEmpty()) }
+                }
+            },
             navigation = {
                 val st = if (state.isConfigured) connectionStatus(state) else null
                 GlassCircleButton(
@@ -200,6 +211,7 @@ fun SessionListScreen(
                 )
             },
         )
+        if (quotaOpen) QuotaSheet(model) { quotaOpen = false }
         // the bottom: content fades out under the actions; search turns the circles into a field above the keyboard
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottom + 80.dp).softBottomEdge(blur = false))
         val reduced = LocalReduceMotion.current

@@ -35,6 +35,13 @@ import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.ChatStore
 import dev.leash.personal.core.ConfigChoice
 import dev.leash.personal.core.ConfigOption
+import dev.leash.personal.core.QuotaFormat
+import dev.leash.personal.core.QuotaInfo
+import dev.leash.personal.ui.quota.QuotaSheet
+import dev.leash.personal.ui.quota.quotaRingTint
+import dev.leash.personal.ui.quota.quotaTint
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.leash.personal.core.j
 import dev.leash.personal.core.string
 import dev.leash.personal.ui.components.ObserveChat
@@ -117,8 +124,7 @@ private fun providerName(p: Provider): String = when (p) {
 }
 
 /**
- * The selectors under the composer: model, thinking level, permission mode, context usage (quota comes with the quota sheet in a
- * later phase). [confirmApproveAll] asks once before an approve-everything mode is turned on.
+ * The selectors under the composer: model, thinking level, permission mode, quota, context usage. [confirmApproveAll] asks once before an approve-everything mode is turned on.
  */
 @Composable
 fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
@@ -130,6 +136,7 @@ fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
     var effortSheet by remember { mutableStateOf(false) }
     var modeMenu by remember { mutableStateOf(false) }
     var contextMenu by remember { mutableStateOf(false) }
+    var quotaSheet by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf<String?>(null) }
     ChipRowView {
         store.modelOption?.let { opt ->
@@ -137,7 +144,7 @@ fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
                 shortModel(opt.currentName), { modelSheet = true },
                 leading = { ProviderIcon(if (agent == "claude") Provider.Anthropic else Provider.of(opt.current.string), 14.dp) },
             )
-            if (modelSheet) ModelSheet(opt, agent, onSelect = { v -> model.setConfig(store, opt, j(v)); model.hooks.haptic(dev.leash.personal.core.Haptic.Selection) }) { modelSheet = false }
+            if (modelSheet) ModelSheet(opt, agent, state.quotas[agent], onSelect = { v -> model.setConfig(store, opt, j(v)); model.hooks.haptic(dev.leash.personal.core.Haptic.Selection) }) { modelSheet = false }
         }
         store.effortOption?.let { opt ->
             Chip(effortName(opt.current.string ?: "", opt.currentName), { effortSheet = true }, icon = LeashIcons.effort, chevron = false)
@@ -177,6 +184,22 @@ fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
                 )
             }
         }
+        // quota: what is left of the pool the selected model draws from (its tightest window)
+        if (state.isConnected) {
+            val limit = state.quotas[agent]?.limiting(store.modelOption?.current.string, agent)
+            val b = limit?.second
+            val f = b?.fraction
+            val tight = QuotaFormat.isTight(f)
+            val desc = limit?.first?.let { stringResource(R.string.quota_rings_desc, it.label, QuotaFormat.percent(f ?: 0.0)) } ?: stringResource(R.string.quota_chip)
+            Chip(
+                if (b != null && f != null) QuotaFormat.chipLabel(b.window) + " " + QuotaFormat.percent(f) + "%" else stringResource(R.string.quota_chip),
+                { quotaSheet = true },
+                modifier = Modifier.semantics { contentDescription = desc },
+                leading = { RingGauge(f?.toFloat(), size = 14.dp, tint = quotaRingTint(f)) },
+                ink = if (tight) quotaTint(f) else if (f != null) c.textPrimary else c.textSecondary, chevron = false,
+            )
+            if (quotaSheet) QuotaSheet(model) { quotaSheet = false }
+        }
         // context window
         store.usage?.takeIf { it.second > 0 }?.let { (used, size) ->
             val f = used.toDouble() / size
@@ -194,17 +217,30 @@ fun ChipRow(model: AppModel, store: ChatStore, enabled: Boolean) {
     }
 }
 
-/** The model picker, grouped by provider (ios ModelPicker; the quota in the group headers comes with the quota sheet). */
+/** The model picker, grouped by provider, each group header with what is left of its quota (ios ModelPicker). */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelSheet(option: ConfigOption, agent: String, onSelect: (String) -> Unit, dismiss: () -> Unit) {
+private fun ModelSheet(option: ConfigOption, agent: String, quota: QuotaInfo?, onSelect: (String) -> Unit, dismiss: () -> Unit) {
     val c = Leash.colors
     fun providerOf(ch: ConfigChoice) = if (agent == "claude") Provider.Anthropic else Provider.of(ch.value)
     val groups = listOf(Provider.Gemini, Provider.Anthropic, Provider.OpenAI, Provider.Other).mapNotNull { p -> option.choices.filter { providerOf(it) == p }.takeIf { it.isNotEmpty() }?.let { p to it } }
     LeashSheet(onDismiss = dismiss, title = stringResource(R.string.model)) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 16.dp)) {
             groups.forEach { (p, choices) ->
-                SectionHeader(providerName(p), leading = { ProviderIcon(p, 16.dp) })
+                // the quota of the pool this group's models draw from
+                val limit = quota?.limiting(if (agent == "claude") option.current.string else QuotaFormat.poolHint(p.name.lowercase()), agent)
+                SectionHeader(
+                    providerName(p), leading = { ProviderIcon(p, 16.dp) },
+                    trailing = limit?.second?.let { b ->
+                        val f = b.fraction
+                        if (f == null) null else ({
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RingGauge(f.toFloat(), size = 11.dp, stroke = 1.6.dp, tint = quotaRingTint(f))
+                                Text(b.shortLabel + " " + QuotaFormat.percent(f) + "%", style = Leash.type.caption2.tabular(), color = if (QuotaFormat.isTight(f)) quotaTint(f) else c.textTertiary)
+                            }
+                        })
+                    },
+                )
                 GroupCard {
                     choices.forEachIndexed { i, ch ->
                         val selected = ch.value == option.current.string

@@ -311,6 +311,8 @@ fun LeashSheet(
     doneLabel: String? = null,
     onDone: (() -> Unit)? = null,
     sheetState: SheetState = rememberModalBottomSheetState(),
+    /** a control at the start of the title row (the quota sheet's refresh) */
+    leadingAction: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = Leash.colors
@@ -332,6 +334,7 @@ fun LeashSheet(
     ) {
         if (title != null || onDone != null) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp)) {
+                if (leadingAction != null) Box(Modifier.align(Alignment.CenterStart)) { leadingAction() }
                 if (title != null) {
                     Text(title, style = Leash.type.headline, color = c.textPrimary, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
                 }

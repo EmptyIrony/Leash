@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -126,6 +127,21 @@ fun GlassCircleButton(
     enabled: Boolean = true,
     blur: Boolean = false,
     badge: (@Composable () -> Unit)? = null,
+) = GlassCircleSlot(contentDescription, onClick, modifier, size, enabled, blur, badge) {
+    Icon(icon, null, Modifier.size(if (size >= 44.dp) 22.dp else 18.dp), tint = tint)
+}
+
+/** A glass circle with anything inside it (the quota rings): the same size, touch target and press feedback as [GlassCircleButton]. */
+@Composable
+fun GlassCircleSlot(
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    enabled: Boolean = true,
+    blur: Boolean = false,
+    badge: (@Composable () -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
 ) {
     Box(
         modifier
@@ -134,9 +150,7 @@ fun GlassCircleButton(
             .pressable(enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(size).glass(CircleShape, blur = blur), contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(if (size >= 44.dp) 22.dp else 18.dp), tint = tint)
-        }
+        Box(Modifier.size(size).glass(CircleShape, blur = blur), contentAlignment = Alignment.Center, content = content)
         if (badge != null) Box(Modifier.size(size), contentAlignment = Alignment.BottomEnd) { badge() }
     }
 }
