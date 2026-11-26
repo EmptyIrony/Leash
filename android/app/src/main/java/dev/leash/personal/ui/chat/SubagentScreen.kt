@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -74,8 +77,15 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
     val live = item?.isRunning == true
     val needsAction = item?.needsAction == true
     val liveAction = item?.activity?.liveAction
+    // this agent's requests and those of agents it launched (the bridge files them under the root conversation)
+    val requests = if (item == null) emptyList() else state.pendingFor(rootId).filter { r -> r.subagent?.sessionId in item.lineage }
     Scaffold(
         containerColor = Color.Transparent,
+        bottomBar = {
+            if (requests.isNotEmpty()) Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
+            }
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },

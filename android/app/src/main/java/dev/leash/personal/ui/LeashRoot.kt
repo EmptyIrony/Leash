@@ -102,6 +102,7 @@ fun LeashRoot(model: AppModel) {
                     model, e.arg("id"), onBack = { nav.popBackStack() },
                     onOpenSubagent = { root, child -> nav.navigate("subagent/" + enc(root) + "/" + enc(child)) },
                     onBrowseFiles = { agent, cwd -> nav.navigate("project/" + enc(agent) + "/" + enc(cwd)) },
+                    onOpenChat = { nav.openChat(it) },
                 )
             }
             composable("subagent/{root}/{child}") { e ->
