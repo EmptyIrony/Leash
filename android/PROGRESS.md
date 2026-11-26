@@ -16,11 +16,7 @@
 - Unit tests: `LeashPaletteTest` (3 tests).
 
 ### Toolchain findings (important for later phases)
-- Windows SDK has platform 36 (compileSdk 36 builds). It does NOT have 37.
-- Versions in use: AGP 8.13.2, Gradle 8.14.8, Kotlin 2.3.21, Compose BOM **2025.12.01** (Material3 1.4.x), core-ktx 1.17.0,
-  activity-compose 1.11.0, lifecycle 2.9.4, navigation-compose 2.9.5.
-- **Do not bump to the newest BOM (2026.11.01) or core-ktx 1.19**: they require AGP 9.1+ and compileSdk 37. Stay on AGP 8.13.x / SDK 36.
-- Applying `org.jetbrains.kotlin.android` is required with AGP 8.x (the `kotlin {}` block needs it).
+- (Phase 1a used AGP 8.13 and compileSdk 36; replaced, see "Toolchain upgrade" at the end for the versions in use.)
 - First build on the host downloads Gradle + dependencies (~7 min); incremental builds ~45 s; unit tests ~35 s.
 - Emulator: 1080x1920, API 35 (confirmed via getprop).
 - Commit trailer used: `Co-Authored-By: Claude Sonnet 5.5` (the executing model; PLAN.md names Opus 5.5).
@@ -194,7 +190,7 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
   (3.5 dp per pixel inside the safe circle, merged same-colour paths, half-pixel indigo shadow; themed-icon layer with
   three alpha levels); `mipmap-anydpi` adaptive icons use them. The old placeholder colour is gone.
 - Build: `applicationIdSuffix` from `-PleashIdSuffix` in the debug build type (a second debug app beside the main one);
-  `dev.chrisbanes.haze:haze:1.7.1` (the newest that keeps compileSdk 36 / activity 1.11; 1.7.2+ and 2.x need SDK 37).
+  `dev.chrisbanes.haze:haze` (then 1.7.1; now 2.x, see "Toolchain upgrade").
 - Unit tests: `DesignMathTest` (squircle construction sums/clamps/continuity, SwiftUI spring conversion, live band).
 
 ### Toolchain finding
@@ -408,3 +404,24 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 - `lintDebug` fails with 8 errors and 64 warnings; only the first one was readable from here (`MissingPermission` for `Vibrator.vibrate` in `Haptics.kt:80`, not from this work), the rest of the report stayed on the host. So lint's own translation checks were not seen; the key and argument parity of `values/` and `values-zh-rCN/` was checked with a script instead. Release builds only run lintVital.
 - No Traditional Chinese (iOS has none either). A `zh-SG` / `zh-Hans-SG` device may not match `values-zh-rCN`.
 - The demo bridge's scripted texts, the debug design catalog and the debug-only "Demo bridge" strings are English content by design.
+
+## Toolchain upgrade (compileSdk 37, AGP 9, Haze 2.1)
+
+- Versions in use: AGP 9.2.1, Gradle 9.4.1, Kotlin 2.4.21 (AGP's built-in Kotlin: no `org.jetbrains.kotlin.android` plugin),
+  Compose BOM 2026.09.00 (ui 1.12.1, material3 1.4.0), core-ktx 1.19.1, activity-compose 1.13.0, lifecycle 2.11.0,
+  Haze 2.1.0 (`haze` + `haze-blur`). compileSdk 37; targetSdk stays 35 and minSdk 29.
+- Extra Kotlin source directories go through `sourceSets...kotlin.directories`, not `java.srcDir`.
+- The Windows host got SDK platform `android-37.0` and Build Tools 36.0.0 (installed by AGP during the first build).
+- **Gradle 9 deadlock**: `files(aar).builtBy(":tailnet:bindTailnetDebug")` (a task path in another project) hung
+  `assembleReleaseLike` for hours with an idle daemon: a worker, while reading a task's inputs, resolved the path and
+  waited for the build's own lock. Debug builds passed. `builtBy` now takes the `TaskProvider`.
+- **When a remote build is silent for 30 min** the MCP client gives up but Gradle keeps running, and later Gradle calls on
+  the same workspace queue behind it. Calls on another workspace (`project=`) still run, so `--status` there shows the
+  BUSY daemon; `--stop` there stops every daemon of that Gradle version, so check first that they are all ours.
+- The old `android` workspace could not delete `app/build/outputs/apk/debug` right after the upgrade (cause not
+  proven; probably the idle Gradle 8.14.8 daemon still watching it), so the upgrade was verified in a second workspace,
+  `project="leash-haze2"`.
+- Verified: 304 unit tests; debug, `releaseLike` (installed, main and catalog activities launched, no crash) and signed
+  release builds (same certificate; `go.Seq`, the tailnet classes and `libgojni.so` are in the APK); catalog screenshots
+  before / after differ only by an emulator focus ring; scroll frame times on the catalog chat page unchanged.
+  Not verified: a real phone, and the built-in Tailscale node in the arm64 release APK at run time.

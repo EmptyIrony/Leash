@@ -188,7 +188,7 @@ Background: while a turn runs, a looping silent sound (`BackgroundAudio`, driven
 
 ## Android
 
-Kotlin, Jetpack Compose, Material 3 with Leash's own design system (`android/DESIGN.md`), single activity, minSdk 29 (Android 10), targetSdk 35, compileSdk 36. At feature
+Kotlin, Jetpack Compose, Material 3 with Leash's own design system (`android/DESIGN.md`), single activity, minSdk 29 (Android 10), targetSdk 35, compileSdk 37. At feature
 parity with the iPhone app minus the watch; no Google Play Services or FCM (sideloaded APK). Plan, phase log and known issues: `android/PLAN.md`, `android/PROGRESS.md`.
 
 Replacements for the Apple-only surfaces:
@@ -204,7 +204,7 @@ Replacements for the Apple-only surfaces:
 
 ### Build
 
-Open `android/` in Android Studio, or from a shell (JDK 17, Android SDK with platform 36; `local.properties` `sdk.dir` or `ANDROID_HOME`):
+Open `android/` in an Android Studio new enough for AGP 9.2, or from a shell (JDK 17, Android SDK with platform 37 and Build Tools 36; `local.properties` `sdk.dir` or `ANDROID_HOME`):
 
 ```bash
 cd android

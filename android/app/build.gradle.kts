@@ -3,7 +3,6 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -31,7 +30,7 @@ if (!releaseSigned) {
 
 android {
     namespace = "dev.leash.personal"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.leash.personal"
@@ -81,11 +80,11 @@ android {
     }
 
     sourceSets.getByName("releaseLike").run {
-        java.srcDir("src/debug/java")
+        kotlin.directories += "src/debug/java"
         manifest.srcFile("src/debug/AndroidManifest.xml")
     }
     if (tailnetLinked) ndkVersion = tailnet.extra["ndkVersion"] as String
-    sourceSets.getByName("main").java.srcDir(if (tailnetLinked) "src/tailnet/java" else "src/noTailnet/java")
+    sourceSets.getByName("main").kotlin.directories += if (tailnetLinked) "src/tailnet/java" else "src/noTailnet/java"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -138,10 +137,14 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.haze)
+    implementation(libs.haze.blur)
     if (tailnetLinked) {
-        debugImplementation(files(tailnet.extra["tailnetAarDebug"]!!).builtBy(":tailnet:bindTailnetDebug"))
-        releaseImplementation(files(tailnet.extra["tailnetAarRelease"]!!).builtBy(":tailnet:bindTailnetRelease"))
-        "releaseLikeImplementation"(files(tailnet.extra["tailnetAarDebug"]!!).builtBy(":tailnet:bindTailnetDebug"))
+        // builtBy takes the task provider, not its path: looking a path up while a task runs deadlocks Gradle 9 (lintVital did)
+        val bindDebug = tailnet.tasks.named("bindTailnetDebug")
+        val bindRelease = tailnet.tasks.named("bindTailnetRelease")
+        debugImplementation(files(tailnet.extra["tailnetAarDebug"]!!).builtBy(bindDebug))
+        releaseImplementation(files(tailnet.extra["tailnetAarRelease"]!!).builtBy(bindRelease))
+        "releaseLikeImplementation"(files(tailnet.extra["tailnetAarDebug"]!!).builtBy(bindDebug))
     }
     debugImplementation(libs.androidx.compose.ui.tooling)
 

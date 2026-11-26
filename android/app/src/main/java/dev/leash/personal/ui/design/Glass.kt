@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -21,11 +22,13 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeBlurStyleScope
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 
@@ -35,7 +38,7 @@ import dev.chrisbanes.haze.rememberHazeState
  */
 val LocalGlassState = staticCompositionLocalOf<HazeState?> { null }
 
-/** Real blur needs API 31; Haze also leaves out 31 itself (RenderNode invalidation bugs). */
+/** Real blur needs API 31; 31 itself stays on the solid fallback (RenderNode invalidation bugs there). */
 val glassBlurSupported: Boolean get() = Build.VERSION.SDK_INT >= 32
 
 object GlassDefaults {
@@ -45,7 +48,7 @@ object GlassDefaults {
 /** A screen region whose content can be seen, blurred, through the glass above it. */
 @Composable
 fun GlassScope(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-    val state = rememberHazeState(blurEnabled = glassBlurSupported)
+    val state = rememberHazeState()
     CompositionLocalProvider(LocalGlassState provides state) {
         Box(modifier, content = content)
     }
@@ -86,22 +89,27 @@ fun Modifier.glass(shape: Shape, tint: Color = Color.Unspecified, shadow: Boolea
     if (shadow) m = m.floatingShadow(shape)
     m = m.clip(shape)
     val blurs = blur && state != null && glassBlurSupported && LocalGlassBlurAllowed.current
+    val style = remember(c) {
+        blurStyle(c.bgBase, GlassDefaults.blur) {
+            colorEffects(listOf(HazeColorEffect.tint(c.glassTint)))
+            fallbackColorEffect(HazeColorEffect.tint(c.glassFallback))
+        }
+    }
     m = if (blurs) {
-        m.hazeEffect(
-            state,
-            HazeStyle(
-                backgroundColor = c.bgBase,
-                tints = listOf(HazeTint(c.glassTint)),
-                blurRadius = GlassDefaults.blur,
-                noiseFactor = 0f,
-                fallbackTint = HazeTint(c.glassFallback),
-            ),
-        )
+        m.hazeBlur(HazeInput.Sources(state), style)
     } else {
         m.background(if (blur) c.glassFallback else c.glassTint)
     }
     if (tint.isSpecified) m = m.background(tint)
     return m.glassRim(shape)
+}
+
+/** The blur settings every Haze effect here shares: noise off, composited over the page colour. */
+private fun blurStyle(background: Color, radius: Dp, more: HazeBlurStyleScope.() -> Unit) = HazeBlurStyle {
+    backgroundColor(background)
+    blurRadius(radius)
+    noiseFactor(0f)
+    more()
 }
 
 /** The edge that makes glass read as glass: a hairline outer line and a soft top highlight. */
@@ -140,12 +148,13 @@ fun Modifier.softTopEdge(): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
     val scrim = Brush.verticalGradient(0f to c.bgBase.copy(alpha = 0.92f), 0.55f to c.bgBase.copy(alpha = 0.6f), 1f to Color.Transparent)
+    val style = remember(c) {
+        blurStyle(c.bgBase, 16.dp) { progressive(HazeProgressive.verticalGradient(startIntensity = 1f, endIntensity = 0f)) }
+    }
     var m = this
     // progressive blur needs runtime shaders (API 33); below that the scrim alone
     if (state != null && Build.VERSION.SDK_INT >= 33 && LocalGlassBlurAllowed.current) {
-        m = m.hazeEffect(state, HazeStyle(backgroundColor = c.bgBase, tints = emptyList(), blurRadius = 16.dp, noiseFactor = 0f)) {
-            progressive = HazeProgressive.verticalGradient(startIntensity = 1f, endIntensity = 0f)
-        }
+        m = m.hazeBlur(HazeInput.Sources(state), style)
     }
     return m.background(scrim)
 }
@@ -158,15 +167,16 @@ fun Modifier.softTopEdge(): Modifier {
 fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
+    val style = remember(c) {
+        blurStyle(c.bgBase, 12.dp) { mask(Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 1f to Color.Black)) }
+    }
     var m = this
     if (!blur) {
         // the list: rows stay crisp between the bottom circles, only a light fade towards the page colour
         return m.background(Brush.verticalGradient(0f to Color.Transparent, 1f to c.bgGradientEnd.copy(alpha = 0.6f)))
     }
     if (state != null && glassBlurSupported && LocalGlassBlurAllowed.current) {
-        m = m.hazeEffect(state, HazeStyle(backgroundColor = c.bgBase, tints = emptyList(), blurRadius = 12.dp, noiseFactor = 0f)) {
-            mask = Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 1f to Color.Black)
-        }
+        m = m.hazeBlur(HazeInput.Sources(state), style)
     }
     return m.background(Brush.verticalGradient(0f to Color.Transparent, 0.3f to c.bgGradientEnd.copy(alpha = 0.6f), 1f to c.bgGradientEnd.copy(alpha = 0.85f)))
 }
