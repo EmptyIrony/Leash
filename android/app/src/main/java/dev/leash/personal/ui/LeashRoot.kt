@@ -1,53 +1,69 @@
 package dev.leash.personal.ui
 
+import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Badge
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import dev.leash.personal.core.AppModel
-import dev.leash.personal.core.LinkState
-import dev.leash.personal.core.SessionSummary
+import dev.leash.personal.ui.chat.ChatScreen
+import dev.leash.personal.ui.chat.SubagentScreen
+import dev.leash.personal.ui.files.ProjectFolderScreen
+import dev.leash.personal.ui.list.FolderSessionsScreen
+import dev.leash.personal.ui.list.SessionListScreen
+import dev.leash.personal.ui.newsession.FolderBrowserScreen
+import dev.leash.personal.ui.newsession.NewSessionController
+import dev.leash.personal.ui.newsession.NewSessionScreen
+import dev.leash.personal.ui.settings.ScannerScreen
+import dev.leash.personal.ui.settings.SettingsScreen
 import dev.leash.personal.ui.theme.LeashTheme
 
-/** Phase 1b shell: connection state and the conversation list, proving the core loop. Real screens arrive in phase 2. */
+private fun NavBackStackEntry.arg(name: String): String = arguments?.getString(name).orEmpty()
+private fun enc(s: String) = Uri.encode(s)
+
+/** The screens and the way between them: list, folder, conversation, subagent, new conversation and its folder browser, project files, settings, scanner. */
 @Composable
 fun LeashRoot(model: AppModel) {
     val scheme = MaterialTheme.colorScheme
     val colors = LeashTheme.colors
+    val nav = rememberNavController()
+    val scope = rememberCoroutineScope()
     val state by model.state.collectAsStateWithLifecycle()
-    var showSettings by remember { mutableStateOf(false) }
+    val newSession = remember { NewSessionController(model, scope) }
+
+    // a notification tap or a leash://session link: show that conversation with the list under it, so Back always leads to the list
+    val request = state.openRequest
+    LaunchedEffect(request) {
+        if (request != null) {
+            model.openHandled(request)
+            if (model.visibleSessionId != request.sessionId) nav.openChat(request.sessionId)
+        }
+    }
 
     Box(
         Modifier
@@ -55,88 +71,64 @@ fun LeashRoot(model: AppModel) {
             .background(Brush.verticalGradient(listOf(scheme.background, colors.bgGradientEnd)))
             .drawBehind {
                 drawRect(
-                    Brush.radialGradient(
-                        listOf(scheme.primary.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(size.width, 0f),
-                        radius = 320.dp.toPx(),
-                    ),
+                    Brush.radialGradient(listOf(scheme.primary.copy(alpha = 0.10f), Color.Transparent), center = Offset(size.width, 0f), radius = 320.dp.toPx()),
+                )
+            },
+    ) {
+        val push: AnimatedContentTransitionScope<NavBackStackEntry>.() -> androidx.compose.animation.EnterTransition = { slideInHorizontally(tween(280)) { it / 5 } + fadeIn(tween(220)) }
+        val pop: AnimatedContentTransitionScope<NavBackStackEntry>.() -> androidx.compose.animation.ExitTransition = { slideOutHorizontally(tween(280)) { it / 5 } + fadeOut(tween(200)) }
+        NavHost(
+            nav, startDestination = "list", Modifier.fillMaxSize(),
+            enterTransition = push, exitTransition = { fadeOut(tween(160)) }, popEnterTransition = { fadeIn(tween(220)) }, popExitTransition = pop,
+        ) {
+            composable("list") {
+                SessionListScreen(
+                    model,
+                    onOpenChat = { nav.navigate("chat/" + enc(it)) },
+                    onOpenFolder = { agent, folder -> nav.navigate("folder/" + enc(agent) + "/" + enc(folder)) },
+                    onNew = { nav.navigate("new") },
+                    onSettings = { nav.navigate("settings") },
                 )
             }
-            .safeDrawingPadding(),
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Leash", style = MaterialTheme.typography.headlineMedium, color = scheme.onBackground)
-                    if (state.settingsLoaded && !state.isConfigured) StatusLine("Not paired", scheme.onSurfaceVariant) else ConnectionLine(state.connection, state.macName, state.useDemo)
-                }
-                TextButton(onClick = { showSettings = true }) { Text("Settings") }
+            composable("folder/{agent}/{cwd}") { e ->
+                FolderSessionsScreen(model, e.arg("agent"), e.arg("cwd"), onBack = { nav.popBackStack() }, onOpenChat = { nav.navigate("chat/" + enc(it)) })
             }
-            Spacer(Modifier.size(8.dp))
-            when {
-                !state.settingsLoaded -> Unit
-                !state.isConfigured -> Empty("Not paired", "Open Settings and paste the pairing link, or enter the address and token of your Mac.")
-                state.sessions.isEmpty() && state.sessionsLoading -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                state.sessions.isEmpty() && state.sessionsError != null -> Empty("Couldn't load conversations", state.sessionsError ?: "")
-                state.sessions.isEmpty() && state.isConnected -> Empty("No conversations yet", "Start one from your Mac or from here.")
-                state.sessions.isEmpty() -> Unit
-                else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(state.sessions, key = { it.id }) { row ->
-                        SessionRow(row, agentLabel = state.agentLabel(row.agent), unread = model.isUnread(row), running = row.running || row.id in state.running)
-                        HorizontalDivider(Modifier.padding(horizontal = 20.dp), color = scheme.outlineVariant)
-                    }
-                }
+            composable("chat/{id}") { e ->
+                ChatScreen(
+                    model, e.arg("id"), onBack = { nav.popBackStack() },
+                    onOpenSubagent = { root, child -> nav.navigate("subagent/" + enc(root) + "/" + enc(child)) },
+                    onBrowseFiles = { agent, cwd -> nav.navigate("project/" + enc(agent) + "/" + enc(cwd)) },
+                )
+            }
+            composable("subagent/{root}/{child}") { e ->
+                val root = e.arg("root")
+                SubagentScreen(model, root, e.arg("child"), onBack = { nav.popBackStack() }, onOpenSubagent = { child -> nav.navigate("subagent/" + enc(root) + "/" + enc(child)) })
+            }
+            composable("new") {
+                NewSessionScreen(model, newSession, onBack = { nav.popBackStack() }, onBrowse = { nav.navigate("browse") }, onCreated = { nav.openChat(it) })
+            }
+            composable("browse?path={path}", arguments = listOf(navArgument("path") { type = NavType.StringType; nullable = true; defaultValue = null })) { e ->
+                val path = e.arguments?.getString("path")
+                FolderBrowserScreen(
+                    model, newSession, path, onBack = { nav.popBackStack() },
+                    onOpenFolder = { nav.navigate("browse?path=" + enc(it)) }, onCreated = { nav.openChat(it) },
+                )
+            }
+            composable("project/{agent}/{path}") { e ->
+                val agent = e.arg("agent")
+                ProjectFolderScreen(model, agent, e.arg("path"), onBack = { nav.popBackStack() }, onOpenFolder = { nav.navigate("project/" + enc(agent) + "/" + enc(it)) })
+            }
+            composable("settings") {
+                SettingsScreen(model, onBack = { nav.popBackStack() }, onScan = { nav.navigate("scan") })
+            }
+            composable("scan") {
+                ScannerScreen(onResult = { info -> model.pair(info); nav.popBackStack("list", inclusive = false) }, onBack = { nav.popBackStack() })
             }
         }
     }
-    if (showSettings) SettingsSheet(model, onDismiss = { showSettings = false })
 }
 
-@Composable
-private fun ConnectionLine(connection: LinkState, macName: String, demo: Boolean) {
-    val scheme = MaterialTheme.colorScheme
-    val (text, color) = when (connection) {
-        LinkState.Idle -> "Not connected" to scheme.onSurfaceVariant
-        LinkState.Connecting -> "Connecting…" to scheme.onSurfaceVariant
-        LinkState.Connected -> (if (demo) "Demo bridge" else if (macName.isNotEmpty()) "Connected to $macName" else "Connected") to scheme.primary
-        is LinkState.Waiting -> "Reconnecting · ${connection.reason}" to scheme.onSurfaceVariant
-        is LinkState.Failed -> connection.reason to scheme.error
-    }
-    StatusLine(text, color)
-}
-
-@Composable
-private fun StatusLine(text: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
-        Box(Modifier.size(8.dp).background(color, CircleShape))
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = color, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun Empty(title: String, detail: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-        Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-    }
-}
-
-@Composable
-private fun SessionRow(s: SessionSummary, agentLabel: String, unread: Boolean, running: Boolean) {
-    val scheme = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().clickable { }.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(10.dp).background(if (unread) scheme.primary else Color.Transparent, CircleShape))
-        Column(Modifier.weight(1f)) {
-            Text(s.displayTitle, style = MaterialTheme.typography.titleMedium, color = scheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val sub = buildList {
-                add(s.folderName.ifEmpty { "~" })
-                add(agentLabel)
-                s.lockedBy?.let { add("open in $it") }
-            }.joinToString(" · ")
-            Text(sub, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (s.pendingCount > 0) Badge(containerColor = scheme.tertiary) { Text(s.pendingCount.toString()) }
-        if (running) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-    }
+/** Shows a conversation with the list under it (replacing whatever was stacked above the list). */
+private fun NavController.openChat(id: String) {
+    navigate("chat/" + enc(id)) { popUpTo("list") }
 }
