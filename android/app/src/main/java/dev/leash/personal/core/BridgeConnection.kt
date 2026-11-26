@@ -46,13 +46,13 @@ class BridgeConnection(
         if (h.isEmpty() || t.isEmpty()) {
             endpoint = null
             disconnect()
-            state = LinkState.Failed("Set the Mac address and token in Settings")
+            state = LinkState.Failed("Set the bridge address and token in Settings")
             return
         }
         if (!HOST.matches(h) || port !in 1..65535) {
             endpoint = null
             disconnect()
-            state = LinkState.Failed("The Mac address or port is not valid")
+            state = LinkState.Failed("The bridge address or port is not valid")
             return
         }
         if (!TOKEN.matches(t)) {
@@ -66,7 +66,7 @@ class BridgeConnection(
     }
 
     override fun connect() {
-        val ep = endpoint ?: run { state = LinkState.Failed("Set the Mac address and token in Settings"); return }
+        val ep = endpoint ?: run { state = LinkState.Failed("Set the bridge address and token in Settings"); return }
         retryJob?.cancel(); retryJob = null
         teardown(null)
         val gen = ++generation
@@ -82,7 +82,7 @@ class BridgeConnection(
         watchdogJob = scope.launch {
             delay(READY_TIMEOUT_MS)
             if (gen == generation && state == LinkState.Connecting && socket === s) {
-                handleFailure(gen, s, BridgeError(BridgeError.NO_REPLY, "Mac did not answer (is the bridge running and Tailscale up?)"), null)
+                handleFailure(gen, s, BridgeError(BridgeError.NO_REPLY, "The bridge did not answer (is it running and reachable?)"), null)
             }
         }
     }
@@ -120,7 +120,7 @@ class BridgeConnection(
         override fun onText(text: String) { scope.launch { if (gen == generation) receive(text) } }
         override fun onFailure(error: Throwable, httpStatus: Int?) { scope.launch { handleFailure(gen, null, error, httpStatus) } }
         override fun onClosed(reason: String) {
-            scope.launch { handleFailure(gen, null, BridgeError(BridgeError.CLOSED, "Connection closed by the Mac" + (if (reason.isBlank()) "" else " ($reason)")), null) }
+            scope.launch { handleFailure(gen, null, BridgeError(BridgeError.CLOSED, "Connection closed by the bridge" + (if (reason.isBlank()) "" else " ($reason)")), null) }
         }
     }
 
@@ -139,7 +139,7 @@ class BridgeConnection(
     private fun fail(error: Throwable, httpStatus: Int?) {
         teardown(error.message)
         if (httpStatus == 401) {
-            state = LinkState.Failed("Token rejected by the Mac (401). Re-pair in Settings.")
+            state = LinkState.Failed("Token rejected by the bridge (401). Re-pair in Settings.")
             return
         }
         val delayMs = retryDelayMs

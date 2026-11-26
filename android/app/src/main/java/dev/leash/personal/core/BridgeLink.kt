@@ -28,7 +28,7 @@ class BridgeError(val code: Int, override val message: String, /** -32020: who h
         const val TIMEOUT = -2
         const val NO_REPLY = -4
 
-        fun notConnected() = BridgeError(CLOSED, "Not connected to the Mac")
+        fun notConnected() = BridgeError(CLOSED, "Not connected to the bridge")
         fun timeout() = BridgeError(TIMEOUT, "Request timed out")
     }
 }
