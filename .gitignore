@@ -6,3 +6,6 @@ ios/DerivedData/
 xcuserdata/
 *.xcuserstate
 .DS_Store
+
+# Go tailnet module output (tailnet/build-ios.sh)
+ios/Frameworks/
