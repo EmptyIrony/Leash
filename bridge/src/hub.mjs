@@ -203,9 +203,12 @@ function guessKind(name) {
 }
 
 export class Hub extends EventEmitter {
-  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000, turbo = undefined, btw = undefined }) {
+  constructor({ id = 'agy', label = 'Antigravity', agentCommand, agentArgs = ['acp'], agentCwd = os.homedir(), agentEnv = process.env, log = console.log, maxEvents = 10000, home = os.homedir(), sessionMeta = null, helper = null, maxListed = 0, listPerCwd = false, idleCloseMs = 20 * 60 * 1000, locks = undefined, locksMaxAgeMs = 3000, lockSweepMs = 15000, turbo = undefined, btw = undefined, unavailable = null, recheck = null }) {
     super();
     Object.assign(this, { id, label, agentCommand, agentArgs, agentCwd, agentEnv, maxEvents, home, sessionMeta, helper, maxListed, listPerCwd, idleCloseMs, locksMaxAgeMs });
+    // The agent's command is not on this machine: the hub stays 'down' with this text as its error (no spawn, no restart
+    // loop) until "Restart" in the app finds the command (recheck() -> {command, args?, env?} or null).
+    this.unavailable = unavailable; this.recheck = recheck;
     // "Turbo" (bridge-side approve-all) is Antigravity's name; Claude Code has its own modes for that (bypassPermissions).
     this.turbo = turbo ?? !helper;
     // /btw side questions need `claude -p --fork-session` on the host (helper.mjs btw); agy has no throwaway fork.
@@ -252,6 +255,7 @@ export class Hub extends EventEmitter {
   async startAgent() {
     if (this.stopping) return;
     clearTimeout(this.restartTimer);
+    if (this.unavailable) { this.agentError = this.unavailable; this.setAgentState('down'); return; }
     this.setAgentState('starting');
     const agent = new AcpProcess({ command: this.agentCommand, args: this.agentArgs, cwd: this.agentCwd, env: this.agentEnv, log: this.log });
     this.agent = agent;
@@ -360,6 +364,13 @@ export class Hub extends EventEmitter {
 
   async restartAgent() {
     this.restartDelay = 1000;
+    if (this.unavailable) {
+      const found = this.recheck?.();
+      if (!found) { this.setAgentState('down'); return { ok: true }; }
+      Object.assign(this, { agentCommand: found.command, agentArgs: found.args ?? this.agentArgs, agentEnv: found.env ?? this.agentEnv });
+      this.unavailable = null; this.agentError = null;
+      this.log('agent found: ' + found.command);
+    }
     if (this.agent) { const a = this.agent; a.stop(); }
     else this.startAgent();
     return { ok: true };

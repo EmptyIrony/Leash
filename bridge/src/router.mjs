@@ -6,12 +6,14 @@ export class Router {
     if (!hubs?.length) throw new Error('router needs at least one hub');
     this.hubs = new Map(hubs.map(h => [h.id, h]));
     this.order = hubs.map(h => h.id);
-    this.defaultId = this.order[0];
     this.clients = new Set();
     this.nextClientId = 1;
     this.owner = new Map();          // sessionId -> hub id
     this.log = log;
   }
+
+  /** New conversations without an agent go to the first agent that can run here (a missing one is skipped). */
+  get defaultId() { return this.order.find(id => !this.hubs.get(id).unavailable) ?? this.order[0]; }
 
   get agentState() { return this.hubs.get(this.defaultId).agentState; }
 
@@ -30,7 +32,7 @@ export class Router {
 
   info() {
     const hubs = this.order.map(id => this.hubs.get(id));
-    const first = hubs[0].info();
+    const first = this.hubs.get(this.defaultId).info();
     return {
       bridge: { ...first.bridge, multiAgent: true },
       agent: first.agent,                              // legacy single-agent field
