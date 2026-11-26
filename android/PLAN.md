@@ -26,6 +26,9 @@ implementation; the bridge protocol in `README.md` ("Bridge protocol (v1)" and t
   otherwise targetSdk 35 + OkHttp refuse the connection.
 - Every agent's first step: `android_env_status`. If the win-android tools are missing or fail, stop and end the report
   with a line starting `BLOCKED:`. Same for anything else that makes the phase impossible.
+- Anything that changes shared infrastructure beyond installing/running the app — emulator settings, network, device state,
+  the Windows build host, the bridge or its config on the Mac — is not done without the user's OK: stop and report it
+  as a question instead. adb runs over the emulator's own network, so cutting it also cuts adb (nothing after it runs).
 - The emulator is shared and remote: never toggle Wi-Fi/airplane mode/network (`svc wifi`, `cmd connectivity`, …) or reboot it —
   that once took it offline until a manual restart. Test reconnect logic with unit tests or the demo bridge instead.
 - Screenshots go to `/tmp/claude-501/-config-workspace-Leash/7983988f-39e1-40df-b9e6-1f96e0afa4c0/scratchpad/shots/`
