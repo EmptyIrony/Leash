@@ -48,19 +48,30 @@ extension AppModel {
                 // a tap that brought the app forward to another conversation hasn't shown this one
                 if openRequest == nil { markSeen(sid) }
             }
-        case .background: liveActivity.appBackgrounded()
+        case .background:
+            liveActivity.appBackgrounded()
+            // Built-in Tailscale: give the Live Activity keep-alive a moment to start; with nothing keeping Leash
+            // running, backgroundWork then closes the socket and stops the node before iOS suspends the app.
+            if tailnet.enabled { Task { await backgroundWork { try? await Task.sleep(for: .seconds(2)) } } }
         default: break
         }
     }
 
     // MARK: background work
 
+    /// Leash has a reason to be on the network: on screen, kept running by the Live Activity, or doing work it was
+    /// woken for. Built-in Tailscale runs only then (a node left running in a suspended app comes back stale).
+    var connectionWanted: Bool {
+        UIApplication.shared.applicationState != .background || backgroundAudio.isOn || backgroundJobs > 0
+    }
+
     /// Connected and `ready` (pending requests and running turns are then current), within `timeout`.
     func awaitConnection(timeout: TimeInterval = 8) async -> Bool {
         guard isConfigured else { return false }
         if isConnected { return true }
         link.ensureConnected()
-        let deadline = Date().addingTimeInterval(timeout)
+        // a cold built-in Tailscale node needs a few seconds to register before the socket can even open
+        let deadline = Date().addingTimeInterval(tailnet.enabled ? max(timeout, 25) : timeout)
         while Date() < deadline {
             try? await Task.sleep(for: .milliseconds(100))
             if isConnected { return true }
@@ -90,6 +101,7 @@ extension AppModel {
                 try? await Task.sleep(for: .milliseconds(600))
                 if backgroundJobs == 0 && UIApplication.shared.applicationState == .background && !backgroundAudio.isPlaying {
                     link.disconnect()
+                    tailnet.stop()
                 }
             }
             if backgroundJobs == 0 && backgroundTask != .invalid {

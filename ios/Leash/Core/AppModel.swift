@@ -136,6 +136,8 @@ final class AppModel {
     @ObservationIgnored let backgroundAudio = BackgroundAudio()
     var notifier: LocalNotifier { .shared }
     let link = BridgeConnection()
+    /// Built-in Tailscale (Settings): the bridge connection goes through the node it runs in-process.
+    let tailnet = TailnetController()
     @ObservationIgnored private var nextCursor: String?
 
     var isConfigured: Bool { !host.isEmpty && !token.isEmpty }
@@ -173,8 +175,21 @@ final class AppModel {
     }
 
     func reconfigure() {
+        tailnet.configChanged()
+        if tailnet.enabled {
+            link.route = { [weak self] host, port in
+                guard let self else { return nil }
+                // the node runs only while Leash has a reason to (see AppModel.backgroundWork): no restart from the background
+                guard self.connectionWanted else {
+                    throw TunnelError(message: String(localized: "Paused while Leash is in the background"), retry: true)
+                }
+                return try await self.tailnet.proxyPort(host: host, port: port)
+            }
+        } else {
+            link.route = nil
+        }
         link.configure(host: host, port: port, token: token)
-        if isConfigured { link.connect() }
+        if isConfigured { link.connect() } else { tailnet.warmUp() }
     }
 
     func foreground() {
@@ -968,7 +983,9 @@ enum Haptics {
 }
 
 enum Keychain {
-    static func set(_ key: String, _ value: String) {
+    /// `fallback`: keep the value in UserDefaults when the Keychain refuses it (ad-hoc profiles without keychain
+    /// entitlements). Not for secrets that can be typed in again.
+    static func set(_ key: String, _ value: String, fallback: Bool = true) {
         let base: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: key, kSecAttrService as String: "leash"]
         SecItemDelete(base as CFDictionary)
         guard !value.isEmpty else { UserDefaults.standard.removeObject(forKey: "kc." + key); return }
@@ -977,15 +994,15 @@ enum Keychain {
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         let status = SecItemAdd(add as CFDictionary, nil)
         // Some ad-hoc profiles lack keychain entitlements; keep the app usable.
-        if status != errSecSuccess { UserDefaults.standard.set(value, forKey: "kc." + key) }
+        if status != errSecSuccess, fallback { UserDefaults.standard.set(value, forKey: "kc." + key) }
         else { UserDefaults.standard.removeObject(forKey: "kc." + key) }
     }
-    static func get(_ key: String) -> String? {
+    static func get(_ key: String, fallback: Bool = true) -> String? {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: key, kSecAttrService as String: "leash",
                                 kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else {
-            return UserDefaults.standard.string(forKey: "kc." + key)
+            return fallback ? UserDefaults.standard.string(forKey: "kc." + key) : nil
         }
         return String(data: d, encoding: .utf8)
     }

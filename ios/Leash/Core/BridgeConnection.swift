@@ -14,7 +14,15 @@ struct BridgeError: LocalizedError {
     static let timeout = BridgeError(code: -2, message: "Request timed out")
 }
 
-/// WebSocket link to the bridge running on the Mac. Reconnects with backoff.
+/// Why built-in Tailscale could not provide a route to the bridge. `retry` false: only the user can fix it (a new
+/// auth key), so the connection stops with `.failed` instead of backing off and trying again.
+struct TunnelError: LocalizedError {
+    let message: String
+    let retry: Bool
+    var errorDescription: String? { message }
+}
+
+/// WebSocket link to the bridge. Reconnects with backoff.
 @MainActor
 final class BridgeConnection: NSObject {
     enum State: Equatable {
@@ -47,12 +55,16 @@ final class BridgeConnection: NSObject {
     private var retryDelay: Double = 1
     private var retryTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
-    private var endpoint: (url: URL, token: String)?
+    private var endpoint: (url: URL, token: String, host: String, port: Int)?
+    /// Built-in Tailscale: the loopback port that reaches `host:port` through the tailnet, or nil to connect to the
+    /// bridge directly. Asked on every attempt, because the port changes whenever the node restarts.
+    var route: (@MainActor (String, Int) async throws -> Int?)?
 
     func configure(host: String, port: Int, token: String) {
         var comps = URLComponents()
         comps.scheme = "ws"
-        comps.host = host.trimmingCharacters(in: .whitespaces)
+        let host = host.trimmingCharacters(in: .whitespaces)
+        comps.host = host
         comps.port = port
         comps.path = "/ws"
         guard let url = comps.url, !token.isEmpty, !host.isEmpty else {
@@ -61,7 +73,7 @@ final class BridgeConnection: NSObject {
             state = .failed("Set the bridge address and token in Settings")
             return
         }
-        endpoint = (url, token)
+        endpoint = (url, token, host, port)
     }
 
     func connect() {
@@ -70,8 +82,37 @@ final class BridgeConnection: NSObject {
         teardown(reason: nil)
         generation += 1
         let gen = generation
-        var req = URLRequest(url: endpoint.url)
-        req.setValue("Bearer \(endpoint.token)", forHTTPHeaderField: "Authorization")
+        guard let route else { openSocket(endpoint.url, token: endpoint.token, gen: gen); return }
+        // With built-in Tailscale the node may have to start first; the watchdog runs only once the socket is open.
+        state = .connecting
+        Task { [weak self] in
+            do {
+                let tunnel = try await route(endpoint.host, endpoint.port)
+                guard let self, gen == self.generation else { return }
+                var url = endpoint.url
+                if let tunnel {
+                    var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                    comps?.host = "127.0.0.1"
+                    comps?.port = tunnel
+                    url = comps?.url ?? url
+                }
+                self.openSocket(url, token: endpoint.token, gen: gen)
+            } catch {
+                guard let self, gen == self.generation else { return }
+                if let e = error as? TunnelError, !e.retry {
+                    self.state = .failed(e.message)
+                } else {
+                    self.scheduleRetry(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// Open the WebSocket to `url` (the bridge, or its loopback port through the tailnet). The Authorization header is
+    /// the bridge's own token either way.
+    private func openSocket(_ url: URL, token: String, gen: Int) {
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("ios", forHTTPHeaderField: "X-Leash-Client")
         req.timeoutInterval = 300
         let t = urlSession.webSocketTask(with: req)
@@ -144,9 +185,13 @@ final class BridgeConnection: NSObject {
             state = .failed("Token rejected by the bridge (401). Re-pair in Settings.")
             return
         }
+        scheduleRetry(error.localizedDescription)
+    }
+
+    private func scheduleRetry(_ message: String) {
         let delay = retryDelay
         retryDelay = min(retryDelay * 2, 15)
-        state = .waiting(error.localizedDescription)
+        state = .waiting(message)
         retryTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }
