@@ -1,0 +1,6 @@
+// Build settings of the Leash app target only (not the Live Activity or the watch app).
+//
+// Built-in Tailscale: tailnet/build-ios.sh builds ios/Frameworks/Tailnet.xcframework and writes
+// ios/Frameworks/Tailnet.xcconfig, which links it. Until then that file does not exist, the include is skipped, the
+// framework is not linked, and the app builds without built-in Tailscale (the Swift is guarded by canImport(Tailnet)).
+#include? "../Frameworks/Tailnet.xcconfig"
