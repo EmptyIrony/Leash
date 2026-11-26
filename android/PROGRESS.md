@@ -264,13 +264,23 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 
 ### Verified
 - `android_build install=true`: BUILD SUCCESSFUL; `android_test` unit: 220 tests, 0 failures.
-- logcat: one crash during the work (StepRail intrinsics, fixed and re-checked); after that `AndroidRuntime` empty
-  (buffer cleared after the fix, checked at the end).
+- Crashes: one during the work (StepRail asked a lazy diff for intrinsics when a step opened; fixed, re-checked). The
+  crash buffer (`logcat -b crash`, cleared right after that fix) holds no `dev.leash.personal` entry at the end; its only
+  entries are native segfaults of `uiautomator` (the adb UI dump used to drive the emulator).
 - Screenshots (scratchpad/shots/d2, demo bridge): every catalog page light + dark; list (rest, scrolled, search),
-  folder, settings, scanner, new conversation, folder browser, finished chat (top with steps + diff, bottom), a streamed
-  turn (Working with live dots, rows update, turn ends), permission tray, question tray (selected option), queue tray,
-  subagent parent + subagent screen, command palette, model sheet; final set in light and dark (`F-*.png`); font scale
-  1.3 and 2.0 (list, permission tray). Side-by-side with `.shots` (`*-vs-ios.png`).
+  folder screen ("Show all") and its bottom search, settings, scanner (camera permission state, after the status-bar
+  change), new conversation, folder browser, project browser (from the chat ⋯ menu), the ⋯ menu, empty and locked
+  chats, finished chat (top with steps + diff, bottom with changes row + stats), a streamed turn (Working with live dots,
+  rows update, turn ends), permission tray, permission with "View diff" and the diff sheet, question tray (selected
+  option), queue tray, subagent parent + subagent screen, command palette, model sheet, thinking sheet, mode menu, the
+  Bypass confirmation dialog, the "file viewer later" snackbar; final set in light and dark (`F-*.png`; dark also the
+  open diff); font scale 1.3 and 2.0 (list, permission tray, then again after the fixes). Side-by-side with `.shots`
+  (`*-vs-ios.png`).
+- Notifications: `dumpsys activity services` shows the foreground notification with `color=0xff4b50e6` (the accent).
+  The shade itself was not seen with a Leash notification (the permission prompt was denied by a mis-tap; after
+  `pm grant` no new notification was posted before the check), so the new pixel status icon is unverified on screen.
+- Not reached in the demo: the multi-question sheet (needs a "questions" prompt; its components are the same as the
+  tray's and the diff sheet's) and the dark changes row (same component as light).
 - Real bridge, read-only (LAN address via deep link, notifications revoked first, nothing sent / answered / created):
   list loaded ("2 agents ready", 32 + 131 + … conversations), one finished CJK transcript screenshotted in light and
   dark (inline code, bold, bullets, changes row). App data cleared afterwards (`pm clear`), emulator back to light
@@ -281,6 +291,8 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 ### Left / known issues
 - The list's trailing quota-ring circle (DESIGN.md §11) is not there: quota rings and the quota sheet are phase 4.
 - The composer has no leading "+" until attachments (phase 4); the slot exists (`showLeading`).
+- Fixed in the last pass: tapping a path in an opened step collapsed the row (its extended touch target covered the
+  detail's first line); TalkBack "Interrupt and send" moved onto the send circle's own semantics.
 - Predictive back pop (scale 0.9 + fade) is not checked frame by frame; the dock's IME behaviour was not re-checked
   with a real keyboard on screen beyond typing via adb.
 - Open folder sections still survive recreation only (state from a previous bridge can leave all sections closed).
