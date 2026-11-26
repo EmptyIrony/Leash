@@ -56,6 +56,8 @@ private class PressNode(
     private val focusRing: Color,
 ) : Modifier.Node(), DrawModifierNode {
     private val pressed = Animatable(0f)
+    /** Where [pressed] was last sent. Not `pressed.targetValue`, which only changes once the launched animation starts. */
+    private var pressTarget = 0f
     private var focused = false
     private val layerPaint = Paint()
 
@@ -71,7 +73,8 @@ private class PressNode(
                     is FocusInteraction.Unfocus -> { focused = false; invalidateDraw() }
                 }
                 val target = if (presses.isNotEmpty()) 1f else 0f
-                if (pressed.targetValue != target) {
+                if (pressTarget != target) {
+                    pressTarget = target
                     launch {
                         pressed.animateTo(target, MotionCurve.Press.spec(reduced, 0.001f))
                     }
