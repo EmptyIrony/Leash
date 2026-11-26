@@ -312,11 +312,14 @@ private fun QuestionSheet(spec: ElicitationSpec, answers: ElicitationAnswers, on
                             Text(q.title, Modifier.weight(1f))
                             Switch(answers.values[q.name].bool ?: q.defaultValue.bool ?: false, { onChange(answers.with(q.name, JsonPrimitive(it))) })
                         }
-                        FieldKind.Number -> OutlinedTextField(
-                            answers.values[q.name].double?.let { d -> if (d % 1.0 == 0.0) d.toLong().toString() else d.toString() } ?: "",
-                            { t -> onChange(answers.with(q.name, t.toDoubleOrNull()?.let { JsonPrimitive(it) })) },
-                            Modifier.fillMaxWidth(), label = { Text(q.detail ?: q.title) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
-                        )
+                        FieldKind.Number -> {
+                            // the typed text is kept as typed ("1." on the way to "1.5"); the parsed number goes into the answers
+                            var typed by remember(q.name) { mutableStateOf(answers.values[q.name].double?.let { d -> if (d % 1.0 == 0.0) d.toLong().toString() else d.toString() } ?: "") }
+                            OutlinedTextField(
+                                typed, { t -> typed = t; onChange(answers.with(q.name, t.toDoubleOrNull()?.let { JsonPrimitive(it) })) },
+                                Modifier.fillMaxWidth(), label = { Text(q.detail ?: q.title) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
+                            )
+                        }
                         FieldKind.Text -> OutlinedTextField(answers.text(q), { onChange(answers.with(q.name, JsonPrimitive(it))) }, Modifier.fillMaxWidth(), label = { Text(q.detail ?: q.title) })
                     }
                     spec.custom(q)?.let { c ->
