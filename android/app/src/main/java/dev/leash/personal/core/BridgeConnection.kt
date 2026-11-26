@@ -97,6 +97,12 @@ class BridgeConnection(
         connect()
     }
 
+    override fun reconnect() {
+        if (endpoint == null) return
+        retryDelayMs = INITIAL_RETRY_MS
+        connect()
+    }
+
     override fun disconnect() {
         retryJob?.cancel(); retryJob = null
         generation++

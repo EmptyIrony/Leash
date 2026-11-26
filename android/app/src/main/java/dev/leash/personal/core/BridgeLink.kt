@@ -49,6 +49,9 @@ interface BridgeLink {
     fun ensureConnected()
     fun disconnect()
 
+    /** Drop the socket and connect again right away (the device's network changed: the old socket is dead, it just does not know yet). */
+    fun reconnect()
+
     /** Call a bridge / ACP method. `timeoutMs` null = wait forever (session/prompt). */
     suspend fun call(method: String, params: JsonElement = JsonObject(emptyMap()), timeoutMs: Long? = 30_000): JsonElement
 

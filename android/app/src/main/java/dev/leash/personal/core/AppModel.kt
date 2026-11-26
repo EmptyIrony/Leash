@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -95,6 +96,14 @@ interface AppHooks {
     fun turnStarted(sessionId: String) {}
     fun turnAborted(sessionId: String) {}
     fun haptic(kind: Haptic) {}
+    /** After `ready`: these are the requests still waiting (answered ones left no `resolved` frame for this client). */
+    fun requestsReconciled(pendingKeys: Set<String>) {}
+    /** The conversation was seen (on screen, or marked read): its "finished" notification can go. */
+    fun conversationSeen(sessionId: String) {}
+    /** A different bridge (or none): everything shown for the old one goes. */
+    fun reset() {}
+    /** Asked once, at the first turn you start; true when it was dealt with (asked, or not needed). */
+    fun askNotificationPermission(): Boolean = false
 }
 
 /** Everything the screens read. Nested chat state lives in [ChatStore] (one per conversation). */
@@ -127,6 +136,10 @@ data class AppState(
     val markedUnread: Set<String> = emptySet(),
     val turboConfirmed: Boolean = false,
     val bypassConfirmed: Boolean = false,
+    /** keep the connection alive in the background (foreground service with an ongoing notification) while a turn works */
+    val keepAlive: Boolean = true,
+    /** the notification permission was asked for (once, at the first turn) */
+    val notificationsAsked: Boolean = false,
 ) {
     val isConfigured: Boolean get() = useDemo || (host.isNotEmpty() && token.isNotEmpty())
     val isConnected: Boolean get() = connection == LinkState.Connected
@@ -209,7 +222,7 @@ class AppModel(
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
             set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = st.useDemo && demoLink != null,
                 drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread,
-                turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed) }
+                turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed, keepAlive = st.keepAlive, notificationsAsked = st.notificationsAsked) }
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
             if (s.isConfigured) reconfigure()
@@ -219,6 +232,7 @@ class AppModel(
     /** Live state belongs to one connection (a bridge, or the demo); a different one starts clean. */
     private fun resetLive() {
         stores.clear(); turnStarts.clear(); watchers.clear()
+        hooks.reset()
         set { copy(agentState = "unknown", agentError = null, agentName = null, bridgeHome = null, imageInput = false, sessions = emptyList(), sessionsLoading = false,
             sessionsError = null, pending = emptyMap(), running = emptySet(), lastAttention = null, agents = emptyList(), quotas = emptyMap(), quotaErrors = emptyMap(), openRequest = null) }
     }
@@ -227,7 +241,7 @@ class AppModel(
         scope.launch {
             persistLock.withLock {
                 val x = s
-                settings.save(Settings(x.host, x.port, x.token, x.bridgeName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs, x.turboConfirmed, x.bypassConfirmed))
+                settings.save(Settings(x.host, x.port, x.token, x.bridgeName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs, x.turboConfirmed, x.bypassConfirmed, x.keepAlive, x.notificationsAsked))
             }
         }
     }
@@ -298,6 +312,12 @@ class AppModel(
         }
     }
 
+    /** A turn this phone started: the ongoing notification follows it, and the first one asks for the notification permission. */
+    private fun turnStartedHere(sessionId: String) {
+        hooks.turnStarted(sessionId)
+        if (!s.notificationsAsked && hooks.askNotificationPermission()) { set { copy(notificationsAsked = true) }; persist() }
+    }
+
     fun openHandled(request: OpenRequest) { if (s.openRequest == request) set { copy(openRequest = null) } }
 
     /** Leash is on screen (or not): presence for the bridge, and a reconnect on the way back. */
@@ -309,6 +329,28 @@ class AppModel(
             visibleSessionId?.let { sid -> if (s.openRequest == null) markSeen(sid) }
         }
     }
+
+    fun setKeepAlive(on: Boolean) {
+        if (on == s.keepAlive) return
+        set { copy(keepAlive = on) }
+        persist()
+    }
+
+    /** The default network changed (Wi-Fi to mobile, a new Wi-Fi): the old socket is dead even if it does not know yet. */
+    fun networkChanged() {
+        if (!s.isConfigured || link.state == LinkState.Idle) return
+        link.reconnect()
+    }
+
+    /** Nothing needs the connection any more and Leash is off screen: let go of it (the bridge then sees it gone, and Bark covers). */
+    fun releaseConnection() {
+        if (sceneActive || link.state == LinkState.Idle) return
+        link.disconnect()
+        set { copy(connection = LinkState.Idle) }
+    }
+
+    /** The stored settings are loaded (a notification action can start the process before they are). */
+    suspend fun awaitSettings() { _state.first { it.settingsLoaded } }
 
     fun foreground() {
         if (!s.isConfigured) return
@@ -354,6 +396,7 @@ class AppModel(
                 for (p in m["pending"].array ?: emptyList()) parsePending(p)?.let { pend[it.key] = it }
                 set { copy(bridgeHome = m["bridge"]["home"].string, agents = agents, quotas = quotas, pending = pend, running = running) }
                 turnStarts.keys.retainAll(running)
+                hooks.requestsReconciled(pend.keys.toSet())
                 refreshPendingCounts()
                 scope.launch { refreshSessions() }
                 scope.launch { refreshQuota() }
@@ -571,6 +614,7 @@ class AppModel(
     /** The conversation is on screen (or the user marked it read). */
     fun markSeen(sessionId: String) {
         set { copy(lastSeen = lastSeen + (sessionId to Clock.now()), markedUnread = markedUnread - sessionId) }
+        hooks.conversationSeen(sessionId)
         persist()
     }
 
@@ -714,7 +758,7 @@ class AppModel(
         }
         st.running = true
         set { copy(running = running + st.sessionId) }
-        if (wasIdle) hooks.turnStarted(st.sessionId)
+        if (wasIdle) turnStartedHere(st.sessionId)
         scope.launch {
             try {
                 val params = linkedMapOf<String, Any?>("sessionId" to st.sessionId, "prompt" to blocks, "agent" to st.agent)
@@ -849,7 +893,7 @@ class AppModel(
         if (wasIdle) st.turnStartedAtMs = Clock.now()
         st.running = true
         set { copy(running = running + st.sessionId) }
-        if (wasIdle) hooks.turnStarted(st.sessionId)
+        if (wasIdle) turnStartedHere(st.sessionId)
         scope.launch {
             try {
                 link.call("session/prompt", jsonObj("sessionId" to st.sessionId, "prompt" to emptyList<Any>(), "interrupt" to true, "agent" to st.agent), null)

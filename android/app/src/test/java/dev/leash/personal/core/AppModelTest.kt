@@ -39,6 +39,15 @@ class AppModelTest {
         override fun turnStarted(sessionId: String) { started += sessionId }
         override fun turnAborted(sessionId: String) { aborted += sessionId }
         override fun haptic(kind: Haptic) { haptics += kind }
+        val reconciled = mutableListOf<Set<String>>()
+        val seen = mutableListOf<String>()
+        var resets = 0
+        var asks = 0
+        var askDealtWith = false
+        override fun requestsReconciled(pendingKeys: Set<String>) { reconciled += pendingKeys }
+        override fun conversationSeen(sessionId: String) { seen += sessionId }
+        override fun reset() { resets++ }
+        override fun askNotificationPermission(): Boolean { asks++; return askDealtWith }
     }
 
     private class Rig(scope: TestScope, val settings: InMemorySettingsStore = InMemorySettingsStore(Settings(host = "bridge.ts.net", token = "tok")), demo: FakeLink? = null) {
@@ -873,5 +882,102 @@ class AppModelTest {
         assertEquals(false, st.listedInCli)
         r.model.showInCli(st)
         assertEquals(true, st.listedInCli)
+    }
+
+    // MARK: phase 3: notifications, background, network
+
+    @Test fun anOffScreenRequestTheNotifierDidNotAlertAboutIsNotReportedAsNoticed() = runTest {
+        val r = Rig(this)
+        r.hooks.alertRequests = false   // notifications off or the channel blocked: Bark must stay in charge
+        connect(r)
+        r.link.emit(permission("claude:9", "a")); runCurrent()
+        assertEquals(listOf("claude:9" to false), r.hooks.requests)
+        assertTrue(r.link.callsOf("bridge/noticed").isEmpty())
+        r.link.emit(jsonObj("op" to "turn", "sessionId" to "a", "running" to true))
+        r.link.emit(jsonObj("op" to "turn", "sessionId" to "a", "running" to false, "stopReason" to "end_turn")); runCurrent()
+        assertTrue(r.link.callsOf("bridge/noticed").isEmpty())
+    }
+
+    @Test fun readyTellsTheHooksWhichRequestsStillWait() = runTest {
+        val r = Rig(this)
+        connect(r, readyFrame(pending = listOf(permission("claude:1", "a"))))
+        connect(r, readyFrame())
+        assertEquals(listOf(setOf("claude:1"), emptySet<String>()), r.hooks.reconciled)
+    }
+
+    @Test fun seeingAConversationAndForgettingTheBridgeReachTheHooks() = runTest {
+        val r = Rig(this)
+        connect(r)
+        r.model.markSeen("a")
+        assertEquals(listOf("a"), r.hooks.seen)
+        val before = r.hooks.resets
+        r.model.unpair(); runCurrent()
+        assertEquals(before + 1, r.hooks.resets)
+    }
+
+    @Test fun theNotificationPermissionIsAskedAtTheFirstTurnOnlyUntilItWasDealtWith() = runTest {
+        val r = Rig(this)
+        connect(r)
+        r.link.on("session/prompt") { jsonObj("stopReason" to "end_turn") }
+        r.hooks.askDealtWith = false
+        r.model.send(r.model.store("a"), "one"); runCurrent()
+        assertEquals(1, r.hooks.asks)
+        assertFalse(r.state.notificationsAsked)
+        r.hooks.askDealtWith = true
+        r.link.emit(jsonObj("op" to "turn", "sessionId" to "a", "running" to false, "stopReason" to "end_turn")); runCurrent()
+        r.model.send(r.model.store("a"), "two"); runCurrent()
+        assertEquals(2, r.hooks.asks)
+        assertTrue(r.state.notificationsAsked)
+        assertTrue(r.settings.value.notificationsAsked)
+        r.link.emit(jsonObj("op" to "turn", "sessionId" to "a", "running" to false, "stopReason" to "end_turn")); runCurrent()
+        r.model.send(r.model.store("a"), "three"); runCurrent()
+        assertEquals(2, r.hooks.asks)
+    }
+
+    @Test fun keepAliveIsStored() = runTest {
+        val r = Rig(this)
+        connect(r)
+        assertTrue(r.state.keepAlive)
+        r.model.setKeepAlive(false); runCurrent()
+        assertFalse(r.settings.value.keepAlive)
+    }
+
+    @Test fun aNetworkChangeReconnectsOnlyAConnectionThatExists() = runTest {
+        val r = Rig(this)
+        connect(r)
+        r.model.networkChanged()
+        assertEquals(1, r.link.reconnects)
+        r.link.set(LinkState.Idle)
+        r.model.networkChanged()
+        assertEquals(1, r.link.reconnects)
+        val unpaired = Rig(this, InMemorySettingsStore())
+        unpaired.model.start(); runCurrent()
+        unpaired.model.networkChanged()
+        assertEquals(0, unpaired.link.reconnects)
+    }
+
+    @Test fun releasingTheConnectionNeedsAnOffScreenApp() = runTest {
+        val r = Rig(this)
+        connect(r)
+        r.model.sceneChanged(true)
+        r.model.releaseConnection()
+        assertEquals(LinkState.Connected, r.state.connection)
+        r.model.sceneChanged(false)
+        r.model.releaseConnection()
+        assertEquals(LinkState.Idle, r.state.connection)
+        // coming back reconnects
+        val ensures = r.link.ensures
+        r.model.sceneChanged(true)
+        assertEquals(ensures + 1, r.link.ensures)
+    }
+
+    @Test fun anActionThatStartedTheProcessWaitsForTheStoredSettings() = runTest {
+        val r = Rig(this)
+        var settled = false
+        launch { r.model.awaitSettings(); settled = true }
+        runCurrent()
+        assertFalse(settled)
+        r.model.start(); runCurrent()
+        assertTrue(settled)
     }
 }

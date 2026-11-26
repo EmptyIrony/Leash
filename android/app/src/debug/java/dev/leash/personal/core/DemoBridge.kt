@@ -85,6 +85,8 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
 
     override fun ensureConnected() { if (state != LinkState.Connected && state != LinkState.Connecting) connect() }
 
+    override fun reconnect() {}   // the device's network changing means nothing here
+
     override fun disconnect() {
         generation++
         sessions.values.forEach { it.subscribed = false }
@@ -255,6 +257,9 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
                 record(s, DemoScript.tool(rid, "Read Parser.kt", "read", "in_progress", "locations" to listOf(jsonObj("path" to DemoScript.PROJECT + "/src/Parser.kt"))))
                 delay(350)
                 record(s, DemoScript.toolUpdate(rid, "completed"))
+                // "slow": time to leave the app before the request arrives and before the turn ends
+                val slow = items.any { it.contains("slow", ignoreCase = true) }
+                if (slow) delay(SLOW_MS)
                 if (items.any { it.contains("questions", ignoreCase = true) }) {
                     val key = s.agent + ":" + nextKey++
                     val req = DemoScript.formRequest(key, s.id, s.agent)
@@ -275,6 +280,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
                         return@launch
                     }
                 }
+                if (slow) delay(SLOW_MS)
                 val diff = DemoScript.diffTool
                 record(s, DemoScript.tool("t-e" + s.seq, "Edit Parser.kt", "edit", "completed", "locations" to diff["locations"], "content" to diff["content"]))
                 delay(300)
@@ -321,3 +327,5 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         return jsonObj("ok" to true)
     }
 }
+
+private const val SLOW_MS = 8_000L

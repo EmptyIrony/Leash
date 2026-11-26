@@ -24,6 +24,8 @@ class FakeLink : BridgeLink {
     override fun configure(host: String, port: Int, token: String) { configured += Triple(host, port, token) }
     override fun connect() { connects++ }
     override fun ensureConnected() { ensures++ }
+    var reconnects = 0
+    override fun reconnect() { reconnects++ }
     override fun disconnect() { disconnects++; set(LinkState.Idle) }
 
     override suspend fun call(method: String, params: JsonElement, timeoutMs: Long?): JsonElement {

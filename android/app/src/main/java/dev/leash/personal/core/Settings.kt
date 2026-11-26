@@ -18,6 +18,10 @@ data class Settings(
     /** The one-time confirmations of the approve-everything modes (Antigravity's Turbo, Claude Code's Bypass permissions). */
     val turboConfirmed: Boolean = false,
     val bypassConfirmed: Boolean = false,
+    /** Keep the connection alive in the background while a turn works (foreground service, ongoing notification). */
+    val keepAlive: Boolean = true,
+    /** The notification permission was asked for (once, at the first turn). */
+    val notificationsAsked: Boolean = false,
 )
 
 interface SettingsStore {

@@ -27,6 +27,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
         val unreadSince = longPreferencesKey("unreadSince")
         val turboConfirmed = booleanPreferencesKey("turboConfirmed")
         val bypassConfirmed = booleanPreferencesKey("bypassConfirmed")
+        val keepAlive = booleanPreferencesKey("keepAlive")
+        val notificationsAsked = booleanPreferencesKey("notificationsAsked")
     }
 
     override suspend fun load(): Settings {
@@ -43,6 +45,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             unreadSinceMs = p[K.unreadSince],
             turboConfirmed = p[K.turboConfirmed] ?: false,
             bypassConfirmed = p[K.bypassConfirmed] ?: false,
+            keepAlive = p[K.keepAlive] ?: true,
+            notificationsAsked = p[K.notificationsAsked] ?: false,
         )
     }
 
@@ -59,6 +63,8 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             settings.unreadSinceMs?.let { p[K.unreadSince] = it }
             p[K.turboConfirmed] = settings.turboConfirmed
             p[K.bypassConfirmed] = settings.bypassConfirmed
+            p[K.keepAlive] = settings.keepAlive
+            p[K.notificationsAsked] = settings.notificationsAsked
         }
     }
 
