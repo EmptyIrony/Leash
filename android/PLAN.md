@@ -123,6 +123,42 @@ D2. **Reskin.** Apply the design system to every existing screen, one screen at 
    views, agent embeds (WebView), quota sheet, /btw side questions, "!" shell mode, select-text sheet. Then a parity pass:
    walk every file in `ios/Leash/Views` and `ios/Leash/Core` and list anything still missing in PROGRESS.md.
 
+## Phase 5: built-in Tailscale (optional, no VPN service) — Android and iOS
+
+Why: sometimes the Tailscale app can't be used on the phone (e.g. another VPN holds the system VPN slot). Leash then joins
+the tailnet itself, in-process, with Tailscale's `tsnet` (userspace netstack) — no VpnService / NetworkExtension, and only
+Leash's own bridge connection goes through it. Optional: off by default; with it off nothing changes.
+
+Shape (same on both platforms):
+- Go module `tailnet/` at the repo root (pinned `tailscale.com` version), gomobile-bindable API, e.g.
+  `Start(stateDir, authKey, controlURL, hostname) error`, `Status() string` (JSON: state, tailnet IPs, login/expiry errors),
+  `Dial target` via a loopback TCP forwarder: `ProxyPort(targetHost, targetPort) (int, error)` listens on 127.0.0.1:0 and
+  pipes each connection to the target through `tsnet.Server.Dial` (MagicDNS names like `*.ts.net` resolve inside tsnet).
+  `Stop()`, `Logout()`. The app then simply connects `ws://127.0.0.1:<port>/ws` (bridge checks only the bearer token).
+- Login: Tailscale auth key (`tskey-auth-…`) entered in Settings, optional custom control URL (headscale). The key is only
+  needed until the node is registered; node state lives in the app's private files dir. Store the key in Android Keystore-
+  encrypted storage / iOS Keychain; never log it.
+- Runs only while the app's connection is wanted (foreground, or Android's foreground service / iOS background-audio time).
+- Settings UI: toggle "Built-in Tailscale", auth key field, control URL (advanced), status line (connecting / connected
+  as <name> <100.x> / needs new key / error), Log out. Wording per DESIGN.md / iOS HIG.
+
+Sub-phases:
+5a. **Go module** (Ubuntu only, parallel to phase 4): `tailnet/` with the API above, unit/integration tests against
+    tailscale's in-process test control server (`tstest/integration/testcontrol`) proving Start → ProxyPort → a TCP echo on
+    another tsnet node works, plus Stop/restart with persisted state. Install a Go toolchain under the user's home in this
+    container for that (not system-wide). Scripts: `tailnet/build-android.sh` (gomobile bind → AAR, arm64 + x86_64,
+    androidapi 29) and `tailnet/build-ios.sh` (gomobile bind → `Tailnet.xcframework`, run on the Mac with Xcode).
+    Size-trim flags (`-ldflags "-s -w"`, `-trimpath`, tailscale feature build tags where safe). No app changes yet.
+5b. **Android integration** (after phase 4): build the AAR on the Windows build host through Gradle only (we have no shell
+    there): e.g. a `:tailnet` Gradle module whose task downloads a pinned Go toolchain (sha256-checked) into its build dir,
+    `go install`s gomobile, and runs `gomobile bind` with the NDK AGP provides (`ndkVersion`); the app depends on its AAR.
+    The user has approved installing Go/gomobile on the Windows host. No prebuilt binaries in git. Wire into
+    BridgeConnection/AppModel/settings; verify on the emulator with a real auth key (ask the coordinator for it; it is a
+    secret like the pairing token), reaching the bridge by its `ts.net` name.
+5c. **iOS integration**: Swift side (Keychain, settings UI, BridgeConnection via the loopback port, start/stop with the app
+    lifecycle and BackgroundAudio), Xcode project links `ios/Frameworks/Tailnet.xcframework` (built by `tailnet/build-ios.sh`
+    on the Mac, git-ignored). No Xcode here: edit project.pbxproj with great care and list the Mac steps for the user.
+
 ## Definition of done per phase
 
 `android_build` succeeds with `install=true`, `android_test` unit tests pass, the app launches without crash (check
