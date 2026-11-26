@@ -23,7 +23,7 @@ fun durationText(seconds: Double): String {
     }
 }
 
-private fun lastPathComponent(p: String) = p.trimEnd('/').substringAfterLast('/')
+internal fun lastPathComponent(p: String) = p.trimEnd('/').substringAfterLast('/')
 
 private fun capitalizedWords(s: String): String =
     s.split(' ').joinToString(" ") { w -> if (w.isEmpty()) w else w.substring(0, 1).uppercase() + w.substring(1).lowercase() }

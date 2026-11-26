@@ -57,6 +57,29 @@ class OkHttpTransportTest {
         sock.close()
     }
 
+    @Test fun aMaximumUploadFitsOkHttpsOutgoingQueueAndOneMoreMegabyteClosesTheSocket() {
+        val received = java.util.concurrent.atomic.AtomicInteger(0)
+        val got = CountDownLatch(1)
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send("""{"op":"ready"}""") }
+            override fun onMessage(webSocket: WebSocket, text: String) { received.set(text.length); got.countDown() }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
+        }))
+        val ev = Events()
+        val sock = OkHttpTransport().open(Endpoint("ws://${server.hostName}:${server.port}/ws", "t"), ev)
+        assertTrue(ev.gotText.await(5, TimeUnit.SECONDS))
+        // the largest allowed file, base64 inside the call JSON the bridge expects
+        val data = java.util.Base64.getEncoder().encodeToString(ByteArray(FileLimits.MAX_UPLOAD_BYTES))
+        val frame = jsonObj("op" to "call", "id" to 1, "method" to "bridge/upload", "params" to jsonObj("sessionId" to "s", "name" to "big.bin", "data" to data, "agent" to "claude")).encoded()
+        assertTrue(frame.length < 16 * 1024 * 1024)
+        assertTrue(sock.send(frame))
+        assertTrue(got.await(30, TimeUnit.SECONDS))
+        assertEquals(frame.length, received.get())
+        // a frame past the queue limit is refused (and OkHttp closes the connection): why the phone checks the size first
+        assertTrue(!sock.send("x".repeat(16 * 1024 * 1024 + 1)))
+        sock.close()
+    }
+
     @Test fun aRejectedTokenReportsTheHttpStatus() {
         server.enqueue(MockResponse().setResponseCode(401))
         val ev = Events()
