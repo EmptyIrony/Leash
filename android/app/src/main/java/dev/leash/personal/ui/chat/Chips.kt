@@ -1,5 +1,7 @@
 package dev.leash.personal.ui.chat
 
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -241,6 +243,14 @@ private fun EffortSheet(option: ConfigOption, onSelect: (String) -> Unit, dismis
                     if (levels.size > 1) Slider(
                         value = index, onValueChange = { index = it }, valueRange = 0f..(levels.size - 1).toFloat(), steps = (levels.size - 2).coerceAtLeast(0),
                         onValueChangeFinished = { levels.getOrNull(index.toInt())?.let { onSelect(it.value) } },
+                        // iOS's round white thumb instead of Material's bar
+                        thumb = {
+                            Box(
+                                Modifier.size(26.dp)
+                                    .dropShadow(androidx.compose.foundation.shape.CircleShape, androidx.compose.ui.graphics.shadow.Shadow(4.dp, androidx.compose.ui.graphics.Color.Black, offset = androidx.compose.ui.unit.DpOffset(0.dp, 1.dp), alpha = 0.2f))
+                                    .background(androidx.compose.ui.graphics.Color.White, androidx.compose.foundation.shape.CircleShape),
+                            )
+                        },
                         colors = SliderDefaults.colors(
                             thumbColor = c.accentControl, activeTrackColor = c.accentControl, inactiveTrackColor = c.controlFill,
                             activeTickColor = c.onAccent.copy(alpha = 0.6f), inactiveTickColor = c.textTertiary,

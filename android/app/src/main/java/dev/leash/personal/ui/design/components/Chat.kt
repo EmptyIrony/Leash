@@ -243,7 +243,8 @@ fun StepRow(
             }
         }
         if (open && detail != null) {
-            Column(Modifier.padding(start = 24.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = detail)
+            // 8 dp clear of the row: its touch target is extended to 48 dp and would take taps on the detail's first line
+            Column(Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = detail)
         }
     }
 }

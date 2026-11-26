@@ -32,7 +32,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,12 +127,13 @@ private fun PrimaryAction(glyph: ActionGlyph, interruptible: Boolean, onSend: ()
     val sendLabel = stringResource(R.string.send)
     val stopLabel = stringResource(R.string.stop)
     val interruptLabel = stringResource(R.string.interrupt_and_send)
-    Box(Modifier.semantics { if (interruptible) customActions = listOf(CustomAccessibilityAction(interruptLabel) { onInterruptAndSend(); true }) }) {
+    Box {
         SendButton(
             when (glyph) { ActionGlyph.Stop -> SendGlyph.Stop; ActionGlyph.Send -> SendGlyph.Send; ActionGlyph.Disabled -> SendGlyph.Disabled },
             if (glyph == ActionGlyph.Stop) stopLabel else sendLabel,
             onClick = { if (glyph == ActionGlyph.Stop) onStop() else onSend() },
             onLongClick = if (interruptible) ({ menu = true }) else null,
+            accessibilityActions = if (interruptible) listOf(CustomAccessibilityAction(interruptLabel) { onInterruptAndSend(); true }) else emptyList(),
         )
         LeashMenu(menu, { menu = false }) {
             LeashMenuItem(interruptLabel, { menu = false; onInterruptAndSend() }, icon = LeashIcons.send)

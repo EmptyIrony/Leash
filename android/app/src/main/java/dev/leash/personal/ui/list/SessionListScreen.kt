@@ -183,7 +183,7 @@ fun SessionListScreen(
                             actionLabel = stringResource(R.string.new_conversation), onAction = onNew,
                         )
                     } else if (empty && state.sessionsLoading && state.sessions.isEmpty()) item("loading") {
-                        LoadingState(stringResource(R.string.starting), Modifier.padding(top = 64.dp))
+                        LoadingState(stringResource(R.string.loading), Modifier.padding(top = 64.dp))
                     }
                 }
             }

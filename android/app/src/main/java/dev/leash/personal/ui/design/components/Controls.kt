@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -154,6 +155,8 @@ fun SendButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    /** TalkBack custom actions on the circle itself (e.g. "Interrupt and send", the long-press alternative) */
+    accessibilityActions: List<androidx.compose.ui.semantics.CustomAccessibilityAction> = emptyList(),
 ) {
     val c = Leash.colors
     val fill by animateColorAsState(
@@ -176,7 +179,10 @@ fun SendButton(
     Box(
         modifier
             .size(48.dp)
-            .semantics { this.contentDescription = contentDescription }
+            .semantics {
+                this.contentDescription = contentDescription
+                if (accessibilityActions.isNotEmpty()) customActions = accessibilityActions
+            }
             .pressable(!disabled, onLongClick = onLongClick, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
