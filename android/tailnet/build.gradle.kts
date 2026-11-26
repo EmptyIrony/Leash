@@ -82,7 +82,11 @@ abstract class InstallGo : DefaultTask() {
 abstract class GoTask : DefaultTask() {
     @get:Internal abstract val goHome: DirectoryProperty
     @get:Internal abstract val cache: DirectoryProperty
+    /** the Go sources as they are in the repo (the task's declared inputs, never touched by Go) */
+    @get:Internal abstract val sourceDir: DirectoryProperty
+    /** a private copy the Go tools run in: with GOFLAGS=-mod=mod they rewrite go.sum, which must not change the inputs */
     @get:Internal abstract val workDir: DirectoryProperty
+    @get:Inject abstract val fs: FileSystemOperations
     @get:Internal abstract val sdk: Property<String>
     @get:Internal abstract val ndk: Property<String>
     @get:Inject abstract val exec: ExecOperations
@@ -115,6 +119,13 @@ abstract class GoTask : DefaultTask() {
         return (candidates.firstOrNull { it.exists() } ?: throw GradleException("$name$ext not found in " + candidates.joinToString())).absolutePath
     }
 
+    protected fun stage() {
+        fs.sync {
+            from(sourceDir) { include("*.go", "go.mod", "go.sum", "build-tags.txt"); exclude("*_test.go") }
+            into(workDir)
+        }
+    }
+
     protected fun run(vararg cmd: String) {
         val log = File(temporaryDir, "last.log")
         val result = log.outputStream().use { out ->
@@ -139,6 +150,7 @@ abstract class InstallGomobile : GoTask() {
     @TaskAction
     fun install() {
         // pinned by go.mod/go.sum (tools.go); `gomobile init` is not run: it would replace the pinned gobind with @latest
+        stage()
         run("go", "install", "golang.org/x/mobile/cmd/gomobile", "golang.org/x/mobile/cmd/gobind")
     }
 }
@@ -152,6 +164,7 @@ abstract class BindTailnet : GoTask() {
     @get:OutputFile abstract val aar: RegularFileProperty
     @TaskAction
     fun bind() {
+        stage()
         val tags = workDir.get().file("build-tags.txt").asFile.readText().replace("\n", "").trim()
         aar.get().asFile.parentFile.mkdirs()
         run(
@@ -197,7 +210,8 @@ val installGo = tasks.register<InstallGo>("installGo") {
 fun GoTask.common() {
     goHome.set(goInstallDir)
     cache.set(cacheDir)
-    workDir.set(goSrcDir)
+    sourceDir.set(goSrcDir)
+    workDir.set(project.layout.buildDirectory.dir("gosrc"))
     sdkDir()?.let { sdk.set(it.absolutePath) }
     ndkDir()?.let { ndk.set(it.absolutePath) }
 }
