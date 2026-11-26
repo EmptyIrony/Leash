@@ -8,3 +8,6 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+# Go sources copied from ../tailnet by tailnet/sync-go.sh (remote builds only sync android/)
+/tailnet/go/

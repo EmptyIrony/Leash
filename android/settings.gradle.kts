@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Leash"
 include(":app")
+include(":tailnet")
