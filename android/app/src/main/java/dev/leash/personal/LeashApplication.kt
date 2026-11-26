@@ -7,11 +7,17 @@ import android.util.Log
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.BridgeConnection
 import dev.leash.personal.core.DataStoreSettings
+import dev.leash.personal.core.DataStoreTailnetPrefs
+import dev.leash.personal.core.DemoTailnet
 import dev.leash.personal.core.DemoTransport
+import dev.leash.personal.core.KeystoreSecretBox
+import dev.leash.personal.core.NativeTailnet
+import dev.leash.personal.core.TailnetController
 import dev.leash.personal.core.NetworkChange
 import dev.leash.personal.core.OkHttpTransport
 import dev.leash.personal.notify.BackgroundController
 import dev.leash.personal.notify.LeashNotifier
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,7 +40,9 @@ class LeashApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         notifier.createChannels()
-        model = AppModel(appScope, DataStoreSettings(this), BridgeConnection(appScope, OkHttpTransport()), DemoTransport.factory(appScope))
+        // the node's identity must not move to another device: no-backup storage
+        val tailnet = TailnetController(appScope, NativeTailnet.create() ?: DemoTailnet.create(), DataStoreTailnetPrefs(this, KeystoreSecretBox()), File(noBackupFilesDir, "tailnet").absolutePath)
+        model = AppModel(appScope, DataStoreSettings(this), BridgeConnection(appScope, OkHttpTransport()), DemoTransport.factory(appScope), tailnet = tailnet)
         model.hooks = hooks
         model.start()
         background.start()

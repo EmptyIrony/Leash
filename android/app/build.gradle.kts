@@ -4,6 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Built-in Tailscale: the Go node as an AAR from the :tailnet module (gomobile bind on the build host). Without an NDK to build it
+// with, the app builds without it (src/noTailnet) and Settings says so.
+evaluationDependsOn(":tailnet")
+val tailnet = project(":tailnet")
+val tailnetLinked = tailnet.extra["tailnetLinked"] as Boolean
+
 android {
     namespace = "dev.leash.personal"
     compileSdk = 36
@@ -25,6 +31,9 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    if (tailnetLinked) ndkVersion = tailnet.extra["ndkVersion"] as String
+    sourceSets.getByName("main").java.srcDir(if (tailnetLinked) "src/tailnet/java" else "src/noTailnet/java")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -62,6 +71,7 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.mlkit.barcode.scanning)
     implementation(libs.haze)
+    if (tailnetLinked) implementation(files(tailnet.extra["tailnetAar"]!!).builtBy(":tailnet:bindTailnet"))
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

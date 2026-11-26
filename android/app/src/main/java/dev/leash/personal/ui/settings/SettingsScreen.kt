@@ -136,12 +136,21 @@ fun SettingsScreen(model: AppModel, onBack: () -> Unit, onScan: () -> Unit) {
         }
         error?.let { Text(it, style = Leash.type.footnote, color = c.danger, modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 6.dp)) }
 
+        TailnetSection(model)
+
         if (state.isConfigured) {
             SectionGap()
             SectionHeader(stringResource(R.string.status_section))
             GroupCard {
                 val st = connectionStatus(state)
                 ValueRow(stringResource(R.string.connection), trailing = { StatusPill(st.text, st.kind.color(), Modifier.padding(start = 8.dp)) })
+                model.tailnet?.let { tn ->
+                    val ts by tn.state.collectAsStateWithLifecycle()
+                    if (ts.enabled) ValueRow(
+                        stringResource(R.string.tailnet_row),
+                        trailing = { tailnetStatusLabel(ts.status).let { (text, kind) -> StatusPill(text, kind.color(), Modifier.padding(start = 8.dp)) } },
+                    )
+                }
                 (state.connection as? LinkState.Waiting)?.let { NoteRow(it.reason, c.textSecondary) }
                 (state.connection as? LinkState.Failed)?.let { NoteRow(it.reason, c.danger) }
                 state.agents.forEach { a ->

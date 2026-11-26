@@ -333,4 +333,28 @@
     <string name="quota_bucket_desc">%1$s, %2$d percent left</string>
     <string name="quota_chip">Quota</string>
     <string name="select_text">Select text</string>
+
+    <!-- Built-in Tailscale -->
+    <string name="tailnet_section">Built-in Tailscale</string>
+    <string name="tailnet_row">Tailscale</string>
+    <string name="tailnet_use">Use built-in Tailscale</string>
+    <string name="tailnet_auth_key">Auth key</string>
+    <string name="tailnet_key_hint">tskey-auth-…</string>
+    <string name="tailnet_key_saved">Saved</string>
+    <string name="tailnet_advanced">Advanced</string>
+    <string name="tailnet_control_url">Control URL</string>
+    <string name="tailnet_control_hint">Tailscale</string>
+    <string name="tailnet_status">Status</string>
+    <string name="tailnet_status_stopped">Not connected</string>
+    <string name="tailnet_status_connecting">Connecting…</string>
+    <string name="tailnet_status_connected">Connected</string>
+    <string name="tailnet_status_needs_key">Needs a new auth key</string>
+    <string name="tailnet_status_error">Error</string>
+    <string name="tailnet_needs_key_detail">Enter a new auth key from the Tailscale admin console.</string>
+    <string name="tailnet_logout">Log out</string>
+    <string name="tailnet_logout_title">Log out of the tailnet?</string>
+    <string name="tailnet_logout_text">Leash leaves the tailnet and deletes its saved key. Turning this back on needs a new auth key. The device stays listed in the Tailscale admin console until you delete it there.</string>
+    <string name="tailnet_detail">Leash joins your tailnet on its own, without the system VPN, so it works while another VPN is on. Only the connection to the bridge uses it, and only while Leash is running. Create an auth key in the Tailscale admin console, and use the bridge\'s Tailscale IP or MagicDNS name as its address.</string>
+    <string name="tailnet_unavailable">Not included in this build</string>
+    <string name="tailnet_unavailable_detail">This build was made without the Tailscale node. Install the Android NDK on the build host and build Leash again.</string>
 </resources>

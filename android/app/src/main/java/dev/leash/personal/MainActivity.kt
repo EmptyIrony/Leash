@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.leash.personal.core.AppModel
 import dev.leash.personal.core.LeashLink
+import dev.leash.personal.core.TailnetDebug
 import dev.leash.personal.ui.LeashRoot
 import dev.leash.personal.ui.design.LeashDesignTheme
 
@@ -35,7 +36,7 @@ class MainActivity : ComponentActivity() {
         app.hooks.view = window.decorView
         app.hooks.permissionAsker = { if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) }
         // a link that started the activity; after a recreation it was handled already
-        if (savedInstanceState == null) handleLink(intent)
+        if (savedInstanceState == null) { TailnetDebug.apply(model, app.appScope, intent); handleLink(intent) }
         setContent {
             LeashDesignTheme(dark = forceDark ?: androidx.compose.foundation.isSystemInDarkTheme()) {
                 LeashRoot(model)
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        TailnetDebug.apply(model, app.appScope, intent)
         handleLink(intent)
     }
 
