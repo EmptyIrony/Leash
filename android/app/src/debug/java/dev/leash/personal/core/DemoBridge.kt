@@ -60,6 +60,9 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         // a folder with more than a handful of conversations, for the list's "Show all"
         for (n in 1..5) add("demo-old-$n", "claude", "Older conversation $n", "2026-11-2" + (5 - n) + "T09:00:00Z", events = listOf(DemoScript.user("An older question $n", "u1"), DemoScript.agent("An older answer $n.", "a1")))
         add("demo-empty", "agy", null, "2026-11-24T10:00:00Z")
+        add("demo-files", "claude", "Review the attached spec", "2026-11-26T01:30:00Z", events = DemoScript.filesHistory())
+        add("demo-changes", "claude", "Rename the helpers", "2026-11-26T01:40:00Z", events = DemoScript.changesHistory())
+        add("demo-embed", "agy", "Chart the benchmark results", "2026-11-26T01:50:00Z", events = DemoScript.embedHistory())
         add("demo-subagent-live", "claude", "Index the repository", "2026-11-26T02:20:00Z", events = DemoScript.subagentLiveHistory()).running = true
         pending["claude:3"] = DemoScript.permissionRequest("claude:3", "demo-subagent-live", "claude", subagent = true)
         pending["claude:1"] = DemoScript.permissionRequest("claude:1", "demo-permission", "claude")
@@ -101,7 +104,8 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
                 "info" to jsonObj("agentInfo" to jsonObj("title" to "Antigravity (demo)"), "agentCapabilities" to jsonObj("promptCapabilities" to jsonObj("image" to true))),
                 "quota" to quota()),
             jsonObj("id" to "claude", "label" to "Claude Code", "state" to "ready", "home" to DemoScript.HOME, "steering" to true, "btw" to true, "cliList" to true, "turbo" to false,
-                "info" to jsonObj("agentInfo" to jsonObj("title" to "Claude Code (demo)"), "agentCapabilities" to jsonObj("promptCapabilities" to jsonObj("image" to true))))),
+                "info" to jsonObj("agentInfo" to jsonObj("title" to "Claude Code (demo)"), "agentCapabilities" to jsonObj("promptCapabilities" to jsonObj("image" to true))),
+                "quota" to DemoScript.claudeQuota())),
         "pending" to pending.values.toList(),
         "running" to sessions.values.filter { it.running }.map { it.id },
     )
@@ -132,13 +136,14 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
             "bridge/setAutoApprove" -> jsonObj("ok" to true, "autoApprove" to (params["enabled"].bool == true))
             "bridge/unqueue" -> unqueue(s ?: throw BridgeError(-32004, "unknown session"), params["id"].string)
             "bridge/requeue" -> requeue(s ?: throw BridgeError(-32004, "unknown session"), params)
-            "bridge/quota" -> jsonObj("quota" to quota())
+            "bridge/quota" -> jsonObj("quota" to (if (params["agent"].string == "claude") DemoScript.claudeQuota() else quota()))
             "bridge/noticed", "bridge/restartAgent" -> jsonObj("ok" to true)
             "bridge/browse" -> jsonObj("path" to (params["path"].string ?: DemoScript.HOME), "parent" to DemoScript.HOME.takeIf { params["path"].string != null },
                 "isGit" to true, "dirs" to listOf("workspace", "Documents"), "files" to listOf("notes.md"))
-            "bridge/readFile" -> jsonObj("text" to "# Demo file\n\nThis is scripted content.\n", "truncated" to false, "binary" to false)
-            "bridge/shell" -> jsonObj("exitCode" to 0)
-            "bridge/btw" -> jsonObj("text" to "This is a scripted side answer from the demo bridge.", "durationMs" to 800, "model" to "demo")
+            "bridge/readFile" -> readFile(params)
+            "bridge/upload" -> upload(params)
+            "bridge/shell" -> shell(s ?: throw BridgeError(-32004, "unknown session"), params)
+            "bridge/btw" -> btw(params)
             "bridge/cliVisibility" -> jsonObj("visible" to true)
             "bridge/showInCli" -> jsonObj("ok" to true)
             else -> throw BridgeError(-32601, "method not allowed: " + method)
@@ -188,6 +193,63 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         return jsonObj("sessionId" to id, "epoch" to DemoScript.EPOCH, "lastSeq" to 0, "configOptions" to DemoScript.configOptions(), "modes" to DemoScript.modes())
     }
 
+    // MARK: files, shell, side questions
+
+    private fun readFile(params: JsonElement): JsonElement {
+        val path = params["path"].string ?: throw BridgeError(-32602, "path required")
+        val entry = DemoFiles.find(path) ?: throw BridgeError(-32006, "ENOENT: no such file or directory, open '" + path + "'")
+        val abs = DemoFiles.absolute(path)
+        if (params["mode"].string == "base64") {
+            if (DemoFiles.tooLargeForDownload(path) || entry.bytes.size > (params["maxBytes"].int ?: Int.MAX_VALUE)) throw BridgeError(FileLimits.FILE_TOO_LARGE, "file too large (limit 32 MB)")
+            return jsonObj("path" to abs, "size" to entry.bytes.size, "mimeType" to entry.mime, "binary" to entry.binary, "data" to java.util.Base64.getEncoder().encodeToString(entry.bytes))
+        }
+        val n = minOf(entry.bytes.size, 512 * 1024)
+        return jsonObj("path" to abs, "size" to entry.bytes.size, "truncated" to (DemoFiles.tooLargeForDownload(path) || entry.bytes.size > n), "binary" to entry.binary,
+            "text" to (if (entry.binary) null else String(entry.bytes, 0, n, Charsets.UTF_8)))
+    }
+
+    /** The phone's file lands under the host's uploads folder, and can be read back from there. */
+    private fun upload(params: JsonElement): JsonElement {
+        val bytes = try { java.util.Base64.getDecoder().decode(params["data"].string ?: "") } catch (e: IllegalArgumentException) { throw BridgeError(-32602, "data (base64) required") }
+        if (bytes.size > MAX_UPLOAD) throw BridgeError(FileLimits.FILE_TOO_LARGE, "file too large")
+        val name = (params["name"].string ?: "file").replace(Regex("[\\s\\[\\]]+"), "_")
+        val path = DemoScript.HOME + "/.leash/uploads/" + (params["sessionId"].string ?: "misc") + "/" + name
+        val mime = DemoFiles.mimeFor(name)
+        DemoFiles.store(path, bytes, mime)
+        return jsonObj("path" to path, "uri" to "file://" + path, "name" to name, "size" to bytes.size, "mimeType" to mime)
+    }
+
+    /** "!" shell mode: the command and its output go into the transcript the way Claude Code writes them. */
+    private suspend fun shell(s: Sess, params: JsonElement): JsonElement {
+        val cmd = (params["command"].string ?: "").trim()
+        if (cmd.isEmpty()) throw BridgeError(-32602, "command required")
+        if (s.running) throw BridgeError(-32022, "the agent is working; run shell commands between turns")
+        emit(jsonObj("op" to "shell", "sessionId" to s.id, "running" to true))
+        delay(700)
+        val (out, err, code) = when {
+            cmd == "pwd" -> Triple(DemoScript.PROJECT + "\n", "", 0)
+            cmd.startsWith("ls") -> Triple("README.md\nbuild.gradle.kts\ndocs\nsrc\n", "", 0)
+            cmd.startsWith("echo ") -> Triple(cmd.removePrefix("echo ").trim('"', '\'') + "\n", "", 0)
+            cmd == "false" -> Triple("", "", 1)
+            else -> Triple("", "demo: " + cmd.substringBefore(' ') + ": command not found\n", 127)
+        }
+        fun esc(t: String) = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        record(s, DemoScript.user("<bash-input>" + esc(cmd) + "</bash-input>", "sh-in-" + s.seq))
+        record(s, DemoScript.user("<bash-stdout>" + esc(out) + "</bash-stdout><bash-stderr>" + esc(err) + "</bash-stderr>" + (if (code != 0) "<bash-exit-code>$code</bash-exit-code>" else ""), "sh-out-" + s.seq))
+        emit(jsonObj("op" to "shell", "sessionId" to s.id, "running" to false))
+        return jsonObj("exitCode" to code, "stdout" to out, "stderr" to err)
+    }
+
+    /** /btw: a side answer; "long" in the question makes it taller than the card, "fail" refuses. */
+    private suspend fun btw(params: JsonElement): JsonElement {
+        val q = (params["question"].string ?: "").lowercase()
+        delay(900)
+        if ("fail" in q) throw BridgeError(-32000, "The demo can't answer that")
+        val text = if ("long" in q) (1..14).joinToString("\n\n") { "**Point $it.** The parser reads its input once, tokenises it and hands the tokens to the next stage, which is why blank input has to be rejected before it starts." }
+        else "It is a **scripted** side answer from the demo bridge, with `inline code` and a list:\n\n- one\n- two"
+        return jsonObj("text" to text, "durationMs" to 800, "model" to "demo")
+    }
+
     // MARK: turns
 
     private fun record(s: Sess, update: JsonElement) {
@@ -218,7 +280,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         if (!s.running) {
             val items = takeQueue(s) + listOfNotNull(text.takeIf { blocks.isNotEmpty() })
             if (items.isEmpty()) throw BridgeError(-32602, "prompt required")
-            return runTurn(s, items)
+            return runTurn(s, items.filter { it.isNotEmpty() }, blocks.filter { it["type"].string != "text" })
         }
         if (params["interrupt"].bool == true) {
             if (blocks.isNotEmpty()) s.queue += jsonObj("id" to s.agent + ":q" + s.nextQueue++, "text" to text, "imageCount" to 0, "fileCount" to 0)
@@ -240,14 +302,16 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     }
 
     /** One scripted turn; returns when it ends (the real bridge answers session/prompt then). */
-    private suspend fun runTurn(s: Sess, items: List<String>): JsonElement {
+    private suspend fun runTurn(s: Sess, items: List<String>, extra: List<JsonElement> = emptyList()): JsonElement {
         val done = CompletableDeferred<JsonElement>()
         s.running = true
         s.job = scope.launch {
             var stop = "end_turn"
             try {
                 broadcastTurn(s, true)
-                record(s, DemoScript.user(items.joinToString("\n"), "u-" + s.seq))
+                val uid = "u-" + s.seq
+                record(s, DemoScript.user(items.joinToString("\n"), uid))
+                extra.forEach { record(s, DemoScript.userBlock(it, uid)) }
                 delay(300)
                 record(s, DemoScript.thought("Let me look at "))
                 delay(250)
@@ -329,3 +393,4 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
 }
 
 private const val SLOW_MS = 8_000L
+private const val MAX_UPLOAD = 25 * 1024 * 1024

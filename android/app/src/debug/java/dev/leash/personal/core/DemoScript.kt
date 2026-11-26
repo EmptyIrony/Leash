@@ -12,6 +12,8 @@ object DemoScript {
     private val synthetic = jsonObj("leash" to jsonObj("synthetic" to true))
 
     fun user(t: String, id: String) = jsonObj("sessionUpdate" to "user_message_chunk", "content" to text(t), "messageId" to id, "_meta" to synthetic)
+    /** A non-text block of a user message (an image or an attached file), echoed like the real bridge does. */
+    fun userBlock(block: JsonElement, id: String) = jsonObj("sessionUpdate" to "user_message_chunk", "content" to block, "messageId" to id, "_meta" to synthetic)
     fun thought(t: String) = jsonObj("sessionUpdate" to "agent_thought_chunk", "content" to text(t))
     fun agent(t: String, id: String) = jsonObj("sessionUpdate" to "agent_message_chunk", "content" to text(t), "messageId" to id)
     fun tool(id: String, title: String, kind: String, status: String, vararg extra: Pair<String, Any?>) =
@@ -40,6 +42,48 @@ object DemoScript {
         diffTool,
         tool("t-test", "./gradlew test", "execute", "completed", "rawInput" to jsonObj("command" to "./gradlew test")),
         agent(ANSWER, "a1"), stats(),
+    )
+
+    private val tinyPng = DemoFiles.png(96, 64, boxes = false)
+
+    /** Files in and out of a conversation: an attachment and a photo in the prompt, paths, images and a "!" run in the reply. */
+    fun filesHistory(): List<JsonElement> = listOf(
+        user("Review the attached spec and this screenshot", "u1"),
+        userBlock(jsonObj("type" to "resource_link", "uri" to "file://" + PROJECT + "/docs/spec.pdf", "name" to "spec.pdf", "size" to 1_284_000), "u1"),
+        userBlock(jsonObj("type" to "image", "mimeType" to "image/png", "data" to java.util.Base64.getEncoder().encodeToString(tinyPng)), "u1"),
+        user("<bash-input>ls docs</bash-input>", "u2"),
+        user("<bash-stdout>big-shot.png\nflow.png\nspec.pdf\n</bash-stdout><bash-stderr></bash-stderr>", "u3"),
+        tool("t-read2", "Read spec.pdf", "read", "completed", "locations" to listOf(jsonObj("path" to PROJECT + "/docs/spec.pdf"))),
+        agent(
+            "I went through [the spec](" + PROJECT + "/docs/spec.pdf). The parser entry point is in " + BT + "src/Parser.kt:12" + BT + ".\n\n" +
+                "The flow is in " + BT + "docs/flow.png" + BT + " and a taller capture is in " + BT + "docs/big-shot.png" + BT + ".\n\n" +
+                "Things I could not open: " + BT + "build/archive.zip" + BT + ", " + BT + "logs/huge.log" + BT + " and " + BT + "data/large.bin" + BT + ", and " + BT + "missing/none.pdf" + BT + ".\n\n" +
+                "![parser flow](docs/flow.png)\n\n![gone](docs/gone.png)",
+            "a1",
+        ),
+        stats(),
+    )
+
+    /** Three files changed in one turn: one edited, one created, one deleted. */
+    fun changesHistory(): List<JsonElement> {
+        fun edit(id: String, name: String, path: String, old: String, new: String) = tool(id, "Edit $name", "edit", "completed",
+            "locations" to listOf(jsonObj("path" to path)),
+            "content" to listOf(jsonObj("type" to "diff", "path" to path, "oldText" to old, "newText" to new)))
+        return listOf(
+            user("Rename the helpers and drop the old file", "u1"),
+            edit("c1", "Parser.kt", PROJECT + "/src/Parser.kt", "fun parseAll(s: String) = s\n\nfun helper() = 1\n", "fun parseInput(s: String) = s.trim()\n\nfun helper() = 2\n"),
+            edit("c2", "Lexer.kt", PROJECT + "/src/Lexer.kt", "", "package demo\n\nfun lex(s: String) = s.split(' ')\n"),
+            tool("c3", "Delete Old.kt", "delete", "completed", "locations" to listOf(jsonObj("path" to PROJECT + "/src/Old.kt"))),
+            agent("Renamed " + BT + "parseAll" + BT + " to " + BT + "parseInput" + BT + ", added the lexer and removed " + BT + "Old.kt" + BT + ".", "a1"),
+            stats(),
+        )
+    }
+
+    /** An Antigravity answer with a widget (generative UI). */
+    fun embedHistory(): List<JsonElement> = listOf(
+        user("Chart the benchmark results", "u1"),
+        thought("A bar chart will do."),
+        agent("Here is how the three parsers compare:\n\n<agent-embed src=\"file://" + DemoFiles.WIDGET + "\"></agent-embed>\n\nThe first one wins by a margin.", "a1"),
     )
 
     fun permissionHistory(): List<JsonElement> = listOf(
@@ -109,6 +153,18 @@ object DemoScript {
 
     fun modes(current: String = "default") = jsonObj("currentModeId" to current, "availableModes" to listOf(jsonObj("id" to "default", "name" to "Manual"), jsonObj("id" to "acceptEdits", "name" to "Accept edits"), jsonObj("id" to "plan", "name" to "Plan")))
     val commands = listOf(jsonObj("name" to "review", "description" to "Review a pull request", "input" to jsonObj("hint" to "pr-number")), jsonObj("name" to "init", "description" to "Create CLAUDE.md"))
+
+    /** Claude Code's usage: a general pool running low and a model-scoped one (the model chip picks the limiting bucket). */
+    fun claudeQuota(): JsonElement {
+        fun iso(afterMs: Long) = java.time.Instant.ofEpochMilli(Clock.now() + afterMs).toString()
+        return jsonObj("planTier" to "Max", "fetchedAt" to Clock.now(), "pools" to listOf(
+            jsonObj("id" to "claude", "label" to "Claude", "buckets" to listOf(
+                jsonObj("id" to "c5", "window" to "5h", "remainingFraction" to 0.38, "resetTime" to iso(2 * 3_600_000L + 600_000L)),
+                jsonObj("id" to "cw", "window" to "weekly", "remainingFraction" to 0.11, "resetTime" to iso(3 * 86_400_000L)))),
+            jsonObj("id" to "fable", "label" to "Fable", "model" to "Fable", "buckets" to listOf(
+                jsonObj("id" to "f5", "window" to "5h", "remainingFraction" to 0.9, "resetTime" to iso(4 * 3_600_000L)),
+                jsonObj("id" to "fw", "window" to "weekly", "remainingFraction" to 0.64, "resetTime" to iso(5 * 86_400_000L))))))
+    }
 
     /** The reply to a prompt, streamed word by word. */
     val replyWords: List<String> = ANSWER.split(" ").map { it + " " }

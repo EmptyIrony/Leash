@@ -27,7 +27,7 @@ class DemoBridgeTest {
         val m = model()
         val s = m.state.value
         assertTrue(s.useDemo && s.isConnected && s.agentReady)
-        assertEquals(12, s.sessions.size)
+        assertEquals(15, s.sessions.size)
         assertEquals(setOf("demo-permission", "demo-queue", "demo-subagent-live"), s.running)
         assertEquals(3, s.pending.size)
         assertEquals(2, s.sessions.first { it.id == "demo-permission" }.pendingCount)
@@ -177,5 +177,78 @@ class DemoBridgeTest {
         advanceTimeBy(500); runCurrent()
         assertTrue(m.state.value.sessions.any { it.id == id })
         assertTrue(m.existingStore(id)!!.attached)
+    }
+
+    @Test fun filesAreReadByPathAndModeAndUploadsComeBack() = runTest {
+        val m = model()
+        val png = m.fetchFile("docs/flow.png", "claude", "demo-refactor")
+        assertEquals(0x89, png.data[0].toInt() and 0xFF)
+        assertEquals("image/png", png.mimeType)
+        assertTrue(m.fetchFile("docs/spec.pdf", "claude", null).data.decodeToString(0, 5) == "%PDF-")
+        assertTrue(m.readTextPreview(DemoFiles.WIDGET, "agy", null).text!!.contains("<body>"))
+        val long = m.readTextPreview("src/Parser.kt", "claude", "demo-refactor")
+        assertTrue(long.text!!.lines().size > 40)
+        try { m.fetchFile("logs/huge.log", "claude", null); org.junit.Assert.fail() } catch (e: BridgeError) { assertEquals(FileLimits.FILE_TOO_LARGE, e.code) }
+        assertTrue(m.readTextPreview("logs/huge.log", "claude", null).truncated)
+        try { m.fetchFile("nope.pdf", "claude", null); org.junit.Assert.fail() } catch (e: BridgeError) { assertEquals(-32006, e.code) }
+        val st = m.store("demo-empty")
+        val link = m.upload(PendingFile("my notes.txt", "hello".toByteArray()), st)
+        val back = m.fetchFile(FileRef.fromBlock(link)!!.path, "agy", "demo-empty")
+        assertEquals("hello", back.data.decodeToString())
+    }
+
+    @Test fun aPromptWithAnAttachmentEchoesItAsAFileChip() = runTest {
+        val m = model()
+        val st = m.store("demo-empty")
+        m.attach(st)
+        val link = m.upload(PendingFile("spec.pdf", DemoFiles.pdf("x")), st)
+        m.send(st, "look at this", attachments = listOf(link))
+        advanceTimeBy(1_000); runCurrent()
+        val user = (st.displayItems().first() as DisplayItem.User).item
+        assertEquals("look at this", user.text)
+        assertEquals(listOf("spec.pdf"), user.files.map { it.name })
+        advanceTimeBy(10_000); runCurrent()
+    }
+
+    @Test fun aShellRunLandsInTheTranscriptAsInputAndOutput() = runTest {
+        val m = model()
+        val st = m.store("demo-empty")
+        m.attach(st)
+        m.runShell(st, "pwd")
+        advanceTimeBy(100); runCurrent()
+        assertTrue(st.shellRunning)
+        advanceTimeBy(1_000); runCurrent()
+        assertFalse(st.shellRunning)
+        val users = st.entries.mapNotNull { (it as? ChatEntry.Message)?.item?.text }
+        assertEquals("<bash-input>pwd</bash-input>", users[0])
+        assertTrue(users[1].startsWith("<bash-stdout>" + DemoScript.PROJECT))
+    }
+
+    @Test fun aSideQuestionIsAnsweredWithoutTouchingTheConversation() = runTest {
+        val m = model()
+        val st = m.store("demo-refactor")
+        m.attach(st)
+        val before = st.entries.size
+        m.askSideQuestion(st, "what is long about this?")
+        assertEquals(1, st.sideQuestions.size)
+        advanceTimeBy(2_000); runCurrent()
+        assertTrue(st.sideQuestions.single().answer!!.length > 400)
+        assertEquals(before, st.entries.size)
+    }
+
+    @Test fun theNewConversationsShowChangesEmbedsAndFiles() = runTest {
+        val m = model()
+        val changes = m.store("demo-changes").also { m.attach(it) }
+        val c = (changes.displayItems().first { it is DisplayItem.Changes } as DisplayItem.Changes).changes
+        assertEquals(3, c.files.size)
+        assertTrue(c.files[1].created && c.files[2].deleted)
+        assertTrue(c.canCommit)
+        val embed = m.store("demo-embed").also { m.attach(it) }
+        assertTrue((embed.displayItems().first { it is DisplayItem.Answer } as DisplayItem.Answer).item.text.contains("<agent-embed src="))
+        val files = m.store("demo-files").also { m.attach(it) }
+        val user = (files.displayItems().first() as DisplayItem.User).item
+        assertEquals(1, user.images.size)
+        assertEquals(listOf("spec.pdf"), user.files.map { it.name })
+        assertNotNull(m.state.value.quotas["claude"]!!.limiting("claude-sonnet", "claude"))
     }
 }
