@@ -74,7 +74,7 @@ data class ConnectionStatus(val kind: StatusKind, val text: String)
 /** The connection line for toolbars (ios AppModel.statusColor / statusText). */
 @Composable
 fun connectionStatus(s: AppState): ConnectionStatus {
-    val mac = s.macName.ifEmpty { stringResource(R.string.status_mac) }
+    val bridge = s.bridgeName.ifEmpty { stringResource(R.string.status_bridge) }
     return when (val c = s.connection) {
         LinkState.Connected -> {
             val agents = s.agents
@@ -88,11 +88,11 @@ fun connectionStatus(s: AppState): ConnectionStatus {
                 s.useDemo -> stringResource(R.string.status_demo)
                 agents.size > 1 -> {
                     val ready = agents.count { it.isReady }
-                    if (ready == agents.size) stringResource(R.string.status_agents_ready, mac, ready) else stringResource(R.string.status_agents_some_ready, mac, ready, agents.size)
+                    if (ready == agents.size) stringResource(R.string.status_agents_ready, bridge, ready) else stringResource(R.string.status_agents_some_ready, bridge, ready, agents.size)
                 }
-                s.agentState == "ready" -> stringResource(R.string.status_agent_ready, mac)
-                s.agentState == "starting" -> stringResource(R.string.status_agent_starting, mac)
-                else -> stringResource(R.string.status_agent_down, mac)
+                s.agentState == "ready" -> stringResource(R.string.status_agent_ready, bridge)
+                s.agentState == "starting" -> stringResource(R.string.status_agent_starting, bridge)
+                else -> stringResource(R.string.status_agent_down, bridge)
             }
             ConnectionStatus(kind, text)
         }

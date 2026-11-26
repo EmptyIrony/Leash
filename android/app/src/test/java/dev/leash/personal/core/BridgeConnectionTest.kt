@@ -25,7 +25,7 @@ class BridgeConnectionTest {
         init {
             link.onMessage = { messages += it }
             link.onState = { states += it }
-            link.configure("mac.example.ts.net", 8787, "tok-123")
+            link.configure("bridge.example.ts.net", 8787, "tok-123")
         }
     }
 
@@ -35,7 +35,7 @@ class BridgeConnectionTest {
         val r = rig()
         r.link.connect()
         assertEquals(LinkState.Connecting, r.link.state)
-        assertEquals(Endpoint("ws://mac.example.ts.net:8787/ws", "tok-123"), r.transport.last.endpoint)
+        assertEquals(Endpoint("ws://bridge.example.ts.net:8787/ws", "tok-123"), r.transport.last.endpoint)
         r.transport.last.ready()
         runCurrent()
         assertEquals(LinkState.Connected, r.link.state)

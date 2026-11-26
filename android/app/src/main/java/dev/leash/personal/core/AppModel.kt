@@ -78,7 +78,7 @@ data class OpenRequest(val sessionId: String, val id: UUID = UUID.randomUUID())
 
 enum class Haptic { Light, Medium, Heavy, Soft, Selection, Success, Warning, Error }
 
-enum class RemoteOutcome { Done, MacUnreachable, AlreadyAnswered, Locked, ChangedElsewhere, Failed }
+enum class RemoteOutcome { Done, BridgeUnreachable, AlreadyAnswered, Locked, ChangedElsewhere, Failed }
 
 /**
  * Seams phase 3 fills in (notifications, the foreground service, the ongoing turn notification). Everything defaults to
@@ -103,7 +103,7 @@ data class AppState(
     val host: String = "",
     val port: Int = LeashLink.DEFAULT_PORT,
     val token: String = "",
-    val macName: String = "",
+    val bridgeName: String = "",
     val useDemo: Boolean = false,
     val connection: LinkState = LinkState.Idle,
     val agentState: String = "unknown",
@@ -205,7 +205,7 @@ class AppModel(
         scope.launch {
             val st = settings.load()
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
-            set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, macName = st.macName, useDemo = st.useDemo && demoLink != null,
+            set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = st.useDemo && demoLink != null,
                 drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread) }
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
@@ -213,7 +213,7 @@ class AppModel(
         }
     }
 
-    /** Live state belongs to one connection (a Mac, or the demo); a different one starts clean. */
+    /** Live state belongs to one connection (a bridge, or the demo); a different one starts clean. */
     private fun resetLive() {
         stores.clear(); turnStarts.clear(); watchers.clear()
         set { copy(agentState = "unknown", agentError = null, agentName = null, bridgeHome = null, imageInput = false, sessions = emptyList(), sessionsLoading = false,
@@ -224,7 +224,7 @@ class AppModel(
         scope.launch {
             persistLock.withLock {
                 val x = s
-                settings.save(Settings(x.host, x.port, x.token, x.macName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs))
+                settings.save(Settings(x.host, x.port, x.token, x.bridgeName, x.useDemo, x.drafts, x.lastSeen, x.markedUnread, unreadSinceMs))
             }
         }
     }
@@ -249,7 +249,7 @@ class AppModel(
         if (s.isConfigured) link.connect()
     }
 
-    /** Switch between the Mac and the scripted demo bridge; live state does not carry over. */
+    /** Switch between the real bridge and the scripted demo bridge; live state does not carry over. */
     fun setUseDemo(on: Boolean) {
         if (demoLink == null || on == s.useDemo) return
         link.disconnect()
@@ -265,7 +265,7 @@ class AppModel(
         val h = host.trim()
         link.disconnect()
         resetLive()
-        set { copy(host = h, port = port, token = token.trim(), macName = name?.trim()?.takeIf { it.isNotEmpty() } ?: h, useDemo = false, connection = LinkState.Idle) }
+        set { copy(host = h, port = port, token = token.trim(), bridgeName = name?.trim()?.takeIf { it.isNotEmpty() } ?: h, useDemo = false, connection = LinkState.Idle) }
         persist()
         select(false)
         reconfigure()
@@ -273,11 +273,11 @@ class AppModel(
 
     fun pair(info: PairingInfo) = setConnection(info.host, info.port, info.token, info.name)
 
-    /** Forget the Mac: no host, no token, disconnected. */
+    /** Forget the bridge: no host, no token, disconnected. */
     fun unpair() {
         link.disconnect()
         resetLive()
-        set { copy(host = "", token = "", macName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Idle) }
+        set { copy(host = "", token = "", bridgeName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Idle) }
         persist()
         select(false)
     }
@@ -561,7 +561,7 @@ class AppModel(
         if (row.id in s.markedUnread) return true
         val end = row.turnEndedAtMs
         if (row.running || end == null || end <= unreadSinceMs) return false
-        // the Mac's clock stamps the end, the phone's the visit: a few seconds of slack
+        // the bridge's clock stamps the end, the phone's the visit: a few seconds of slack
         return end - (s.lastSeen[row.id] ?: Long.MIN_VALUE / 2) > 3_000
     }
 
@@ -723,7 +723,7 @@ class AppModel(
                 val code = (e as? BridgeError)?.code
                 when {
                     code == BridgeError.CLOSED -> {
-                        // connection dropped; the turn keeps running on the Mac and we resync on reconnect
+                        // connection dropped; the turn keeps running on the bridge host and we resync on reconnect
                         // (the pending echo stays until the resync's echo replaces it, or attach finds the session idle)
                     }
                     code == BridgeError.LOCKED_ELSEWHERE -> {
@@ -1051,7 +1051,7 @@ class AppModel(
 
     /** Answer a permission request and wait for the bridge to confirm it. */
     suspend fun answer(key: String, optionId: String?): RemoteOutcome {
-        if (!awaitConnection()) return RemoteOutcome.MacUnreachable
+        if (!awaitConnection()) return RemoteOutcome.BridgeUnreachable
         if (key !in s.pending) return RemoteOutcome.AlreadyAnswered   // ready just refreshed the list
         val outcome = if (optionId != null) jsonObj("outcome" to "selected", "optionId" to optionId) else jsonObj("outcome" to "cancelled")
         return try {
@@ -1061,7 +1061,7 @@ class AppModel(
             val code = (e as? BridgeError)?.code
             when (code) {
                 BridgeError.ALREADY_RESOLVED -> { set { copy(pending = pending - key) }; RemoteOutcome.AlreadyAnswered }
-                BridgeError.CLOSED, BridgeError.TIMEOUT -> RemoteOutcome.MacUnreachable
+                BridgeError.CLOSED, BridgeError.TIMEOUT -> RemoteOutcome.BridgeUnreachable
                 else -> RemoteOutcome.Failed
             }
         }

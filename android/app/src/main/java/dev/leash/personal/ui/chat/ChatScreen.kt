@@ -46,6 +46,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -115,8 +116,15 @@ fun ChatScreen(model: AppModel, sessionId: String, onBack: () -> Unit, onOpenSub
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.filter { !it }.collect { pinned = !listState.canScrollForward }
     }
+    // Opening a step group or run grows the list below the header that was tapped: that is not new output to follow, and
+    // following it would scroll the header away. Opening something ends the following (the jump button brings it back).
+    val expandedCount = store.expandedGroups.size + store.expandedSteps.size
+    var seenExpanded by remember { mutableIntStateOf(expandedCount) }
     LaunchedEffect(version, items.size, pinned) {
-        if (pinned && items.isNotEmpty()) listState.scrollToItem(items.lastIndex, scrollOffset = 1_000_000)
+        val opened = expandedCount > seenExpanded
+        seenExpanded = expandedCount
+        if (opened) pinned = false
+        else if (pinned && items.isNotEmpty()) listState.scrollToItem(items.lastIndex, scrollOffset = 1_000_000)
     }
 
     var menu by remember { mutableStateOf(false) }

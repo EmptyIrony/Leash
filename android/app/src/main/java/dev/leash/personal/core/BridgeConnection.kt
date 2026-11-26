@@ -12,7 +12,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Link to the bridge running on the Mac: auth header, `/ws`, reconnect with backoff, call/result correlation with
+ * Link to the bridge running on the bridge host: auth header, `/ws`, reconnect with backoff, call/result correlation with
  * timeouts, presence. Port of ios Core/BridgeConnection.swift. `scope` should run on one thread (Main): socket
  * callbacks hop onto it, so state is only touched there.
  */

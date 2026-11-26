@@ -5,8 +5,8 @@ data class Settings(
     val host: String = "",
     val port: Int = LeashLink.DEFAULT_PORT,
     val token: String = "",
-    val macName: String = "",
-    /** Debug builds: talk to the scripted demo bridge instead of the Mac. */
+    val bridgeName: String = "",
+    /** Debug builds: talk to the scripted demo bridge instead of the bridge. */
     val useDemo: Boolean = false,
     /** What was typed but not sent in each conversation, by session id. */
     val drafts: Map<String, String> = emptyMap(),

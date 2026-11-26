@@ -19,7 +19,7 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
         val host = stringPreferencesKey("host")
         val port = intPreferencesKey("port")
         val token = stringPreferencesKey("token")
-        val macName = stringPreferencesKey("macName")
+        val bridgeName = stringPreferencesKey("bridgeName")
         val useDemo = booleanPreferencesKey("useDemo")
         val drafts = stringPreferencesKey("drafts")
         val lastSeen = stringPreferencesKey("lastSeen")
@@ -33,7 +33,7 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             host = p[K.host] ?: "",
             port = p[K.port] ?: LeashLink.DEFAULT_PORT,
             token = p[K.token] ?: "",
-            macName = p[K.macName] ?: "",
+            bridgeName = p[K.bridgeName] ?: "",
             useDemo = p[K.useDemo] ?: false,
             drafts = decode(p[K.drafts]).obj?.mapNotNull { (k, v) -> v.string?.let { k to it } }?.toMap() ?: emptyMap(),
             lastSeen = decode(p[K.lastSeen]).obj?.mapNotNull { (k, v) -> v.long?.let { k to it } }?.toMap() ?: emptyMap(),
@@ -47,7 +47,7 @@ class DataStoreSettings(private val context: Context) : SettingsStore {
             p[K.host] = settings.host
             p[K.port] = settings.port
             p[K.token] = settings.token
-            p[K.macName] = settings.macName
+            p[K.bridgeName] = settings.bridgeName
             p[K.useDemo] = settings.useDemo
             p[K.drafts] = j(settings.drafts).encoded()
             p[K.lastSeen] = j(settings.lastSeen).encoded()

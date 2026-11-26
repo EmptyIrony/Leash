@@ -165,7 +165,7 @@ fun NewSessionScreen(model: AppModel, controller: NewSessionController, onBack: 
                         Icon(Icons.Filled.FolderOpen, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(14.dp))
                         Text(
-                            if (agent == "agy") stringResource(R.string.browse_the_mac) else stringResource(R.string.browse_agent_host, state.agentLabel(agent)),
+                            if (agent == "agy") stringResource(R.string.browse_the_bridge) else stringResource(R.string.browse_agent_host, state.agentLabel(agent)),
                             Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
                         )
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = LeashTheme.colors.textTertiary)

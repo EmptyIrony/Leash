@@ -7,14 +7,14 @@ import org.junit.Test
 
 class PairingLinkTest {
     @Test fun parsesTheBridgeLink() {
-        val p = parsePairingLink("leash://pair?host=mac.example.ts.net&port=8787&token=abc_DEF-123&name=Studio")!!
-        assertEquals(PairingInfo("mac.example.ts.net", 8787, "abc_DEF-123", "Studio"), p)
+        val p = parsePairingLink("leash://pair?host=bridge.example.ts.net&port=8787&token=abc_DEF-123&name=Studio")!!
+        assertEquals(PairingInfo("bridge.example.ts.net", 8787, "abc_DEF-123", "Studio"), p)
     }
 
     @Test fun decodesAndTrims() {
-        val p = parsePairingLink("  leash://pair?host=h&port=9000&token=a%2Bb%3D&name=My%20Mac \n")!!
+        val p = parsePairingLink("  leash://pair?host=h&port=9000&token=a%2Bb%3D&name=My%20Bridge \n")!!
         assertEquals("a+b=", p.token)
-        assertEquals("My Mac", p.name)
+        assertEquals("My Bridge", p.name)
         assertEquals(9000, p.port)
     }
 

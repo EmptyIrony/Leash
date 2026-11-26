@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Leash</string>
-    <string name="status_mac">Bridge</string>
+    <string name="status_bridge">Bridge</string>
     <string name="status_demo">Demo bridge</string>
     <string name="status_agents_ready">%1$s · %2$d agents ready</string>
     <string name="status_agents_some_ready">%1$s · %2$d/%3$d agents ready</string>
@@ -23,11 +23,11 @@
     <string name="needs_you">Needs you</string>
     <string name="show_all_count">Show all (%1$d)</string>
     <string name="no_conversations">No conversations</string>
-    <string name="no_conversations_detail">Start one from here or on your Mac.</string>
+    <string name="no_conversations_detail">Start one from here or on the computer running the bridge.</string>
     <string name="no_matches">No matches</string>
     <string name="no_matches_detail">Nothing matches “%1$s”.</string>
-    <string name="pair_with_mac">Pair with the bridge</string>
-    <string name="pair_with_mac_detail">Run the bridge on your computer, then scan its QR code or paste the pairing link.</string>
+    <string name="pair_with_bridge">Pair with the bridge</string>
+    <string name="pair_with_bridge_detail">Run the bridge on your computer, then scan its QR code or paste the pairing link.</string>
     <string name="agent_not_running">%1$s is not running</string>
     <string name="agent_starting">Starting %1$s…</string>
     <string name="restart">Restart</string>
@@ -45,7 +45,7 @@
     <string name="no_subfolders">No subfolders</string>
     <string name="git_repository">git</string>
     <string name="recent_folders">Recent folders</string>
-    <string name="browse_the_mac">Browse the bridge…</string>
+    <string name="browse_the_bridge">Browse the bridge…</string>
     <string name="browse_agent_host">Browse %1$s host…</string>
     <string name="starting">Starting…</string>
     <string name="empty_folder">Empty folder</string>

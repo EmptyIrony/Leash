@@ -41,7 +41,7 @@ class AppModelTest {
         override fun haptic(kind: Haptic) { haptics += kind }
     }
 
-    private class Rig(scope: TestScope, val settings: InMemorySettingsStore = InMemorySettingsStore(Settings(host = "mac.ts.net", token = "tok")), demo: FakeLink? = null) {
+    private class Rig(scope: TestScope, val settings: InMemorySettingsStore = InMemorySettingsStore(Settings(host = "bridge.ts.net", token = "tok")), demo: FakeLink? = null) {
         val link = FakeLink()
         val hooks = Hooks()
         val model = AppModel(scope.backgroundScope, settings, link, demo?.let { d -> { d } }, hooks)
@@ -86,8 +86,8 @@ class AppModelTest {
         val r = Rig(this)
         r.model.start(); runCurrent()
         assertTrue(r.state.settingsLoaded)
-        assertEquals("mac.ts.net", r.state.host)
-        assertEquals(listOf(Triple("mac.ts.net", 8787, "tok")), r.link.configured)
+        assertEquals("bridge.ts.net", r.state.host)
+        assertEquals(listOf(Triple("bridge.ts.net", 8787, "tok")), r.link.configured)
         assertEquals(1, r.link.connects)
         // a first launch stamps the unread baseline
         assertNotNull(r.settings.value.unreadSinceMs)
@@ -108,7 +108,7 @@ class AppModelTest {
         runCurrent()
         assertEquals(listOf(Triple("h.ts.net", 9001, "abc")), r.link.configured)
         assertEquals(1, r.link.connects)
-        assertEquals("Studio", r.state.macName)
+        assertEquals("Studio", r.state.bridgeName)
         assertEquals("abc", r.settings.value.token)
         assertEquals(9001, r.settings.value.port)
         r.model.unpair(); runCurrent()
@@ -116,7 +116,7 @@ class AppModelTest {
         assertFalse(r.state.isConfigured)
     }
 
-    @Test fun pairingAnotherMacDropsTheOldLiveState() = runTest {
+    @Test fun pairingAnotherBridgeDropsTheOldLiveState() = runTest {
         val r = Rig(this)
         r.link.on("session/list") { jsonObj("sessions" to listOf(session("a"))) }
         connect(r, readyFrame(pending = listOf(permission("claude:1", "a")), running = listOf("a")))
@@ -754,13 +754,13 @@ class AppModelTest {
         assertEquals(RemoteOutcome.AlreadyAnswered, r.model.answer("claude:2", "allow"))
         assertFalse("claude:2" in r.state.pending)
         r.link.on("reply!") { throw BridgeError(BridgeError.TIMEOUT, "timeout") }
-        assertEquals(RemoteOutcome.MacUnreachable, r.model.answer("claude:3", "allow"))
+        assertEquals(RemoteOutcome.BridgeUnreachable, r.model.answer("claude:3", "allow"))
     }
 
     @Test fun answerWhileDisconnectedReportsUnreachable() = runTest {
         val r = Rig(this)
         r.model.start(); runCurrent()
-        assertEquals(RemoteOutcome.MacUnreachable, r.model.answer("k", "x"))
+        assertEquals(RemoteOutcome.BridgeUnreachable, r.model.answer("k", "x"))
         assertTrue(r.link.ensures > 0)
     }
 

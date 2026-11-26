@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonElement
 /**
  * A fake bridge behind the BridgeLink interface (debug builds): answers the calls the app makes from scripted
  * conversations, streams a turn for session/prompt, and keeps a queue, permission requests and questions, so UI can be
- * checked without a reachable Mac. Nothing here touches the network.
+ * checked without a reachable bridge. Nothing here touches the network.
  */
 class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     override var state: LinkState = LinkState.Idle
@@ -86,7 +86,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     }
 
     private fun ready() = jsonObj(
-        "op" to "ready", "bridge" to jsonObj("version" to "demo", "protocol" to 1, "hostname" to "demo-mac", "home" to DemoScript.HOME, "multiAgent" to true),
+        "op" to "ready", "bridge" to jsonObj("version" to "demo", "protocol" to 1, "hostname" to "demo-bridge", "home" to DemoScript.HOME, "multiAgent" to true),
         "agent" to jsonObj("state" to "ready"),
         "agents" to listOf(
             jsonObj("id" to "agy", "label" to "Antigravity", "state" to "ready", "home" to DemoScript.HOME, "turbo" to true, "steering" to false, "btw" to false, "cliList" to false,

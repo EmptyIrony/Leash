@@ -268,9 +268,9 @@ private fun StatusCard(state: AppState, model: AppModel, onSettings: () -> Unit)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.QrCodeScanner, null, tint = scheme.primary)
                     Spacer(Modifier.width(10.dp))
-                    Text(stringResource(R.string.pair_with_mac), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.pair_with_bridge), style = MaterialTheme.typography.titleMedium)
                 }
-                Text(stringResource(R.string.pair_with_mac_detail), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                Text(stringResource(R.string.pair_with_bridge_detail), style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
                 Button(onClick = onSettings) { Text(stringResource(R.string.settings)) }
             }
         }
