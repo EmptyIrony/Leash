@@ -24,6 +24,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { safePath, normInput, shellSpec, killTree, findCommand, uploadName as safeUploadName } from '../src/platform.mjs';
 
 const home = os.homedir();
 // The bridge sends argv as one base64url(JSON) token so ssh's re-joining into a remote shell string
@@ -35,10 +36,8 @@ const out = v => { process.stdout.write(JSON.stringify(v)); };
 const fail = (code, message, data) => { out({ error: { code, message, ...(data ? { data } : {}) } }); process.exitCode = 1; };
 
 function safe(p, cwd) {
-  const expand = s => s.replace(/^~(?=$|\/)/, home);
-  const abs = p && cwd && !path.isAbsolute(expand(p)) ? path.resolve(expand(cwd), p) : path.resolve(p ? expand(p) : home);
-  const rel = path.relative(home, abs);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) throw Object.assign(new Error('path outside home directory'), { code: -32005 });
+  const abs = safePath(p, { cwd, home });
+  if (!abs) throw Object.assign(new Error('path outside home directory'), { code: -32005 });
   return abs;
 }
 
@@ -49,7 +48,7 @@ async function browse(p) {
   for (const e of ents) { if (e.name.startsWith('.')) continue; if (e.isDirectory()) dirs.push(e.name); else if (e.isFile()) files.push(e.name); }
   dirs.sort((a, b) => a.localeCompare(b)); files.sort((a, b) => a.localeCompare(b));
   let isGit = false; try { await fs.access(path.join(abs, '.git')); isGit = true; } catch {}
-  return { path: abs, parent: abs === home ? null : path.dirname(abs), isGit, dirs, files: files.slice(0, 500) };
+  return { path: abs, parent: path.relative(abs, home) === '' ? null : path.dirname(abs), isGit, dirs, files: files.slice(0, 500) };
 }
 
 const MIME = {
@@ -85,9 +84,7 @@ async function read(p, maxBytes = 512 * 1024, mode = 'text', cwd = '') {
 
 function claudeBin() {
   if (process.env.CLAUDE_CODE_EXECUTABLE) return process.env.CLAUDE_CODE_EXECUTABLE;
-  for (const d of (process.env.PATH || '').split(':')) { const p = path.join(d, 'claude'); if (d && existsSync(p)) return p; }
-  const local = path.join(home, '.local/bin/claude');
-  return existsSync(local) ? local : 'claude';
+  return findCommand('claude') ?? 'claude';
 }
 
 /** "/usage" is a local Claude Code command: no model call, no persisted session. */
@@ -173,18 +170,18 @@ function clean(s) {
 
 async function exec(cwd, command) {
   // not limited to $HOME like browse/read: the command itself can go anywhere, the folder is only where it starts
-  let dir = path.resolve(cwd ? cwd.replace(/^~(?=$|\/)/, home) : home);
+  let dir = path.resolve(cwd ? normInput(cwd, home) : home);
   try { if (!(await fs.stat(dir)).isDirectory()) dir = home; } catch { dir = home; }
-  const shell = process.env.SHELL || '/bin/bash';
+  const shell = shellSpec(command);   // login shell on Unix; PowerShell on Windows
   return new Promise(resolve => {
     const env = { ...process.env, TERM: 'dumb', NO_COLOR: '1', GIT_TERMINAL_PROMPT: '0', PAGER: 'cat', GIT_PAGER: 'cat' };
-    const child = spawn(shell, ['-lc', command], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawn(shell.command, shell.args, { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'], ...shell.options });
     const bufs = { stdout: '', stderr: '' };
     let truncated = false, timedOut = false, done = false;
     const take = k => d => { if (bufs[k].length < SHELL_MAX_CHARS) { bufs[k] += d; if (bufs[k].length > SHELL_MAX_CHARS) { bufs[k] = bufs[k].slice(0, SHELL_MAX_CHARS); truncated = true; } } else truncated = true; };
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', take('stdout')); child.stderr.on('data', take('stderr'));
-    const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch {} };
+    const killGroup = () => { if (process.platform === 'win32') killTree(child); else { try { process.kill(-child.pid, 'SIGKILL'); } catch {} } };
     const timer = setTimeout(() => { timedOut = true; killGroup(); }, SHELL_TIMEOUT_MS);
     const finish = (exitCode, signal) => {
       if (done) return; done = true; clearTimeout(timer);
@@ -200,12 +197,7 @@ async function exec(cwd, command) {
 }
 
 /** Stored names stay readable (Unicode kept) but safe inside a markdown link and a path: no separators, spaces or brackets. */
-function uploadName(name) {
-  let n = path.basename(String(name ?? '')).normalize('NFC').replace(/[\x00-\x1f\x7f/\\:*?"<>|\[\]()\s]+/g, '_').replace(/^[._]+/, '');
-  if (!n) n = 'file';
-  if (n.length > 120) { const ext = path.extname(n).slice(0, 16); n = n.slice(0, 120 - ext.length) + ext; }
-  return n;
-}
+const uploadName = name => safeUploadName(name);
 
 async function upload(sessionId, name, bytes) {
   const want = Number(bytes);
@@ -247,7 +239,7 @@ async function btw() {
   if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(sid)) throw Object.assign(new Error('btw: bad session id'), { code: -32602 });
   const question = String(req.question ?? '').trim();
   if (!question) throw Object.assign(new Error('btw: empty question'), { code: -32602 });
-  let dir = path.resolve(req.cwd ? String(req.cwd).replace(/^~(?=$|\/)/, home) : home);
+  let dir = path.resolve(req.cwd ? normInput(req.cwd, home) : home);
   try { if (!(await fs.stat(dir)).isDirectory()) dir = home; } catch { dir = home; }
   const args = ['-p', BTW_PREAMBLE + question, '--resume', sid, '--fork-session', '--no-session-persistence',
     '--output-format', 'json', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--max-turns', '1'];

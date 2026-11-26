@@ -121,7 +121,15 @@ export function pathFromFileUri(uri, platform = process.platform) {
 export function fileUri(p, platform = process.platform) {
   let s = String(p);
   if (platform === 'win32') { s = s.replace(/\\/g, '/'); if (!s.startsWith('/')) s = '/' + s; }
-  return 'file://' + encodeURI(s).replace(/[#?]/g, c => (c === '#' ? '%23' : '%3F'));
+  // only what would break the URI is escaped (Unicode stays readable, as before)
+  return 'file://' + s.replace(/[%#? \t\r\n]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
+}
+
+/** A path as the phone or an agent wrote it, made native: file:// URI decoded, "/C:/x" -> "C:\x" (Windows), "~" expanded. */
+export function normInput(s, home, platform = process.platform) {
+  s = pathFromFileUri(String(s), platform);
+  if (platform === 'win32') s = s.replace(/^[\\/]+(?=[A-Za-z]:)/, '');
+  return expandHome(s, home, platform);
 }
 
 /**
@@ -130,11 +138,7 @@ export function fileUri(p, platform = process.platform) {
  */
 export function safePath(p, { cwd = '', home, platform = process.platform } = {}) {
   const api = pathApi(platform);
-  const norm = s => {
-    s = pathFromFileUri(String(s), platform);
-    if (platform === 'win32') s = s.replace(/^[\\/]+(?=[A-Za-z]:)/, '');
-    return expandHome(s, home, platform);
-  };
+  const norm = s => normInput(s, home, platform);
   const abs = p ? api.resolve(cwd ? norm(cwd) : home, norm(p)) : home;
   const rel = api.relative(home, abs);
   if (rel === '..' || rel.startsWith('..' + api.sep) || api.isAbsolute(rel)) return null;

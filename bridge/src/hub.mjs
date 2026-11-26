@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AcpProcess, RpcError } from './acp.mjs';
+import { safePath, fileUri, isSamePath } from './platform.mjs';
 
 export const BRIDGE_VERSION = '0.1.0';
 export const BRIDGE_PROTOCOL = 1;
@@ -312,7 +313,7 @@ export class Hub extends EventEmitter {
       const [cmd, ...pre] = helper;
       const token = Buffer.from(JSON.stringify(args.map(String)), 'utf8').toString('base64url');
       // run locally, the helper's $HOME is this hub's home (its sandbox)
-      const env = helper === LOCAL_HELPER ? { ...this.agentEnv, HOME: this.home } : this.agentEnv;
+      const env = helper === LOCAL_HELPER ? { ...this.agentEnv, HOME: this.home, ...(process.platform === 'win32' ? { USERPROFILE: this.home } : {}) } : this.agentEnv;
       const child = spawn(cmd, [...pre, '--b64', token], { stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe'], env });
       if (input != null) {
         child.stdin.on('error', () => {});   // the helper may exit before reading it all (EPIPE): its JSON says why
@@ -1115,10 +1116,8 @@ export class Hub extends EventEmitter {
 
   // ---------------------------------------------------------------- filesystem helpers (read-only, under $HOME)
   #safePath(p, cwd = '') {
-    const expand = s => s.replace(/^~(?=$|\/)/, this.home);
-    const abs = p && cwd && !path.isAbsolute(expand(p)) ? path.resolve(expand(cwd), p) : path.resolve(p ? expand(p) : this.home);
-    const rel = path.relative(this.home, abs);
-    if (rel.startsWith('..') || path.isAbsolute(rel)) throw new RpcError(-32005, 'path outside home directory');
+    const abs = safePath(p, { cwd, home: this.home });
+    if (!abs) throw new RpcError(-32005, 'path outside home directory');
     return abs;
   }
 
@@ -1131,7 +1130,7 @@ export class Hub extends EventEmitter {
     const bytes = Buffer.byteLength(data, 'base64');
     if (bytes > MAX_UPLOAD) throw new RpcError(-32007, `file too large (${(bytes / 1048576).toFixed(1)} MB; limit ${MAX_UPLOAD / 1048576} MB)`);
     const r = await this.runHelper(['upload', sessionId || 'misc', String(name || 'file'), String(Buffer.from(data, 'base64').length)], 180000, this.helper ?? LOCAL_HELPER, data);
-    return { ...r, uri: 'file://' + r.path };
+    return { ...r, uri: fileUri(r.path) };
   }
 
   ownsSession(id) { return this.sessions.has(id) || this.knownCwds.has(id); }
@@ -1148,7 +1147,7 @@ export class Hub extends EventEmitter {
     dirs.sort((a, b) => a.localeCompare(b)); files.sort((a, b) => a.localeCompare(b));
     let isGit = false;
     try { await fs.access(path.join(abs, '.git')); isGit = true; } catch {}
-    return { path: abs, parent: abs === this.home ? null : path.dirname(abs), isGit, dirs, files: files.slice(0, 500) };
+    return { path: abs, parent: isSamePath(abs, this.home) ? null : path.dirname(abs), isGit, dirs, files: files.slice(0, 500) };
   }
 
   /** The folder a relative path in this conversation is taken from (markdown images and links like `out/a.png`). */

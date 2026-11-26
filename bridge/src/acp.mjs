@@ -1,6 +1,7 @@
 // Minimal ACP (Agent Client Protocol) JSON-RPC client over the stdio of a child process.
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { spawnSpec, killTree } from './platform.mjs';
 
 export class RpcError extends Error {
   constructor(code, message, data) { super(message); this.code = code; this.data = data; }
@@ -23,8 +24,11 @@ export class AcpProcess extends EventEmitter {
   }
 
   start() {
-    this.child = spawn(this.command, this.args, { cwd: this.cwd, env: this.env, stdio: ['pipe', 'pipe', 'pipe'] });
     this.alive = true;
+    let spec;
+    // Windows .cmd shims go through cmd.exe (platform.mjs); an argument it cannot carry safely fails the start, not the bridge
+    try { spec = spawnSpec(this.command, this.args, { env: this.env ?? process.env }); } catch (e) { this.log('agent spawn error: ' + e.message); this.#onExit(null, null, e); return; }
+    this.child = spawn(spec.command, spec.args, { cwd: this.cwd, env: this.env, stdio: ['pipe', 'pipe', 'pipe'], ...spec.options });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', d => this.#onData(d));
     this.child.stderr.setEncoding('utf8');
@@ -42,7 +46,7 @@ export class AcpProcess extends EventEmitter {
     this.emit('exit', code, signal, err);
   }
 
-  stop() { if (this.child && this.alive) this.child.kill('SIGTERM'); }
+  stop() { if (this.child && this.alive) killTree(this.child); }
 
   #write(msg) {
     if (!this.alive) throw new RpcError(-32099, 'agent process not running');
