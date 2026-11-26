@@ -21,7 +21,8 @@ object DemoFiles {
         else -> PROJECT + "/" + path
     }
 
-    fun store(path: String, bytes: ByteArray, mime: String) { uploads[path] = Entry(bytes, mime, mime != "text/plain") }
+    /** A file the phone uploaded; like the real bridge it calls a file binary when its start holds a NUL byte. */
+    fun store(path: String, bytes: ByteArray, mime: String) { uploads[path] = Entry(bytes, mime, bytes.take(8000).any { it == 0.toByte() }) }
 
     fun mimeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
         "png" -> "image/png"; "jpg", "jpeg" -> "image/jpeg"; "pdf" -> "application/pdf"; "zip" -> "application/zip"

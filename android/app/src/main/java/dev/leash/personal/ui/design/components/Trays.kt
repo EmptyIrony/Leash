@@ -210,10 +210,11 @@ fun ComposerSlab(
     blur: Boolean = false,
     leadingLabel: String = "",
     onLeading: () -> Unit = {},
+    leadingMenu: (@Composable () -> Unit)? = null,
     above: (@Composable ColumnScope.() -> Unit)? = null,
     action: @Composable RowScope.() -> Unit,
 ) {
-    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading = true, above = above, action = action) { style, cursor, keyboard ->
+    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading = true, leadingMenu = leadingMenu, above = above, action = action) { style, cursor, keyboard ->
         BasicTextField(
             value = value, onValueChange = onValueChange, enabled = enabled, textStyle = style, cursorBrush = cursor, maxLines = 8,
             keyboardOptions = keyboard, modifier = Modifier.fillMaxWidth(),
@@ -240,10 +241,11 @@ fun ComposerSlab(
     showLeading: Boolean = true,
     leadingLabel: String = "",
     onLeading: () -> Unit = {},
+    leadingMenu: (@Composable () -> Unit)? = null,
     above: (@Composable ColumnScope.() -> Unit)? = null,
     action: @Composable RowScope.() -> Unit,
 ) {
-    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading, above, action) { style, cursor, keyboard ->
+    SlabFrame(modifier, mode, enabled, blur, leadingLabel, onLeading, showLeading, leadingMenu, above, action) { style, cursor, keyboard ->
         BasicTextField(
             value = value, onValueChange = onValueChange, enabled = enabled, textStyle = style, cursorBrush = cursor, maxLines = 8,
             keyboardOptions = keyboard, modifier = fieldModifier.fillMaxWidth(),
@@ -269,6 +271,7 @@ private fun SlabFrame(
     leadingLabel: String,
     onLeading: () -> Unit,
     showLeading: Boolean,
+    leadingMenu: (@Composable () -> Unit)?,
     above: (@Composable ColumnScope.() -> Unit)?,
     action: @Composable RowScope.() -> Unit,
     field: @Composable (androidx.compose.ui.text.TextStyle, androidx.compose.ui.graphics.Brush, KeyboardOptions) -> Unit,
@@ -300,6 +303,7 @@ private fun SlabFrame(
                 }
                 Box(Modifier.size(40.dp).pressable(enabled, onClickLabel = leadingLabel, onClick = onLeading), contentAlignment = Alignment.Center) {
                     Icon(icon, leadingLabel, Modifier.size(22.dp), tint = ink)
+                    leadingMenu?.invoke()
                 }
             }
             Box(Modifier.weight(1f).padding(top = 9.dp, bottom = 9.dp, start = if (showLeading) 2.dp else 12.dp)) {
@@ -312,9 +316,9 @@ private fun SlabFrame(
 
 /** A status line inside the composer slab (shell cwd, side-question note, error with dismiss). */
 @Composable
-fun ComposerStatus(text: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null, dismissLabel: String = "", maxLines: Int = 1) {
+fun ComposerStatus(text: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onDismiss: (() -> Unit)? = null, dismissLabel: String = "", maxLines: Int = 1, busy: Boolean = false) {
     Row(modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(14.dp), tint = color)
+        if (busy) dev.leash.personal.ui.design.Spinner(size = 12.dp, color = color) else Icon(icon, null, Modifier.size(14.dp), tint = color)
         Text(text, style = Leash.type.caption.medium(), color = if (onDismiss != null) Leash.colors.textPrimary else color, maxLines = maxLines, overflow = if (maxLines == 1) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         if (onDismiss != null) {
             Box(Modifier.size(32.dp).pressable(onClickLabel = dismissLabel, onClick = onDismiss), contentAlignment = Alignment.Center) {

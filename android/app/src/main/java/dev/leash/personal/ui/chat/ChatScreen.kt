@@ -35,6 +35,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -56,7 +57,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.leash.personal.R
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import dev.leash.personal.core.AgentCommand
 import dev.leash.personal.core.AppModel
+import dev.leash.personal.core.FileLimits
+import dev.leash.personal.core.PendingFile
+import dev.leash.personal.core.upload
 import dev.leash.personal.core.ChatStore
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.DisplayItem
@@ -178,6 +186,20 @@ fun ChatScreen(
         else if (pinned && items.isNotEmpty()) listState.scrollToItem(items.lastIndex, scrollOffset = 1_000_000)
     }
 
+    // an image or widget that finished loading makes its row taller: the following chat keeps the bottom in view
+    var growTick by remember { mutableIntStateOf(0) }
+    val onGrew = remember<() -> Unit> { { growTick++ } }
+    LaunchedEffect(growTick) {
+        if (growTick > 0 && pinned && items.isNotEmpty()) {
+            androidx.compose.runtime.withFrameNanos { }
+            listState.scrollToItem(items.lastIndex, scrollOffset = 1_000_000)
+        }
+    }
+
+    // a finished turn's changes, file by file (kept across rotation by the turn's id)
+    var changesId by rememberSaveable { mutableStateOf<String?>(null) }
+    val changesShown = items.firstNotNullOfOrNull { (it as? DisplayItem.Changes)?.changes?.takeIf { c -> c.id.toString() == changesId } }
+
     // MARK: composer
     var draft by remember(sessionId) { mutableStateOf(TextFieldValue(state.drafts[sessionId].orEmpty()).let { it.copy(selection = TextRange(it.text.length)) }) }
     val focusRequester = remember { FocusRequester() }
@@ -202,9 +224,33 @@ fun ChatScreen(
             store.unsentDraft = null
         }
     }
-    val canSend = ComposerLogic.canSend(composerEnabled, draft.text)
-    val commands = ComposerLogic.paletteMatches(draft.text, composerFocused, running, store.commands)
-    val pickedCommand = ComposerLogic.pickedCommand(draft.text, store.commands)
+    // photos and files waiting in the composer (what was sent or removed leaves; a failed upload keeps them with the reason)
+    var images by remember(sessionId) { mutableStateOf<List<ByteArray>>(emptyList()) }
+    var files by remember(sessionId) { mutableStateOf<List<PendingFile>>(emptyList()) }
+    var uploading by remember(sessionId) { mutableStateOf(false) }
+    var uploadError by remember(sessionId) { mutableStateOf<String?>(null) }
+    val asksSideQuestions = state.asksSideQuestions(agent)
+    val kind = ComposerLogic.kind(draft.text, asksSideQuestions)
+    val hasAttachments = images.isNotEmpty() || files.isNotEmpty()
+    val sideQuestions = store.sideQuestions
+    val sideQuestionsFull = sideQuestions.size >= model.maxSideQuestions
+    val shellRunning = store.shellRunning
+    val canSend = ComposerLogic.canSend(composerEnabled, draft.text, kind, hasAttachments, uploading, running, shellRunning, sideQuestionsFull)
+    val sideQuestionCommand = AgentCommand("btw", stringResource(R.string.btw_command_desc), stringResource(R.string.btw_command_hint))
+    val imageInput = state.agent(agent)?.imageInput ?: state.imageInput
+    val modeStatus = when (kind) {
+        DraftKind.Shell -> when {
+            shellRunning -> ModeStatus(stringResource(R.string.shell_running), LeashIcons.terminal, Leash.colors.shell, busy = true)
+            running -> ModeStatus(stringResource(R.string.shell_waits), LeashIcons.waiting, Leash.colors.textSecondary)
+            else -> ModeStatus(stringResource(R.string.shell_in, cwd?.let { state.shortPath(it, agent) } ?: "~"), LeashIcons.terminal, Leash.colors.shell)
+        }
+        DraftKind.SideQuestion ->
+            if (sideQuestionsFull) ModeStatus(stringResource(R.string.btw_full), LeashIcons.waiting, Leash.colors.textSecondary)
+            else ModeStatus(stringResource(R.string.btw_status), LeashIcons.sideQuestion, Leash.colors.accent)
+        DraftKind.Message -> null
+    }
+    val commands = ComposerLogic.paletteMatches(draft.text, composerFocused, running, store.commands, sideQuestionCommand.takeIf { asksSideQuestions })
+    val pickedCommand = if (kind == DraftKind.SideQuestion) null else ComposerLogic.pickedCommand(draft.text, store.commands)
     val placeholder = when (ComposerLogic.placeholder(agentReady, state.isConnected, running, state.steers(agent), agent)) {
         PlaceholderKind.AgentDown -> stringResource(R.string.placeholder_agent_down, state.agentLabel(agent))
         PlaceholderKind.Offline -> stringResource(R.string.placeholder_offline)
@@ -214,14 +260,86 @@ fun ChatScreen(
         PlaceholderKind.AskAgent -> stringResource(R.string.placeholder_agent)
     }
     val buzz = { kind: Haptic -> model.hooks.haptic(kind) }
-    // the message rises into the transcript and the scroll follows it
+    // a photo or file picked: the first that fit are added; what doesn't is named in the composer's error line
+    val appContext = LocalContext.current
+    val tooLargeText = { names: List<String> -> appContext.getString(R.string.files_too_large, FileLimits.MAX_UPLOAD_TEXT, names.joinToString(", ")) }
+    val unreadableText = { names: List<String> -> appContext.getString(R.string.files_unreadable, names.joinToString(", ")) }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(AttachmentPolicy.MAX_PHOTOS)) { uris ->
+        scope.launch {
+            val added = mutableListOf<ByteArray>()
+            var failed = 0
+            for (u in uris.take(AttachmentPolicy.room(images.size, uris.size))) AttachmentLoading.photo(appContext, u)?.let { added += it } ?: run { failed++ }
+            if (added.isNotEmpty()) { images = images + added; buzz(Haptic.Selection) }
+            if (failed > 0) { store.composerError = appContext.getString(R.string.photo_unreadable); buzz(Haptic.Error) }
+        }
+    }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            val r = AttachmentLoading.files(appContext, uris)
+            if (r.files.isNotEmpty()) { files = files + r.files; buzz(Haptic.Selection) }
+            if (r.tooLarge.isNotEmpty()) { store.composerError = tooLargeText(r.tooLarge); buzz(Haptic.Error) }
+            else if (r.unreadable.isNotEmpty()) { store.composerError = unreadableText(r.unreadable); buzz(Haptic.Error) }
+        }
+    }
+    // photos that went back after a refused send (locked elsewhere, ...) return to the front of the strip
+    val unsentImages = store.unsentImages
+    LaunchedEffect(unsentImages) {
+        if (!unsentImages.isNullOrEmpty()) { images = unsentImages + images; store.unsentImages = null }
+    }
+    fun clearComposerError() { store.composerError = null; uploadError = null }
+    // Text, photos and files go out as one message; picked files are stored on the agent's host first and the prompt points at
+    // them. The composer keeps them (and says why) if an upload fails. The message rises into the transcript and the scroll follows it.
     fun sendDraft(interrupt: Boolean) {
+        if (!canSend || kind != DraftKind.Message) return
+        clearComposerError()
+        val text = draft.text.trim()
+        val imgs = images
+        val picked = files
+        if (picked.isEmpty()) {
+            model.send(store, text, imgs, interrupt = interrupt && running)
+            draft = TextFieldValue("")
+            images = emptyList()
+            pinned = true
+            buzz(if (interrupt) Haptic.Heavy else Haptic.Light)
+            return
+        }
+        uploading = true
+        scope.launch {
+            try {
+                val links = picked.map { model.upload(it, store) }
+                model.send(store, text, imgs, links, interrupt = interrupt && store.running)
+                if (draft.text.trim() == text) draft = TextFieldValue("")
+                if (images == imgs) images = emptyList()
+                files = files.filter { f -> picked.none { it.id == f.id } }
+                pinned = true
+                buzz(if (interrupt) Haptic.Heavy else Haptic.Light)
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                store.composerError = e.message ?: e.toString()
+                uploadError = store.composerError
+                buzz(Haptic.Error)
+            } finally { uploading = false }
+        }
+    }
+    /** The primary circle: a message, a shell command, or a side question. */
+    fun send() {
         if (!canSend) return
-        store.composerError = null
-        model.send(store, draft.text.trim(), interrupt = interrupt && running)
-        draft = TextFieldValue("")
-        pinned = true
-        buzz(if (interrupt) Haptic.Heavy else Haptic.Light)
+        when (kind) {
+            DraftKind.SideQuestion -> {
+                // answered beside the conversation: no steering, no queue, no scroll
+                clearComposerError()
+                model.askSideQuestion(store, ComposerLogic.sideQuestion(draft.text))
+                draft = TextFieldValue("")
+                buzz(Haptic.Light)
+            }
+            DraftKind.Shell -> {
+                clearComposerError()
+                model.runShell(store, ComposerLogic.shellCommand(draft.text))
+                draft = TextFieldValue("")
+                pinned = true
+                buzz(Haptic.Light)
+            }
+            DraftKind.Message -> sendDraft(false)
+        }
     }
     fun stopTurn() { model.cancel(store); buzz(Haptic.Heavy) }
     fun sendQueuedNow() {
@@ -296,7 +414,7 @@ fun ChatScreen(
     val others = state.pending.values.filter { it.sessionId != sessionId }.sortedBy { it.key }.mapNotNull { it.sessionId }.distinct()
     val scrolled by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0 } }
 
-    CompositionLocalProvider(LocalChatVersion provides version) {
+    CompositionLocalProvider(LocalChatVersion provides version, dev.leash.personal.ui.components.LocalContentGrew provides onGrew, LocalOpenChanges provides { changesId = it.id.toString() }) {
       ProvideFiles(model, agent, sessionId) {
         GlassScope(Modifier.fillMaxSize()) {
             GlassSource(Modifier.fillMaxSize()) {
@@ -408,17 +526,40 @@ fun ChatScreen(
                             sendNow = ::sendQueuedNow,
                             undo = { model.undoRemoveQueued(store); buzz(Haptic.Selection) },
                         )
-                        if (commands.isNotEmpty()) CommandPalette(commands, compact = trayVisible || queued.isNotEmpty()) { cmd ->
+                        if (commands.isNotEmpty()) CommandPalette(commands, compact = trayVisible || queued.isNotEmpty() || sideQuestions.isNotEmpty()) { cmd ->
                             val t = "/" + cmd.name + " "
                             draft = TextFieldValue(t, TextRange(t.length))
                             focusRequester.requestFocus()
                             buzz(Haptic.Selection)
                         }
+                        sideQuestions.firstOrNull()?.let { sq ->
+                            SideQuestionTray(sq, 1, sideQuestions.size, collapsed = trayVisible, close = { model.closeSideQuestion(store, sq.id); buzz(Haptic.Selection) })
+                        }
                         ComposerSlab(
                             value = draft, onValueChange = { draft = it }, placeholder = placeholder, enabled = composerEnabled, running = running, canSend = canSend,
-                            error = composerError, commandStatus = pickedCommand, focusRequester = focusRequester, onFocusChanged = { composerFocused = it },
-                            onSend = { sendDraft(false) }, onStop = ::stopTurn, onInterruptAndSend = { sendDraft(true) },
-                            onDismissError = { store.composerError = null },
+                            kind = kind, hasAttachments = hasAttachments,
+                            error = composerError, commandStatus = pickedCommand, modeStatus = modeStatus,
+                            attachments = if (hasAttachments && kind == DraftKind.Message) ({
+                                ComposerAttachments(
+                                    images, files, uploading,
+                                    onRemoveImage = { i -> images = images.filterIndexed { j, _ -> j != i } },
+                                    onRemoveFile = { f ->
+                                        files = files.filter { it.id != f.id }
+                                        if (uploadError != null && store.composerError == uploadError) store.composerError = null
+                                        uploadError = null
+                                    },
+                                )
+                            }) else null,
+                            add = ComposerAddActions(
+                                onPhoto = if (imageInput && images.size < AttachmentPolicy.MAX_PHOTOS) ({ photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) else null,
+                                onFile = { filePicker.launch(arrayOf("*/*")) },
+                                onSideQuestion = if (asksSideQuestions) ({ val t = "/btw " + draft.text; draft = TextFieldValue(t, TextRange(t.length)); focusRequester.requestFocus() }) else null,
+                                onShell = { val t = "!" + draft.text; draft = TextFieldValue(t, TextRange(t.length)); focusRequester.requestFocus() },
+                            ),
+                            focusRequester = focusRequester, onFocusChanged = { composerFocused = it },
+                            onSend = ::send, onStop = ::stopTurn, onInterruptAndSend = { sendDraft(true) },
+                            onDismissError = { clearComposerError() },
+                            onLeaveMode = { val t = ComposerLogic.leaveMode(draft.text, kind); draft = TextFieldValue(t, TextRange(t.length)); buzz(Haptic.Selection) },
                         )
                     }
                     AnimatedVisibility(!trayVisible, enter = Motion.layoutEnter(reduced), exit = Motion.layoutExit(reduced)) { ChipRow(model, store, composerEnabled) }
@@ -431,6 +572,14 @@ fun ChatScreen(
                 enter = Motion.popEnter(reduced), exit = Motion.popExit(reduced),
             ) { ScrollToBottomButton(stringResource(R.string.scroll_to_bottom), { pinned = true }) }
             if (startingNew) StartingCapsule(Modifier.align(Alignment.Center))
+            changesShown?.let { ch ->
+                val commitText = stringResource(R.string.commit_message, ch.files.joinToString(", ") { it.relative(cwd) })
+                ChangesSheet(
+                    ch, cwd, onDismiss = { changesId = null },
+                    onCommit = if (ch.canCommit) ({ changesId = null; store.composerError = null; model.send(store, commitText); pinned = true; buzz(Haptic.Light) }) else null,
+                    commitEnabled = composerEnabled && !running && pending.isEmpty(),
+                )
+            }
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = dockHeight + 8.dp)) { data -> LeashSnackbar(data.visuals.message) }
         }
       }

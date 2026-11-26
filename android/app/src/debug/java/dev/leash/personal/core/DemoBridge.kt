@@ -381,7 +381,9 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         if (i < 0) throw BridgeError(BridgeError.ALREADY_SENT, "already sent")
         val q = s.queue.removeAt(i)
         broadcastQueue(s)
-        return jsonObj("prompt" to listOf(jsonObj("type" to "text", "text" to q["text"].string)))
+        // a queued message that held a photo gives it back with its text
+        val photos = (0 until (q["imageCount"].int ?: 0)).map { jsonObj("type" to "image", "mimeType" to "image/png", "data" to java.util.Base64.getEncoder().encodeToString(DemoFiles.png(160, 120, boxes = true))) }
+        return jsonObj("prompt" to listOf(jsonObj("type" to "text", "text" to q["text"].string)) + photos)
     }
 
     private fun requeue(s: Sess, params: JsonElement): JsonElement {

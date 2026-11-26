@@ -227,15 +227,20 @@ private fun ToolDetail(t: ToolItem) {
     }
 }
 
-/** A compact line diff of one edit: changed lines with their context, long ones clipped (the full diff and changes sheet are phase 4). */
+/**
+ * A line diff of one edit: changed lines with their context, long ones clipped to [maxLines] ("Show all"). With [wholeFile]
+ * (the changes sheet) a toggle swaps the changes for the whole file, up to 5000 lines (ios DiffView).
+ */
 @Composable
-fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12) {
+fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12, wholeFile: Boolean = false) {
     val openFile = LocalOpenFile.current
-    val lines = remember(old, new) { LineDiff.hunks(LineDiff.compute(old, new)) }
+    val full = remember(old, new) { LineDiff.compute(old, new) }
+    val hunks = remember(full) { LineDiff.hunks(full) }
     var all by rememberSaveable(path, new.length) { mutableStateOf(false) }
-    val shown = if (all) lines else lines.take(maxLines)
-    val adds = lines.count { it is DiffLine.Add }
-    val dels = lines.count { it is DiffLine.Del }
+    var whole by rememberSaveable(path, new.length, "whole") { mutableStateOf(false) }
+    val lines = if (wholeFile && whole) full.take(5_000) else hunks
+    val shown = if (all || (wholeFile && whole)) lines else lines.take(maxLines)
+    val (adds, dels) = remember(full) { LineDiff.stats(full) }
     val models = shown.map { l ->
         when (l) {
             is DiffLine.Add -> DiffLineModel.Add(l.text)
@@ -246,8 +251,12 @@ fun DiffBlock(path: String, old: String?, new: String, maxLines: Int = 12) {
     }
     DiffBlockView(
         path.ifEmpty { "—" }, adds, dels, models,
-        toggleLabel = if (lines.size > maxLines && !all) stringResource(R.string.show_all_diff, lines.size) else null,
-        onToggle = { all = true },
+        toggleLabel = when {
+            wholeFile && (whole || hunks.size != full.size) -> stringResource(if (whole) R.string.show_changes_only else R.string.show_whole_file)
+            lines.size > maxLines && !all -> stringResource(R.string.show_all_diff, lines.size)
+            else -> null
+        },
+        onToggle = { if (wholeFile && (whole || hunks.size != full.size)) whole = !whole else all = true },
         onPath = { if (path.isNotEmpty()) openFile(path) },
     )
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -47,7 +48,9 @@ import dev.leash.personal.ui.design.Motion
 import dev.leash.personal.ui.design.PressScale
 import dev.leash.personal.ui.design.pressable
 import dev.leash.personal.ui.design.semibold
+import dev.leash.personal.ui.design.components.ComposerMode
 import dev.leash.personal.ui.design.components.ComposerStatus
+import dev.leash.personal.ui.design.components.LeashMenuDivider
 import dev.leash.personal.ui.design.components.LeashMenu
 import dev.leash.personal.ui.design.components.LeashMenuItem
 import dev.leash.personal.ui.design.components.QueueHeader
@@ -64,9 +67,21 @@ import dev.leash.personal.ui.design.components.ComposerSlab as DesignComposerSla
 fun TrayShell(modifier: Modifier = Modifier, contentPadding: PaddingValues = PaddingValues(14.dp), content: @Composable () -> Unit) =
     DesignTrayShell(modifier, contentPadding) { content() }
 
+/** What the composer's "+" offers; null entries are left out. */
+class ComposerAddActions(
+    val onPhoto: (() -> Unit)?,
+    val onFile: () -> Unit,
+    val onSideQuestion: (() -> Unit)?,
+    val onShell: () -> Unit,
+)
+
+/** The line under the attachments that says what the mode is or why it can't go yet (shell, side question). */
+class ModeStatus(val text: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val color: androidx.compose.ui.graphics.Color, val busy: Boolean = false)
+
 /**
- * The message field with its send / stop circle (ios ChatView.slab). Mid-turn the circle sends a steering or queued
- * message; touch and hold offers "Interrupt and send". With a draft waiting, a small Stop slides out next to it.
+ * The message field with its leading "+" and its send / stop circle (ios ChatView.slab). Mid-turn the circle sends a steering
+ * or queued message; touch and hold offers "Interrupt and send". With a draft waiting, a small Stop slides out next to it.
+ * "!" turns it into a shell prompt and "/btw" into a side-question box: the leading control then leaves the mode.
  */
 @Composable
 fun ComposerSlab(
@@ -76,28 +91,49 @@ fun ComposerSlab(
     enabled: Boolean,
     running: Boolean,
     canSend: Boolean,
+    kind: DraftKind,
+    hasAttachments: Boolean,
     error: String?,
     commandStatus: AgentCommand?,
+    modeStatus: ModeStatus?,
+    attachments: (@Composable () -> Unit)?,
+    add: ComposerAddActions,
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onInterruptAndSend: () -> Unit,
     onDismissError: () -> Unit,
+    onLeaveMode: () -> Unit,
 ) {
     val c = Leash.colors
     val reduced = LocalReduceMotion.current
-    val glyph = ComposerLogic.glyph(running, value.text, canSend)
-    val secondaryStop = ComposerLogic.showsSecondaryStop(running, value.text)
+    val glyph = ComposerLogic.glyph(running, value.text, canSend, hasAttachments, kind)
+    val secondaryStop = ComposerLogic.showsSecondaryStop(running, value.text, hasAttachments)
+    val interruptible = ComposerLogic.offersInterrupt(running, value.text, hasAttachments, kind)
     val dismissLabel = stringResource(R.string.dismiss)
+    var addMenu by remember { mutableStateOf(false) }
+    val mode = when (kind) { DraftKind.Shell -> ComposerMode.Shell; DraftKind.SideQuestion -> ComposerMode.SideQuestion; DraftKind.Message -> ComposerMode.Normal }
     DesignComposerSlab(
         value = value,
         onValueChange = onValueChange,
         placeholder = placeholder,
         enabled = enabled,
+        mode = mode,
         blur = true,
-        // attachments ("+") arrive with phase 4; until then the field starts at the slab's edge
-        showLeading = false,
+        leadingLabel = stringResource(when (kind) { DraftKind.Shell -> R.string.leave_shell; DraftKind.SideQuestion -> R.string.leave_side_question; DraftKind.Message -> R.string.add_menu }),
+        onLeading = { if (kind == DraftKind.Message) addMenu = true else onLeaveMode() },
+        leadingMenu = if (kind != DraftKind.Message) null else ({
+            LeashMenu(addMenu, { addMenu = false }) {
+                add.onPhoto?.let { LeashMenuItem(stringResource(R.string.photo_library), { addMenu = false; it() }, icon = LeashIcons.photo) }
+                LeashMenuItem(stringResource(R.string.choose_files), { addMenu = false; add.onFile() }, icon = LeashIcons.folder)
+                if (add.onSideQuestion != null) {
+                    LeashMenuDivider()
+                    LeashMenuItem(stringResource(R.string.ask_side_question), { addMenu = false; add.onSideQuestion.invoke() }, icon = LeashIcons.sideQuestion)
+                }
+                LeashMenuItem(stringResource(R.string.run_shell_command), { addMenu = false; add.onShell() }, icon = LeashIcons.terminal)
+            }
+        }),
         fieldModifier = Modifier
             .focusRequester(focusRequester)
             .onFocusChanged { onFocusChanged(it.isFocused) }
@@ -106,17 +142,19 @@ fun ComposerSlab(
                 if (e.type == KeyEventType.KeyDown && e.key == Key.Enter && (e.isCtrlPressed || e.isMetaPressed)) { onSend(); true } else false
             }
             .semantics { contentDescription = placeholder },
-        above = if (error == null && commandStatus == null) null else ({
+        above = if (error == null && commandStatus == null && modeStatus == null && attachments == null) null else ({
             if (error != null) ComposerStatus(error, LeashIcons.failed, c.danger, onDismiss = onDismissError, dismissLabel = dismissLabel, maxLines = 4)
-            if (commandStatus != null) ComposerStatus(
+            if (modeStatus != null) ComposerStatus(modeStatus.text, modeStatus.icon, modeStatus.color, busy = modeStatus.busy)
+            if (commandStatus != null && modeStatus == null) ComposerStatus(
                 stringResource(R.string.command_status, commandStatus.name, commandStatus.hint.orEmpty()), LeashIcons.command, c.textSecondary,
             )
+            attachments?.let { a -> Box(Modifier.padding(start = 4.dp)) { a() } }
         }),
     ) {
         AnimatedVisibility(secondaryStop, enter = Motion.trailingPopEnter(reduced), exit = Motion.trailingPopExit(reduced)) {
             SecondaryStopButton(stringResource(R.string.stop), onStop)
         }
-        PrimaryAction(glyph, running && secondaryStop, onSend, onStop, onInterruptAndSend)
+        PrimaryAction(glyph, interruptible, onSend, onStop, onInterruptAndSend)
     }
 }
 
@@ -129,8 +167,11 @@ private fun PrimaryAction(glyph: ActionGlyph, interruptible: Boolean, onSend: ()
     val interruptLabel = stringResource(R.string.interrupt_and_send)
     Box {
         SendButton(
-            when (glyph) { ActionGlyph.Stop -> SendGlyph.Stop; ActionGlyph.Send -> SendGlyph.Send; ActionGlyph.Disabled -> SendGlyph.Disabled },
-            if (glyph == ActionGlyph.Stop) stopLabel else sendLabel,
+            when (glyph) {
+                ActionGlyph.Stop -> SendGlyph.Stop; ActionGlyph.Send -> SendGlyph.Send; ActionGlyph.Disabled -> SendGlyph.Disabled
+                ActionGlyph.Run -> SendGlyph.ShellRun; ActionGlyph.RunDisabled -> SendGlyph.ShellDisabled
+            },
+            when (glyph) { ActionGlyph.Stop -> stopLabel; ActionGlyph.Run, ActionGlyph.RunDisabled -> stringResource(R.string.run); else -> sendLabel },
             onClick = { if (glyph == ActionGlyph.Stop) onStop() else onSend() },
             onLongClick = if (interruptible) ({ menu = true }) else null,
             accessibilityActions = if (interruptible) listOf(CustomAccessibilityAction(interruptLabel) { onInterruptAndSend(); true }) else emptyList(),

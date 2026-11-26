@@ -5,6 +5,7 @@ import dev.leash.personal.core.QueuedMessage
 import dev.leash.personal.core.RemovedQueued
 import dev.leash.personal.ui.chat.ActionGlyph
 import dev.leash.personal.ui.chat.ComposerLogic
+import dev.leash.personal.ui.chat.DraftKind
 import dev.leash.personal.ui.chat.PlaceholderKind
 import dev.leash.personal.ui.chat.QueueRow
 import dev.leash.personal.ui.chat.queueRows
@@ -100,5 +101,57 @@ class ComposerLogicTest {
         val rows = queueRows(listOf(q("1"), q("2")), RemovedQueued(q("2"), 1))
         assertEquals(listOf("1", "2"), rows.map { it.id })
         assertTrue(rows[1] is QueueRow.Removed)
+    }
+
+    @Test fun aBangIsAShellCommandAndBtwASideQuestionOnlyWhereTheAgentHasThem() {
+        assertEquals(DraftKind.Shell, ComposerLogic.kind("!ls", false))
+        assertEquals(DraftKind.Shell, ComposerLogic.kind("!", true))
+        assertEquals(DraftKind.SideQuestion, ComposerLogic.kind("/btw why?", true))
+        assertEquals(DraftKind.SideQuestion, ComposerLogic.kind("/BTW", true))
+        assertEquals(DraftKind.Message, ComposerLogic.kind("/btw why?", false))
+        assertEquals(DraftKind.Message, ComposerLogic.kind("/btwx", true))
+        assertEquals(DraftKind.Message, ComposerLogic.kind("hello !", true))
+        assertEquals("ls -la", ComposerLogic.shellCommand("!  ls -la "))
+        assertEquals("why?", ComposerLogic.sideQuestion("/btw  why? "))
+        assertEquals("ls", ComposerLogic.leaveMode("!ls", DraftKind.Shell))
+        assertEquals("why?", ComposerLogic.leaveMode("/btw why?", DraftKind.SideQuestion))
+        assertEquals("x", ComposerLogic.leaveMode("x", DraftKind.Message))
+    }
+
+    @Test fun attachmentsAloneCanBeSentButNotWhileTheyUpload() {
+        assertTrue(ComposerLogic.canSend(true, "", hasAttachments = true))
+        assertFalse(ComposerLogic.canSend(true, "", hasAttachments = false))
+        assertFalse(ComposerLogic.canSend(true, "hi", hasAttachments = true, uploading = true))
+        assertFalse(ComposerLogic.canSend(false, "hi", hasAttachments = true))
+        assertEquals(ActionGlyph.Send, ComposerLogic.glyph(false, "", true, hasAttachments = true))
+        assertEquals(ActionGlyph.Stop, ComposerLogic.glyph(true, "", true, hasAttachments = false))
+        assertEquals(ActionGlyph.Send, ComposerLogic.glyph(true, "", true, hasAttachments = true))
+        assertTrue(ComposerLogic.showsSecondaryStop(true, "", hasAttachments = true))
+    }
+
+    @Test fun shellNeedsAnIdleAgentAndSideQuestionsNeedRoom() {
+        assertTrue(ComposerLogic.canSend(true, "!ls", DraftKind.Shell))
+        assertFalse(ComposerLogic.canSend(true, "!", DraftKind.Shell))
+        assertFalse(ComposerLogic.canSend(true, "!ls", DraftKind.Shell, running = true))
+        assertFalse(ComposerLogic.canSend(true, "!ls", DraftKind.Shell, shellRunning = true))
+        assertTrue(ComposerLogic.canSend(true, "/btw why", DraftKind.SideQuestion, running = true))
+        assertFalse(ComposerLogic.canSend(true, "/btw", DraftKind.SideQuestion))
+        assertFalse(ComposerLogic.canSend(true, "/btw why", DraftKind.SideQuestion, sideQuestionsFull = true))
+        assertEquals(ActionGlyph.Run, ComposerLogic.glyph(false, "!ls", true, kind = DraftKind.Shell))
+        assertEquals(ActionGlyph.RunDisabled, ComposerLogic.glyph(false, "!", false, kind = DraftKind.Shell))
+        // a draft mid-turn offers "Interrupt and send" only for a plain message
+        assertTrue(ComposerLogic.offersInterrupt(true, "x", false, DraftKind.Message))
+        assertFalse(ComposerLogic.offersInterrupt(true, "!x", false, DraftKind.Shell))
+        assertFalse(ComposerLogic.offersInterrupt(true, "/btw x", false, DraftKind.SideQuestion))
+    }
+
+    @Test fun theSideQuestionCommandIsOfferedFirstAndMidTurn() {
+        val btw = AgentCommand("btw", "Side question", "question")
+        assertEquals(listOf("btw", "review", "init", "Compact"), ComposerLogic.paletteMatches("/", true, false, cmds, btw).map { it.name })
+        assertEquals(listOf("btw"), ComposerLogic.paletteMatches("/", true, true, cmds, btw).map { it.name })
+        assertEquals(listOf("btw"), ComposerLogic.paletteMatches("/b", true, false, cmds, btw).map { it.name })
+        // a command the agent also lists as btw is not shown twice
+        assertEquals(1, ComposerLogic.paletteMatches("/btw", true, false, cmds + AgentCommand("btw", "dup", null), btw).size)
+        assertNull(ComposerLogic.pickedCommand("/btw why", cmds + btw.copy(hint = "question")))
     }
 }

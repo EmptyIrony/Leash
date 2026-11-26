@@ -298,13 +298,17 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-/** Under a finished turn's answer: how many files it changed and the line counts. The per-file diffs arrive in phase 4. */
+/** Opens a finished turn's changes, file by file (the sheet over the conversation). */
+val LocalOpenChanges = staticCompositionLocalOf<(TurnChanges) -> Unit> { {} }
+
+/** Under a finished turn's answer: how many files it changed and the line counts; tap for the per-file diffs. */
 @Composable
 fun ChangesRow(changes: TurnChanges) {
     val n = changes.files.size
+    val open = LocalOpenChanges.current
     ChangesRowView(
         if (n == 1) stringResource(R.string.n_files_changed_one) else stringResource(R.string.n_files_changed, n),
-        changes.adds, changes.dels, onClick = null,
+        changes.adds, changes.dels, onClick = { open(changes) },
     )
 }
 

@@ -60,6 +60,7 @@ import dev.leash.personal.ui.design.LeashShapes
 import dev.leash.personal.ui.design.components.CodeBlock as CodeBlockView
 import dev.leash.personal.ui.design.components.Hairline
 import dev.leash.personal.ui.design.semibold
+import dev.leash.personal.ui.embed.AgentEmbedView
 import kotlinx.coroutines.launch
 
 /** The annotation tag that marks inline code; [InlineText] paints its rounded background. */
@@ -131,7 +132,7 @@ fun InlineText(text: AnnotatedString, style: TextStyle, color: Color, modifier: 
     Text(text, m, style = style, color = color, textAlign = textAlign, onTextLayout = { layout = it })
 }
 
-/** An agent's markdown: headings, lists, quotes, code, tables, rules (ios MarkdownView). Images and embeds are placeholders until phase 4. */
+/** An agent's markdown: headings, lists, quotes, code, tables, rules, images and widgets (ios MarkdownView). */
 @Composable
 fun MarkdownView(text: String, onOpenFile: (String) -> Unit, modifier: Modifier = Modifier, textColor: Color = Leash.colors.textPrimary) {
     val blocks = remember(text) { MarkdownParser.parse(text) }
@@ -172,21 +173,9 @@ private fun MarkdownBlock(b: Block, onOpenFile: (String) -> Unit, color: Color) 
         is Block.Code -> CodeBlock(b.code, b.lang)
         is Block.Table -> MarkdownTable(b, onOpenFile, color)
         Block.Rule -> Hairline(Modifier.padding(vertical = 8.dp))
-        is Block.Embed -> Placeholder(LeashIcons.openExternal, stringResource(R.string.embed_placeholder))
-        is Block.Image -> Placeholder(LeashIcons.photo, stringResource(R.string.image_placeholder, b.alt.ifBlank { b.src.substringAfterLast('/') }))
-        is Block.MentionedImages -> Unit   // shown only when they load (phase 4)
-    }
-}
-
-@Composable
-private fun Placeholder(icon: ImageVector, label: String) {
-    val c = Leash.colors
-    Row(
-        Modifier.clip(LeashShapes.row).background(c.bgSunken).border(1.dp, c.hairline, LeashShapes.row).padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(icon, null, Modifier.size(16.dp), tint = c.textSecondary)
-        Text(label, style = Leash.type.subheadline, color = c.textSecondary)
+        is Block.Embed -> AgentEmbedView(b.src, Modifier.padding(vertical = 2.dp))
+        is Block.Image -> MarkdownImage(b.src, b.alt, modifier = Modifier.padding(vertical = 2.dp))
+        is Block.MentionedImages -> b.srcs.forEach { MarkdownImage(it, quiet = true) }   // shown only when they load
     }
 }
 
