@@ -18,18 +18,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -51,13 +43,17 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import dev.leash.personal.R
+import dev.leash.personal.ui.design.Leash
+import dev.leash.personal.ui.design.LeashDesignTheme
+import dev.leash.personal.ui.design.components.BackButton
+import dev.leash.personal.ui.design.components.LeashButton
+import dev.leash.personal.ui.design.components.TopBar
 import dev.leash.personal.core.PairingInfo
 import dev.leash.personal.core.parsePairingLink
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Reads the pairing QR code with CameraX and ML Kit's bundled barcode model (no Google Play services involved). */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScannerScreen(onResult: (PairingInfo) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -66,17 +62,18 @@ fun ScannerScreen(onResult: (PairingInfo) -> Unit, onBack: () -> Unit) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> granted = ok; asked = true }
     var failure by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        containerColor = Color.Black,
-        topBar = {
-            TopAppBar(
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back)) } },
-                title = { Text(stringResource(R.string.scan_title)) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent, titleContentColor = Color.White, navigationIconContentColor = Color.White),
-            )
-        },
-    ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
+    // the camera fills the screen in both themes: light status bar icons while it shows, the theme's again after
+    val view = androidx.compose.ui.platform.LocalView.current
+    val dark = Leash.colors.dark
+    androidx.compose.runtime.DisposableEffect(view, dark) {
+        val window = (view.context as? android.app.Activity)?.window
+        val bars = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, view) }
+        bars?.isAppearanceLightStatusBars = false
+        onDispose { bars?.isAppearanceLightStatusBars = !dark }
+    }
+    // the top bar floats over the camera with the glass back circle
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize()) {
             when {
                 !hasCamera(context) -> Info(stringResource(R.string.camera_unavailable), null, null)
                 !granted -> {
@@ -90,10 +87,13 @@ fun ScannerScreen(onResult: (PairingInfo) -> Unit, onBack: () -> Unit) {
                     CameraPreview(onResult, onFailure = { failure = it })
                     Text(
                         failure ?: stringResource(R.string.scan_hint),
-                        Modifier.align(Alignment.BottomCenter).padding(24.dp), color = Color.White, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium,
+                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp), color = Color.White, textAlign = TextAlign.Center, style = Leash.type.subheadline,
                     )
                 }
             }
+        }
+        LeashDesignTheme(dark = true, systemBars = false) {
+            TopBar(title = stringResource(R.string.scan_title), navigation = { BackButton(stringResource(R.string.back), onBack) }, edgeVisible = false)
         }
     }
 }
@@ -101,8 +101,8 @@ fun ScannerScreen(onResult: (PairingInfo) -> Unit, onBack: () -> Unit) {
 @Composable
 private fun Info(text: String, action: String?, onAction: (() -> Unit)?) {
     Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text, color = Color.White, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
-        if (action != null && onAction != null) Button(onClick = onAction, Modifier.padding(top = 16.dp)) { Text(action) }
+        Text(text, color = Color.White, textAlign = TextAlign.Center, style = Leash.type.body)
+        if (action != null && onAction != null) LeashDesignTheme(dark = true, systemBars = false) { LeashButton(action, onAction, Modifier.padding(top = 20.dp)) }
     }
 }
 

@@ -1,6 +1,9 @@
 package dev.leash.personal.ui.design.components
 
 import androidx.compose.foundation.BorderStroke
+import dev.leash.personal.ui.design.floatingShadow
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -191,6 +194,55 @@ fun LeashRefreshBox(
         },
         content = content,
     )
+}
+
+/**
+ * A confirmation (iOS alert / confirmation dialog): a solid panel with continuous corners, title, message and two
+ * Leash buttons, side by side when both labels are short, else stacked with the confirming one first. Replaces the
+ * stock Material AlertDialog look.
+ */
+@Composable
+fun LeashDialog(
+    onDismiss: () -> Unit,
+    title: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    dismissLabel: String,
+    message: String? = null,
+    destructive: Boolean = false,
+) {
+    val c = Leash.colors
+    val shape = dev.leash.personal.ui.design.ContinuousShape(28.dp)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .widthIn(max = 360.dp)
+                .floatingShadow(shape, panel = true)
+                .clip(shape)
+                .background(c.panel)
+                .border(BorderStroke(androidx.compose.ui.unit.Dp.Hairline, c.hairline), shape)
+                .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 16.dp),
+        ) {
+            Text(title, style = Leash.type.title3, color = c.textPrimary)
+            if (message != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(message, style = Leash.type.subheadline, color = c.textSecondary)
+            }
+            Spacer(Modifier.height(20.dp))
+            val confirmStyle = if (destructive) ButtonStyle.Destructive else ButtonStyle.Prominent
+            if (confirmLabel.length + dismissLabel.length <= 22) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LeashButton(dismissLabel, onDismiss, Modifier.weight(1f), style = ButtonStyle.Tinted)
+                    LeashButton(confirmLabel, onConfirm, Modifier.weight(1f), style = confirmStyle)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LeashButton(confirmLabel, onConfirm, Modifier.fillMaxWidth(), style = confirmStyle)
+                    LeashButton(dismissLabel, onDismiss, Modifier.fillMaxWidth(), style = ButtonStyle.Tinted)
+                }
+            }
+        }
+    }
 }
 
 /** The large title block that scrolls with a list's content: largeTitle + footnote subtitle, 16 dp from the start. */
