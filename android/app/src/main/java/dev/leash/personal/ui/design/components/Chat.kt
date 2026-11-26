@@ -175,8 +175,9 @@ fun ActivityHeader(
                                 ActivityState.Blocked -> c.attention
                                 else -> c.textSecondary
                             },
-                            maxLines = 1,
-                            overflow = TextOverflow.MiddleEllipsis,
+                            // a summary of three clauses is longer than one line in some languages
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }

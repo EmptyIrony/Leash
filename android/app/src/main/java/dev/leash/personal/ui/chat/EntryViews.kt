@@ -200,7 +200,7 @@ fun NoticeView(item: NoticeItem) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(if (item.severity == "error") LeashIcons.failed else if (item.severity == "warning") LeashIcons.warning else LeashIcons.info, null, Modifier.size(16.dp), tint = color)
-            Text(item.title, style = Leash.type.subheadline.medium(), color = if (item.severity == "info" || item.severity.isNullOrEmpty()) c.textSecondary else c.textPrimary)
+            Text(item.title ?: stringResource(R.string.notice), style = Leash.type.subheadline.medium(), color = if (item.severity == "info" || item.severity.isNullOrEmpty()) c.textSecondary else c.textPrimary)
         }
         item.detail?.let { Text(it, style = Leash.type.footnote, color = c.textSecondary, modifier = Modifier.padding(start = 22.dp)) }
     }

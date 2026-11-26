@@ -132,7 +132,9 @@ fun SegmentRow(segment: StepSegment, store: ChatStore, blocked: Boolean, onOpenS
         ) {
             Text(
                 res().let { r -> segment.liveLine?.let(r::liveText) ?: r.summaryText(segment.summary) }, style = Leash.type.footnote,
-                color = if (blocked) c.attention else if (active) c.textSecondary else c.textTertiary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis,
+                color = if (blocked) c.attention else if (active) c.textSecondary else c.textTertiary,
+                // the live action is cut in the middle (a command or path); the summary of the run so far wraps
+                maxLines = if (active) 1 else 2, overflow = if (active) TextOverflow.MiddleEllipsis else TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
             if (rows.isNotEmpty()) Icon(LeashIcons.chevronDown, null, Modifier.size(14.dp).rotate(rot), tint = c.textTertiary)

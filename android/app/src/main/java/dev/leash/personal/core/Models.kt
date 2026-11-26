@@ -275,11 +275,12 @@ class PlanItem {
     }
 }
 
-class NoticeItem(val severity: String, val title: String, val detail: String?) {
+/** [title] is the bridge's own text; null when it sent none (the UI says "Notice"). */
+class NoticeItem(val severity: String, val title: String?, val detail: String?) {
     val id: UUID = UUID.randomUUID()
 
     companion object {
-        fun from(u: JsonElement) = NoticeItem(u["severity"].string ?: "info", u["title"].string ?: "Notice", u["description"].string)
+        fun from(u: JsonElement) = NoticeItem(u["severity"].string ?: "info", u["title"].string, u["description"].string)
     }
 }
 

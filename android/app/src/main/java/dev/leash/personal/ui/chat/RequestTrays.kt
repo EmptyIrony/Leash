@@ -303,7 +303,7 @@ fun SubagentsTray(agents: List<SubagentItem>, collapsed: Boolean, onOpen: (Strin
             }
             if (!collapsed) {
                 agents.take(shown).forEach { SubagentStepRow(it, onOpen) }
-                if (agents.size > shown) Text(stringResource(R.string.more_count, agents.size - shown), Modifier.padding(start = 30.dp, top = 4.dp, bottom = 4.dp), style = Leash.type.footnote, color = c.textSecondary)
+                if (agents.size > shown) Text(stringResource(R.string.more_agents, agents.size - shown), Modifier.padding(start = 30.dp, top = 4.dp, bottom = 4.dp), style = Leash.type.footnote, color = c.textSecondary)
             }
         }
     }

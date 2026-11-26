@@ -152,6 +152,8 @@
     <string name="removed">Removed</string>
     <string name="undo">Undo</string>
     <string name="more_count">+%1$d more</string>
+    <string name="more_agents">+%1$d more</string>
+    <string name="notice">Notice</string>
     <string name="queued_photo">Photo</string>
     <string name="queued_file">File</string>
     <string name="remove_queued">Remove queued message</string>
