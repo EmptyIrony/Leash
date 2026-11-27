@@ -32,6 +32,7 @@ import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.glass.GlassOptics
 import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.OpticalSizePoint
 import dev.chrisbanes.haze.glass.OpticalSizeValue
 import dev.chrisbanes.haze.glass.RefractionProfile
 import dev.chrisbanes.haze.glass.hazeGlass
@@ -120,7 +121,7 @@ fun Modifier.glass(
         m = m.clip(lensShape).hazeGlass(HazeInput.Sources(state), style)
         if (tint.isSpecified) m = m.background(tint)
         // the shader draws the highlights; the hairline still carries the shape on a light page
-        return m.glassRim(lensShape, highlight = false)
+        return m.border(Dp.Hairline, Brush.verticalGradient(listOf(c.glassLensLineTop, c.glassLensLineBottom)), lensShape)
     }
     var m = this
     if (shadow) m = m.floatingShadow(shape)
@@ -148,15 +149,16 @@ private fun Shape.lensShape(): RoundedCornerShape? = when (this) {
 }
 
 /**
- * Regular glass, calmer. As shipped, controls under 64 dp mix the sharp backdrop back in and bend it by up to 48 dp:
- * on a transcript that left readable, mirrored text behind the composer's placeholder and the chips. So every size is
- * fully diffused, and the edge bends less.
+ * Matched to the iPhone's composer and chips: small controls are nearly clear, so the transcript shows through them, and
+ * large trays frost over so their own text stays legible. Only a narrow rim bends light: the library's Regular bends up
+ * to 48 dp over a 20 dp edge, which on a 32 dp chip is the whole surface and mirrors the text behind its label. Depth
+ * stays 1: mixing the sharp backdrop back in doubles every glyph.
  */
 private val LeashOptics = GlassOptics.regular.copy(
     depth = OpticalSizeValue.Fixed(1f),
-    blurRadius = OpticalSizeValue.Fixed(GlassDefaults.blur),
-    refractionDisplacement = 24.dp,
-    refractionProfile = RefractionProfile.Edge(14.dp),
+    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 2.5.dp), OpticalSizePoint(160.dp, 16.dp)),
+    refractionDisplacement = 16.dp,
+    refractionProfile = RefractionProfile.Edge(9.dp),
 )
 
 /**
@@ -167,15 +169,15 @@ private fun lensStyle(c: LeashDesignColors, shape: RoundedCornerShape, interacti
     shape(shape)
     optics(LeashOptics)
     tint(c.glassLensTint)
-    specularIntensity(if (c.dark) 0.38f else 0.48f)
+    specularIntensity(if (c.dark) 0.5f else 0.55f)
     // the library's darker rim in dark mode painted over the hairline that carries the shape on straight edges
     edgeShadow(Color.Black.copy(alpha = 0.10f))
     // the clip already antialiases the edge; a softened rim lets the drop shadow under it show as a dark inner line
     edgeSoftness(0.dp)
-    ambientResponse(if (c.dark) 0.08f else 0.15f)
+    ambientResponse(if (c.dark) 0.14f else 0.12f)
     contrast(if (c.dark) 0.08f else 0f)
-    whitePoint(if (c.dark) -0.15f else 0.25f)
-    chromaMultiplier(if (c.dark) 1.1f else 1.3f)
+    whitePoint(if (c.dark) -0.15f else 0.1f)
+    chromaMultiplier(1.1f)
     if (interactive) pressed {
         lightingIntensity(1f)
         refractionMultiplier(1.25f)
@@ -237,15 +239,19 @@ fun Modifier.softTopEdge(): Modifier {
 }
 
 /**
- * The bottom edge (IMG_5524): content scrolls on under the composer and chips to the screen bottom; this fades it
- * towards the page colour (and blurs it on 32+) so no sharp text shows between the slab and the chips.
+ * The bottom edge (IMG_5524): content scrolls on under the composer and chips to the screen bottom. Over liquid glass it
+ * stays sharp down to the slab and then dims with a trace of blur, as on the iPhone, still readable between the controls;
+ * under blurred or solid glass it is blurred and faded harder so no sharp text shows between the slab and the chips.
  */
 @Composable
 fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
-    val style = remember(c) {
-        blurStyle(c.bgBase, 12.dp) { mask(Brush.verticalGradient(0f to Color.Transparent, 0.25f to Color.Black, 1f to Color.Black)) }
+    val lens = glassLensSupported && LocalGlassLensAllowed.current && LocalGlassBlurAllowed.current
+    val style = remember(c, lens) {
+        blurStyle(c.bgBase, if (lens) 2.dp else 12.dp) {
+            mask(Brush.verticalGradient(0f to Color.Transparent, (if (lens) 0.65f else 0.25f) to Color.Black, 1f to Color.Black))
+        }
     }
     var m = this
     if (!blur) {
@@ -255,5 +261,9 @@ fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     if (state != null && glassBlurSupported && LocalGlassBlurAllowed.current) {
         m = m.hazeBlur(HazeInput.Sources(state), style)
     }
-    return m.background(Brush.verticalGradient(0f to Color.Transparent, 0.3f to c.bgGradientEnd.copy(alpha = 0.6f), 1f to c.bgGradientEnd.copy(alpha = 0.85f)))
+    val end = c.bgGradientEnd
+    return m.background(
+        if (lens) Brush.verticalGradient(0f to Color.Transparent, 0.62f to end.copy(alpha = 0.3f), 1f to end.copy(alpha = 0.75f))
+        else Brush.verticalGradient(0f to Color.Transparent, 0.3f to end.copy(alpha = 0.6f), 1f to end.copy(alpha = 0.85f)),
+    )
 }

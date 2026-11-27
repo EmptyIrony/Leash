@@ -21,7 +21,7 @@ import dev.leash.personal.ui.design.LocalGlassLensAllowed
 val LocalCatalogPhase = staticCompositionLocalOf<Float?> { null }
 
 /**
- * Debug-only catalog of the design system (DESIGN.md). Extras: `page` (index, glass, colors, type, shapes, controls, list,
+ * Debug-only catalog of the design system (DESIGN.md). Extras: `page` (index, glass, dock, colors, type, shapes, controls, list,
  * settings, chat, activity, trays, states, sheet, icon), `theme` (light / dark; default follows the system) and
  * `phase` (0..1 pins the shimmer and live dots). `--ez lens false` draws glass without refraction (as on API 32).
  */
@@ -61,6 +61,7 @@ private fun CatalogPage(page: String, open: (String) -> Unit) {
         "list" -> ListPage()
         "settings" -> SettingsPage()
         "chat" -> ChatPage()
+        "dock" -> DockPage()
         "activity" -> ActivityPage()
         "trays" -> TraysPage()
         "states" -> StatesPage()

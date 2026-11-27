@@ -452,3 +452,16 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 - Not verified: a real phone (frame rate, battery, GPU); API 32 on a device (only through `lens false`); the press light
   while a finger is down; frames in the middle of the tray / navigation transitions; a bright image under the dark dock;
   the side-question tint.
+
+### Retune against the iPhone
+
+- The first tuning (24 dp blur, depth 1 everywhere) hid what was behind the glass and looked flat next to iOS. Now see
+  DESIGN.md §6 and §15. Method: a debug catalog page `dock` (`--es page dock`: dense text running under the dock),
+  variants through temporary intent extras (removed again), compared with a screenshot of the iPhone app in dark mode.
+  Light mode has no iPhone reference yet.
+- The dock and the list's bottom circles float (`Modifier.dockInsets`). The keyboard case is not verified: the emulator
+  reports the keyboard shown but draws none and reports no inset.
+- Frame time, `dock` page, scripted scrolling, three rounds: P50 10–18 ms with liquid glass, 9 ms with
+  `--ez lens false`, P90 about equal (17–20 ms); the emulator is noisy. 304 unit tests; `releaseLike` built and opened.
+  The signed release APK builds with the same certificate.
+

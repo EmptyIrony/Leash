@@ -79,7 +79,8 @@ Derived:
 - `pressedOverlay` textPrimary @ 6% (full-width rows only, see press feedback).
 - `diffAddBg` success @ 15%, `diffDelBg` danger @ 15%.
 - `needsYouBadge` attention @ 15% circle behind the hand glyph.
-- `glassLensTint` (liquid glass, API 33+) white @ 40% (light) / #262A3A @ 65% (dark).
+- `glassLensTint` (liquid glass, API 33+) white @ 35% (light) / #464C60 @ 45% (dark); its edge is `glassLensLineTop` →
+  `glassLensLineBottom`: #0B1020 @ 12% (light), white 26% → 12% (dark).
 - `glassTint` white @ 60% (light) / #262A3A @ 70% (dark); `glassFallback` (blur off) white @ 94% / #1C1F2B @ 96%.
 - `glassRim` (the edge carries the shape, not the fill): light = 1 px (`Dp.Hairline`) outer line #0B1020 @ 12% plus an
   inner top highlight white 80% → 0 over 6 dp; dark = 1 px line white 14% at the top fading to 4% at the bottom.
@@ -179,12 +180,14 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
   on glass. Tints only for meaning: shell slab shell @ 16%, side question accent @ 14%, turbo chip turbo @ 25%, banner
   attention @ 25%. Three renderings:
   - **API 33+, liquid glass** (haze-glass `hazeGlass`): *every* glass surface over a source blurs and refracts it, with
-    shader highlights, `glassLensTint`, the hairline of `glassRim` (no painted highlight) and the floating shadow.
-    Optics are Regular made calmer (`LeashOptics`): fully diffused at every size (depth 1, blur 24 dp) and refraction
-    24 dp over a 14 dp edge. As shipped, controls under 64 dp mix the sharp backdrop back in and bend it by up to 48 dp,
-    which left readable, mirrored transcript text behind the composer's placeholder and the chips. `edgeSoftness` is
-    0 (a softened rim showed the dark-mode drop shadow as a black inner line that swallowed the hairline) and
-    `edgeShadow` black @ 10%. Light / dark values follow the **app** theme; the library's own follow the system.
+    shader highlights, `glassLensTint`, a hairline edge and the floating shadow. Optics (`LeashOptics`) are matched to
+    the iPhone's composer and chips: depth 1 and a blur that grows with the surface's shortest side (2.5 dp up to 64 dp,
+    16 dp from 160 dp), so on small controls the transcript **shows through**, as on iOS, while large trays frost over
+    behind their own text. Refraction is 16 dp over a 9 dp rim: the library's Regular (48 dp over 20 dp) covers the whole
+    height of a chip and mirrors text behind its label. Accepted trade: a placeholder can cross a line of transcript
+    behind it, and Android has none of iOS's adaptive legibility. `edgeSoftness` is 0 (a softened rim showed the
+    dark-mode drop shadow as a black inner line that swallowed the hairline) and `edgeShadow` black @ 10%. Light / dark
+    values follow the **app** theme; the library's own follow the system.
     Corners are **circular**, not continuous (the shader only bends a plain rounded rectangle): capsules and circles look
     the same, composer and trays differ by under 1 dp. Interactive surfaces (circles, chips, banner) also light up under
     the finger; the 4% shrink and dim stay with `pressable`.
@@ -201,9 +204,12 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
   with the floating shadow, never fake glass.
 - **Top edge**: content scrolls under a transparent top bar; API 33+ a progressive blur (opaque at the status bar,
   clear 24 dp below the bar) under a bgBase gradient scrim; API 31–32 and fallback: the scrim alone.
-- **Bottom edge**: content keeps scrolling under the composer and chips to the screen bottom (IMG_5524): a scrim
-  bgGradientEnd 0 → 85% starting 16 dp above the composer, plus the dock band's blur on 32+, so no sharp text shows
-  between the slab and the chips.
+- **Bottom edge**: content keeps scrolling under the composer and chips to the screen bottom (IMG_5524). The dock
+  **floats**: its lowest control rests 28 dp above the screen edge, or 8 dp above a taller navigation bar, and 8 dp above
+  the keyboard (`Modifier.dockInsets`, also the list's bottom circles). Under liquid glass the transcript stays sharp
+  down to the slab, then dims (bgGradientEnd 30% at 62% of the band → 75% at the bottom) with a 2 dp blur, still
+  readable between the controls. Under blurred or solid glass: a scrim 0 → 85% plus the band's 12 dp blur on 32+, so no
+  sharp text shows between the slab and the chips.
 - **Elevation**: no Material tonal elevation anywhere. Shadows (`Modifier.dropShadow`, Compose 1.9+; elevation
   can't make these) only on floating things: glass controls (y 2 dp, blur 10 dp, #1E2250 @ 10% light; dark gets the
   rim instead, a black shadow on black does nothing — black @ 40%, y 2, blur 12), panels (y 8, blur 24, same colours),
@@ -314,7 +320,7 @@ measures 45 pt) with a 48 dp touch target, glyph textPrimary (overflow dots and 
   start-aligns after the back circle instead (360 dp leaves too little room centred).
 
 **Bottom actions (list).** Search (bottom-start) and new conversation (bottom-end, square.and.pencil in
-accentControl) as 52 dp glass circles, 16 dp from the sides, 12 dp above the navigation-bar inset, over the bottom
+accentControl) as 52 dp glass circles, 16 dp from the sides, floating on `dockInsets` (§6), over the bottom
 edge scrim. No FAB.
 
 **Grouped list (inset grouped).** Section header outside the card, aligned 16 dp inside the card's edge: optional
@@ -466,6 +472,11 @@ style; vector drawables have no blur). Monochrome layer (Android 13 themed icons
 - `src/debug/.../DesignCatalogActivity` — pages × light/dark via intent extras.
 
 ## 15. Review log
+
+- **User against the iPhone (supersedes the optics and tint kept below).** The fully diffused 24 dp glass had "a bit
+  of texture, not much": next to the iOS dock it read as a flat fill. Retuned by emulator variants against that shot:
+  nearly clear small controls, narrow refraction rim, greyer thinner dark tint with a brighter edge, a lighter dock
+  scrim, and the floating dock. The earlier mirrored text came from the wide refraction edge, not from sharpness.
 
 - **Fable, liquid glass (emulator, API 35).** Kept: liquid glass on every floating surface, the calmer optics, circular
   corners (rim differs by 2 px at most on a tray corner), no morphing, solid menus and sheets. Fixed: the dark rim on

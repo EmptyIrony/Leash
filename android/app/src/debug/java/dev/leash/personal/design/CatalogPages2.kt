@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -72,7 +70,7 @@ private fun Dock(draft: String, onDraft: (String) -> Unit, running: Boolean, mod
     val c = Leash.colors
     Box(Modifier.fillMaxWidth()) {
         Box(Modifier.matchParentSize().softBottomEdge())
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(top = 24.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().dockInsets().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { trays() }
             ComposerSlab(
                 draft, onDraft,
@@ -95,6 +93,29 @@ private fun Dock(draft: String, onDraft: (String) -> Unit, running: Boolean, mod
                 Chip("Week 25%", {}, leading = { RingGauge(0.25f, size = 14.dp, tint = c.attention) }, chevron = false)
             }
         }
+    }
+}
+
+/** Dense text running on under the dock to the screen edge: what shows through the glass, and between and below it. */
+@Composable
+fun DockPage() {
+    var draft by remember { mutableStateOf("") }
+    GlassScope(Modifier.fillMaxSize()) {
+        GlassSource(Modifier.fillMaxSize()) {
+            SpaceBackground()
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState(initial = 200)).statusBarsPadding().padding(top = 64.dp, bottom = 220.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    "• OkHttp 4.12.0 的 WebSocket 连 bridge。", "• kotlinx.serialization 1.9.0 处理 JSON。", "• kotlinx.coroutines 1.10.2 做异步。",
+                    "• DataStore 1.1.7 存设置。", "Tailscale", "• 内置的 tailnet 是 Go 写的，用 gomobile 编成 AAR，通过 Gradle 接进来，不是 Kotlin 库。",
+                    "• Haze 2.1.0 负责毛玻璃和折射。", "工具链", "• AGP 9.2.1、Gradle 9.4.1、Kotlin 2.4.21，compileSdk 37。", "• minSdk 29，targetSdk 35。",
+                ).forEach { Prose(it) }
+                Spacer(Modifier.height(4.dp))
+                CodeBlock("fun parse(s: String): Node {\n    require(s.isNotBlank()) { \"empty input\" }\n    return Node(s.trim())\n}", Modifier.padding(horizontal = 16.dp), language = "kotlin")
+                listOf("• 内置的 tailnet 是 Go 写的，用 gomobile 编成 AAR，通过 Gradle 接进来。", "• 发布版用 R8 压缩，签名证书不变。", "• 模拟器是 Android 15，分辨率 1080×1920。", "• 真机帧率和耗电还要再测一次。").forEach { Prose(it) }
+            }
+        }
+        TopBar(title = "Dock", navigation = { BackButton("Back", {}) })
+        Box(Modifier.align(Alignment.BottomCenter)) { Dock(draft, { draft = it }, running = false) }
     }
 }
 
