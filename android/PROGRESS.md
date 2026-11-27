@@ -472,4 +472,8 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
   haze-glass, read `GlassShaders.kt` for the maths first instead of trying values.
 - Frame time after that, `dock` page, scripted scrolling, three rounds: P50 6–9 ms with liquid glass at full resolution,
   5–7 ms with `--ez lens false`; no jank with the lens on. 304 unit tests.
+- The top bar's circles and the banner are frosted (12 dp): at 1 dp they showed raw transcript that the soft top edge was
+  fading out. Checked in the app, light theme, with text scrolled under them. Not opened since the fade and optics
+  changes: the subagent screen and the side-question composer. The keyboard spacing is still unverified (no keyboard
+  drawn on the emulator).
 

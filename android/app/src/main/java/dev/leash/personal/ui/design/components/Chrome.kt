@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.ui.design.Leash
 import dev.leash.personal.ui.design.LeashIcons
+import dev.leash.personal.ui.design.LocalGlassFrosted
 import dev.leash.personal.ui.design.LeashRadius
 import dev.leash.personal.ui.design.LeashShapes
 import dev.leash.personal.ui.design.LocalGlassState
@@ -97,7 +98,11 @@ fun TopBar(
         }
         // side slots size to their content; a centred title gets the width left between the wider slot and its mirror
         androidx.compose.ui.layout.Layout(
-            contents = listOf<@Composable () -> Unit>({ navigation?.invoke() }, titleBlock, { Row(verticalAlignment = Alignment.CenterVertically, content = actions) }),
+            contents = listOf<@Composable () -> Unit>(
+                { Frosted { navigation?.invoke() } },
+                titleBlock,
+                { Frosted { Row(verticalAlignment = Alignment.CenterVertically, content = actions) } },
+            ),
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp).padding(top = 4.dp, bottom = 28.dp).height(48.dp),
         ) { (navM, titleM, actM), constraints ->
             val loose = constraints.copy(minWidth = 0, minHeight = 0)
@@ -292,6 +297,11 @@ fun BottomActions(
         end?.invoke()
     }
 }
+
+/** Glass in the top band, see [LocalGlassFrosted]. */
+@Composable
+private fun Frosted(content: @Composable () -> Unit) =
+    androidx.compose.runtime.CompositionLocalProvider(LocalGlassFrosted provides true, content = content)
 
 /** Jump to the newest output: a 36 dp glass circle. It floats alone over the transcript, so it blurs what is under it. */
 @Composable

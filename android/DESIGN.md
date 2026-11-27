@@ -185,7 +185,9 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
     79% alone frosts text seen through clear glass); a blur that grows with the surface's shortest side (1 dp up to 64 dp,
     14 dp from 160 dp), so on small controls the transcript **shows through, readable**, while large trays frost over
     behind their own text. The composer is the exception (`glass(clear = true)`): grown to many lines it only reaches
-    3.5 dp. Refraction: strength 0.7 × 6 dp over a 20 dp edge, dispersion 0.08. **Invariant: strength × displacement ≤
+    3.5 dp. The **top band** is the other exception (`LocalGlassFrosted` for the top bar's slots, `glass(frosted = true)`
+    for the banner): a fixed 12 dp, because glass samples the source itself, not the soft top edge over it, and clear glass
+    showed the raw transcript inside the buttons and through the banner's label. Refraction: strength 0.7 × 6 dp over a 20 dp edge, dispersion 0.08. **Invariant: strength × displacement ≤
     0.225 × edge width, pressed state included** (the shader samples inwards by that much at the rim, decaying as
     exp(−t / 0.225); beyond it the text behind the rim folds into mirrored shards, which is what 16–24 dp over 9–14 dp
     did). `contentNormalBlend` is 0 (the library lights normals taken from the backdrop's brightness: bright dots over

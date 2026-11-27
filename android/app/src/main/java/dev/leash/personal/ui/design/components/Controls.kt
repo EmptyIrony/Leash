@@ -421,7 +421,7 @@ fun Banner(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier
             .pressable(scale = PressScale.Row, onClick = onClick)
             .heightIn(min = 40.dp)
-            .glass(LeashShapes.capsule, tint = c.attention.copy(alpha = 0.25f), interactive = true)
+            .glass(LeashShapes.capsule, tint = c.attention.copy(alpha = 0.25f), interactive = true, frosted = true)
             .padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,

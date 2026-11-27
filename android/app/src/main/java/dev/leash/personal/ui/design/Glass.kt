@@ -89,6 +89,9 @@ fun Modifier.glassSource(): Modifier {
     return this.hazeSource(state)
 }
 
+/** Glass in the top band (the top bar's controls, the banner under it): frosted whatever its size. */
+val LocalGlassFrosted = staticCompositionLocalOf { false }
+
 /** Whether glass may blur at all: off in battery saver (and later with the app's Reduce transparency switch). */
 val LocalGlassBlurAllowed = staticCompositionLocalOf { true }
 
@@ -112,6 +115,7 @@ fun Modifier.glass(
     blur: Boolean = true,
     interactive: Boolean = false,
     clear: Boolean = false,
+    frosted: Boolean = false,
 ): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
@@ -121,7 +125,11 @@ fun Modifier.glass(
         null
     }
     if (state != null && lensShape != null) {
-        val optics = if (clear) ClearOptics else LeashOptics
+        val optics = when {
+            clear -> ClearOptics
+            frosted || LocalGlassFrosted.current -> FrostedOptics
+            else -> LeashOptics
+        }
         val style = remember(c, lensShape, interactive, optics) { lensStyle(c, lensShape, interactive, optics) }
         var m = this
         if (shadow) m = m.floatingShadow(lensShape)
@@ -179,6 +187,12 @@ private val LeashOptics = GlassOptics.regular.copy(
 private val ClearOptics = LeashOptics.copy(
     blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 1.dp), OpticalSizePoint(160.dp, 3.5.dp)),
 )
+
+/**
+ * The top band's. Content there is meant to be fading out under [softTopEdge], but glass samples the source itself, not
+ * that fade: clear glass showed the raw transcript inside the buttons and through the banner's label.
+ */
+private val FrostedOptics = LeashOptics.copy(blurRadius = OpticalSizeValue.Fixed(12.dp))
 
 /**
  * Regular glass in Leash's colours. haze-glass picks its light or dark values by the *system* appearance, so every value
