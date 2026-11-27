@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazePerformanceMode
 import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
@@ -124,7 +125,8 @@ fun Modifier.glass(
         val style = remember(c, lensShape, interactive, optics) { lensStyle(c, lensShape, interactive, optics) }
         var m = this
         if (shadow) m = m.floatingShadow(lensShape)
-        m = m.clip(lensShape).hazeGlass(HazeInput.Sources(state), style)
+        // full resolution: the default samples the backdrop at 79%, which alone frosts text seen through clear glass
+        m = m.clip(lensShape).hazeGlass(HazeInput.Sources(state), style, performanceMode = HazePerformanceMode.Quality)
         if (tint.isSpecified) m = m.background(tint)
         // the shader draws the highlights; the hairline still carries the shape on a light page
         return m.border(Dp.Hairline, Brush.verticalGradient(listOf(c.glassLensLineTop, c.glassLensLineBottom)), lensShape)
@@ -155,21 +157,27 @@ private fun Shape.lensShape(): RoundedCornerShape? = when (this) {
 }
 
 /**
- * Matched to the iPhone's composer and chips: small controls are nearly clear, so the transcript shows through them, and
- * large trays frost over so their own text stays legible. Only a narrow rim bends light: the library's Regular bends up
- * to 48 dp over a 20 dp edge, which on a 32 dp chip is the whole surface and mirrors the text behind its label. Depth
- * stays 1: mixing the sharp backdrop back in doubles every glyph.
+ * Matched to the iPhone's composer and chips. What makes it read as liquid rather than frosted: small controls hardly
+ * blur at all (1 dp), so the transcript behind stays readable and visibly bends at the rim, with a little dispersion.
+ * Large trays still frost over so their own text stays legible. The bend stays at the rim: the library's Regular bends
+ * up to 48 dp over a 20 dp edge, which on a 32 dp chip is the whole surface and mirrors the text behind its label.
+ * Depth stays 1: mixing the sharp backdrop back in doubles every glyph.
+ *
+ * Keep `refractionStrength × refractionDisplacement ≤ 0.225 × edge width` (pressed included). The edge shader samples
+ * inwards by that product at the rim, falling off as exp(-t / 0.225) across the width; any more and the sampling order
+ * reverses, folding the text behind the rim into mirrored shards. Right at the limit it stretches smoothly, like iOS.
  */
 private val LeashOptics = GlassOptics.regular.copy(
     depth = OpticalSizeValue.Fixed(1f),
-    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 2.5.dp), OpticalSizePoint(160.dp, 16.dp)),
-    refractionDisplacement = 16.dp,
-    refractionProfile = RefractionProfile.Edge(9.dp),
+    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 1.dp), OpticalSizePoint(160.dp, 14.dp)),
+    refractionStrength = 0.7f,
+    refractionDisplacement = 6.dp,
+    refractionProfile = RefractionProfile.Edge(20.dp),
 )
 
 /** The composer's: it grows with its text but stays see-through, with just enough more blur to keep typed lines apart. */
 private val ClearOptics = LeashOptics.copy(
-    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 2.5.dp), OpticalSizePoint(160.dp, 5.dp)),
+    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 1.dp), OpticalSizePoint(160.dp, 3.5.dp)),
 )
 
 /**
@@ -180,18 +188,21 @@ private fun lensStyle(c: LeashDesignColors, shape: RoundedCornerShape, interacti
     shape(shape)
     optics(optics)
     tint(c.glassLensTint)
-    specularIntensity(if (c.dark) 0.5f else 0.55f)
+    specularIntensity(if (c.dark) 0.6f else 0.55f)
+    // the library mixes normals taken from the backdrop's brightness into the lighting: over text they spark as bright dots
+    contentNormalBlend(0f)
+    chromaticAberrationStrength(0.08f)
     // the library's darker rim in dark mode painted over the hairline that carries the shape on straight edges
     edgeShadow(Color.Black.copy(alpha = 0.10f))
     // the clip already antialiases the edge; a softened rim lets the drop shadow under it show as a dark inner line
     edgeSoftness(0.dp)
-    ambientResponse(if (c.dark) 0.14f else 0.12f)
+    ambientResponse(if (c.dark) 0.2f else 0.14f)
     contrast(if (c.dark) 0.08f else 0f)
     whitePoint(if (c.dark) -0.15f else 0.1f)
     chromaMultiplier(1.1f)
     if (interactive) pressed {
         lightingIntensity(1f)
-        refractionMultiplier(1.25f)
+        refractionMultiplier(1.07f)
     }
 }
 

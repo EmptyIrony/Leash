@@ -467,4 +467,9 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 - Follow-up from the user: the fade under the dock is now anchored low (`DockFade`) instead of scaling with the dock's
   height, and the composer stays see-through when it grows (`glass(clear = true)`). Catalog pages `dock`, `dock-long`
   and `dock-tray` show the three cases. Frame time was not re-measured.
+- Second pass from the user (looked frosted; refraction looked broken): full-resolution input, 1 dp blur, refraction
+  kept under the fold limit and `contentNormalBlend` 0. The numbers and the invariant are in DESIGN.md §6. When tuning
+  haze-glass, read `GlassShaders.kt` for the maths first instead of trying values.
+- Frame time after that, `dock` page, scripted scrolling, three rounds: P50 6–9 ms with liquid glass at full resolution,
+  5–7 ms with `--ez lens false`; no jank with the lens on. 304 unit tests.
 

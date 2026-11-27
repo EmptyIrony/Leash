@@ -124,7 +124,7 @@ data class LeashDesignColors(
                 diffDelBg = danger.copy(alpha = 0.15f),
                 needsYouBadge = attention.copy(alpha = 0.15f),
                 glassTint = if (dark) Color(0xFF262A3A).copy(alpha = 0.70f) else Color.White.copy(alpha = 0.60f),
-                glassLensTint = if (dark) Color(0xFF464C60).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.35f),
+                glassLensTint = if (dark) Color(0xFF464C60).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.52f),
                 glassLensLineTop = if (dark) Color.White.copy(alpha = 0.26f) else Color(0xFF0B1020).copy(alpha = 0.12f),
                 glassLensLineBottom = if (dark) Color.White.copy(alpha = 0.12f) else Color(0xFF0B1020).copy(alpha = 0.12f),
                 glassFallback = if (dark) Color(0xFF1C1F2B).copy(alpha = 0.96f) else Color.White.copy(alpha = 0.94f),

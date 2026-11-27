@@ -79,7 +79,7 @@ Derived:
 - `pressedOverlay` textPrimary @ 6% (full-width rows only, see press feedback).
 - `diffAddBg` success @ 15%, `diffDelBg` danger @ 15%.
 - `needsYouBadge` attention @ 15% circle behind the hand glyph.
-- `glassLensTint` (liquid glass, API 33+) white @ 35% (light) / #464C60 @ 45% (dark); its edge is `glassLensLineTop` →
+- `glassLensTint` (liquid glass, API 33+) white @ 52% (light) / #464C60 @ 45% (dark); its edge is `glassLensLineTop` →
   `glassLensLineBottom`: #0B1020 @ 12% (light), white 26% → 12% (dark).
 - `glassTint` white @ 60% (light) / #262A3A @ 70% (dark); `glassFallback` (blur off) white @ 94% / #1C1F2B @ 96%.
 - `glassRim` (the edge carries the shape, not the fill): light = 1 px (`Dp.Hairline`) outer line #0B1020 @ 12% plus an
@@ -181,12 +181,17 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
   attention @ 25%. Three renderings:
   - **API 33+, liquid glass** (haze-glass `hazeGlass`): *every* glass surface over a source blurs and refracts it, with
     shader highlights, `glassLensTint`, a hairline edge and the floating shadow. Optics (`LeashOptics`) are matched to
-    the iPhone's composer and chips: depth 1 and a blur that grows with the surface's shortest side (2.5 dp up to 64 dp,
-    16 dp from 160 dp), so on small controls the transcript **shows through**, as on iOS, while large trays frost over
+    the iPhone's composer and chips. Depth 1; input at **full resolution** (`HazePerformanceMode.Quality`; the default
+    79% alone frosts text seen through clear glass); a blur that grows with the surface's shortest side (1 dp up to 64 dp,
+    14 dp from 160 dp), so on small controls the transcript **shows through, readable**, while large trays frost over
     behind their own text. The composer is the exception (`glass(clear = true)`): grown to many lines it only reaches
-    5 dp, so the transcript still shows behind what is typed. Refraction is 16 dp over a 9 dp rim: the library's Regular (48 dp over 20 dp) covers the whole
-    height of a chip and mirrors text behind its label. Accepted trade: a placeholder can cross a line of transcript
-    behind it, and Android has none of iOS's adaptive legibility. `edgeSoftness` is 0 (a softened rim showed the
+    3.5 dp. Refraction: strength 0.7 × 6 dp over a 20 dp edge, dispersion 0.08. **Invariant: strength × displacement ≤
+    0.225 × edge width, pressed state included** (the shader samples inwards by that much at the rim, decaying as
+    exp(−t / 0.225); beyond it the text behind the rim folds into mirrored shards, which is what 16–24 dp over 9–14 dp
+    did). `contentNormalBlend` is 0 (the library lights normals taken from the backdrop's brightness: bright dots over
+    text). Accepted trade: a placeholder can cross a line of transcript behind it, and Android has none of iOS's
+    adaptive legibility.
+    `edgeSoftness` is 0 (a softened rim showed the
     dark-mode drop shadow as a black inner line that swallowed the hairline) and `edgeShadow` black @ 10%. Light / dark
     values follow the **app** theme; the library's own follow the system.
     Corners are **circular**, not continuous (the shader only bends a plain rounded rectangle): capsules and circles look
@@ -475,6 +480,10 @@ style; vector drawables have no blur). Monochrome layer (Android 13 themed icons
 - `src/debug/.../DesignCatalogActivity` — pages × light/dark via intent extras.
 
 ## 15. Review log
+
+- **User, second and third pass.** "Still looks frosted", then "the reflection looks odd": full-resolution input and
+  1 dp blur made it read as liquid; the shards and dots came from refraction past the fold limit and from
+  `contentNormalBlend` (see §6, which replaces the numbers in the entry below).
 
 - **User against the iPhone (supersedes the optics and tint kept below).** The fully diffused 24 dp glass had "a bit
   of texture, not much": next to the iOS dock it read as a flat fill. Retuned by emulator variants against that shot:
