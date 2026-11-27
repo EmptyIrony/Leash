@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AcpProcess, RpcError } from './acp.mjs';
 import { safePath, fileUri, isSamePath } from './platform.mjs';
+import { phoneUpdate, MEDIA_CHUNK } from './media.mjs';
 
 export const BRIDGE_VERSION = '0.1.0';
 export const BRIDGE_PROTOCOL = 1;
@@ -44,8 +45,10 @@ class SessionState {
     this.sessionId = sessionId;
     this.cwd = cwd ?? null;
     this.epoch = crypto.randomBytes(6).toString('hex');
-    this.events = [];          // [{seq, update}]
+    this.events = [];          // [{seq, update, phone, refs}]: update as the agent sent it, phone as phones get it
+    this.media = new Map();    // ref -> {mimeType, data, uses}: the pictures the logged events hold
     this.seq = 0;
+    this.trimmed = false;      // maxEvents has cut the start off the log
     this.loaded = false;       // known to the current agent process
     this.loading = null;       // Promise while session/load is in flight
     this.running = false;      // a session/prompt is in flight
@@ -66,7 +69,9 @@ class SessionState {
   resetForReload() {
     this.epoch = crypto.randomBytes(6).toString('hex');
     this.events = [];
+    this.media = new Map();
     this.seq = 0;
+    this.trimmed = false;
   }
 }
 
@@ -107,51 +112,55 @@ export function compactEvents(events) {
 }
 
 /**
- * The phone takes a frame whole and gives up on the connection past 64 MB (URLSessionWebSocketTask's
- * maximumMessageSize), and a conversation's history with its subagents can run past 150 MB of screenshots.
- * An attach result stays under this.
+ * The phone's pings wait behind a frame while it downloads, and the connection is dropped when they time out, so an
+ * attach result stays small: pictures travel apart (media.mjs) and the text in it is held under this.
  */
-export const SNAPSHOT_BUDGET = 24 * 1024 * 1024;
+export const SNAPSHOT_BUDGET = 2 * 1024 * 1024;
 const LONG_TEXT = 16 * 1024;
 const kb = n => Math.max(1, Math.round(n / 1024)) + ' KB';
 const isTool = u => u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'tool_call_update';
 
+/** The first event of a snapshot that lacks the start of the conversation (phones show their own wording). */
+const truncationMarker = seq => ({ seq, update: { sessionUpdate: 'notice', severity: 'info', title: 'Earlier history not shown',
+  description: 'Open the conversation on the computer to see all of it.', _meta: { leash: { synthetic: true, historyTruncated: true } } } });
+export const isTruncationMarker = e => !!e?.update?._meta?.leash?.historyTruncated;
+
 /**
- * Events that fit in `budget` bytes of JSON: past it, the oldest weight goes first. Pictures in tool output become a
- * line saying so, then long tool output is cut, then pictures the user sent; history that still does not fit is
- * dropped from the start. Returns copies; the log itself keeps everything.
+ * Events (as phones get them) that fit in `budget` bytes of JSON: past it, long tool output is cut, oldest first, and
+ * history that still does not fit is dropped from the start (the newest event always stays). When events were dropped
+ * here, or `trimmed` says the log had already lost its start, a marker saying so comes first, within the budget.
+ * Returns copies; the log itself keeps everything.
  */
-export function fitSnapshot(events, budget = SNAPSHOT_BUDGET) {
-  const size = e => Buffer.byteLength(JSON.stringify(e));
+export function fitSnapshot(events, budget = SNAPSHOT_BUDGET, { trimmed = false } = {}) {
+  const size = e => Buffer.byteLength(JSON.stringify(e)) + 1;   // with its comma
   const sizes = events.map(size);
-  let total = sizes.reduce((a, b) => a + b, 0);
-  if (total <= budget) return events;
+  let total = sizes.reduce((a, b) => a + b, 1);                 // and the array's brackets
+  // room for the marker, whatever its seq
+  const marker = size(truncationMarker(Number.MAX_SAFE_INTEGER));
+  const limit = trimmed ? budget - marker : budget;
+  const marked = list => [truncationMarker(Math.max(0, (list[0]?.seq ?? 1) - 1)), ...list];
+  if (total <= limit) return trimmed ? marked(events) : events;
   const out = events.slice();
-  const pass = rewrite => {
-    for (let i = 0; i < out.length && total > budget; i++) {
-      const update = rewrite(out[i].update);
-      if (!update) continue;
-      out[i] = { ...out[i], update };
-      const n = size(out[i]);
-      total -= sizes[i] - n; sizes[i] = n;
-    }
-  };
-  const blocks = map => u => {
-    if (!isTool(u) || !Array.isArray(u.content)) return null;
+  for (let i = 0; i < out.length && total > limit; i++) {
+    const u = out[i].update;
+    if (!isTool(u) || !Array.isArray(u.content)) continue;
     let changed = false;
-    const content = u.content.map(b => { const r = map(b); if (r) changed = true; return r ?? b; });
-    return changed ? { ...u, content } : null;
-  };
-  const note = text => ({ type: 'content', content: { type: 'text', text } });
-  pass(blocks(b => b?.type === 'content' && b.content?.type === 'image'
-    ? note(`[picture not sent to the phone (${kb(String(b.content.data ?? '').length * 3 / 4)}): the conversation is too long]`) : null));
-  pass(blocks(b => b?.type === 'content' && b.content?.type === 'text' && b.content.text?.length > LONG_TEXT
-    ? note(b.content.text.slice(0, LONG_TEXT) + `\n… [${kb(Buffer.byteLength(b.content.text.slice(LONG_TEXT)))} more not sent to the phone]`) : null));
-  pass(u => u?.sessionUpdate === 'user_message_chunk' && u.content?.type === 'image'
-    ? { ...u, content: { type: 'text', text: `[picture not sent to the phone (${kb(String(u.content.data ?? '').length * 3 / 4)})]` } } : null);
+    const content = u.content.map(b => {
+      if (b?.type !== 'content' || b.content?.type !== 'text' || !(b.content.text?.length > LONG_TEXT)) return b;
+      changed = true;
+      const text = b.content.text.slice(0, LONG_TEXT) + `\n… [${kb(Buffer.byteLength(b.content.text.slice(LONG_TEXT)))} more not sent to the phone]`;
+      return { type: 'content', content: { type: 'text', text } };
+    });
+    if (!changed) continue;
+    out[i] = { ...out[i], update: { ...u, content } };
+    const n = size(out[i]);
+    total -= sizes[i] - n; sizes[i] = n;
+  }
+  if (total <= limit) return trimmed ? marked(out) : out;
   let drop = 0;
-  while (total > budget && drop < out.length - 1) total -= sizes[drop++];
-  return drop ? out.slice(drop) : out;
+  while (total > budget - marker && drop < out.length - 1) total -= sizes[drop++];
+  const kept = drop ? out.slice(drop) : out;
+  return drop || trimmed ? marked(kept) : kept;
 }
 
 /** The child session a recorded update came from (the bridge tags subagent updates it files under their root). */
@@ -526,12 +535,53 @@ export class Hub extends EventEmitter {
     // the latest command list outlives the event log's trim (attach returns it)
     if (update?.sessionUpdate === 'available_commands_update' && !subagentOf(update)) s.commands = update.availableCommands ?? [];
     const seq = ++s.seq;
-    s.events.push({ seq, update });
-    if (s.events.length > this.maxEvents) s.events.splice(0, s.events.length - this.maxEvents);
+    const entry = this.#logEntry(s, seq, update);
+    s.events.push(entry);
+    if (s.events.length > this.maxEvents) this.#trim(s);
     // During session/load the agent replays history; clients get it in the attach result instead.
     if (s.loading) return;
-    const msg = { op: 'update', agentId: this.id, sessionId: s.sessionId, epoch: s.epoch, seq, update };
+    const msg = { op: 'update', agentId: this.id, sessionId: s.sessionId, epoch: s.epoch, seq, update: entry.phone };
     for (const c of s.subscribers) c.send(msg);
+  }
+
+  /** The update is logged whole; what phones get is made once, here, and its pictures filed for bridge/media. */
+  #logEntry(s, seq, update) {
+    const { update: phone, images } = phoneUpdate(update);
+    for (const { ref, mimeType, data } of images) {
+      const m = s.media.get(ref);
+      if (m) m.uses++;
+      else s.media.set(ref, { mimeType, data, uses: 1 });
+    }
+    return { seq, update, phone, refs: images.map(i => i.ref) };
+  }
+
+  /** Cut the log to maxEvents; a picture goes with the last event that held it. */
+  #trim(s) {
+    for (const { refs } of s.events.splice(0, s.events.length - this.maxEvents)) {
+      for (const ref of refs) {
+        const m = s.media.get(ref);
+        if (m && --m.uses === 0) s.media.delete(ref);
+      }
+    }
+    s.trimmed = true;
+  }
+
+  /**
+   * One slice of a picture's base64, from character `offset`; the phone asks on until it has `total` characters.
+   * Only what the log holds is served: a session this bridge has not attached since it started has nothing.
+   */
+  async media({ sessionId, ref, offset = 0 }) {
+    if (typeof sessionId !== 'string' || !sessionId) throw new RpcError(-32602, 'sessionId required');
+    if (typeof ref !== 'string' || !ref) throw new RpcError(-32602, 'ref required');
+    if (!Number.isInteger(offset) || offset < 0) throw new RpcError(-32602, 'offset must be a non-negative integer');
+    const s = this.sessions.get(sessionId);
+    // a reload empties the log and the replay fills it again
+    if (s?.loading && !s.media.has(ref)) await s.loading.catch(() => {});
+    const m = s?.media.get(ref);
+    if (!m) throw new RpcError(-32004, 'image not available');
+    const total = m.data.length;
+    if (offset >= total) throw new RpcError(-32602, 'offset out of range');
+    return { ref, mimeType: m.mimeType, offset, total, data: m.data.slice(offset, offset + MEDIA_CHUNK) };
   }
 
   /** Subagents of `s` still working. Only ones heard live count: a load's replay can end on a stale "running". */
@@ -694,6 +744,7 @@ export class Hub extends EventEmitter {
         if (s) s.lastActive = Date.now();
         return { ok: true };
       }
+      case 'bridge/media': return this.media(params);
       case 'bridge/browse': return this.browse(params.path);
       case 'bridge/readFile': return this.readFile(params.path, params.maxBytes, params);
       case 'bridge/upload': return this.upload(params);
@@ -863,14 +914,15 @@ export class Hub extends EventEmitter {
     // with ownWrites the load itself may bump "touched": take the baseline after it (local clock, small slack)
     if (!wasLoaded) s.extBaseline = lk ? (lk.ownWrites ? Date.now() + 3000 : lk.now) : null;
     const firstSeq = s.events.length ? s.events[0].seq : s.seq + 1;
-    let reset, events;
+    // only the phone's forms leave the bridge
+    const forPhone = list => list.map(e => ({ seq: e.seq, update: e.phone }));
+    let reset = true, events;
     if (epoch && epoch === s.epoch && sinceSeq >= firstSeq - 1 && sinceSeq <= s.seq) {
-      reset = false;
-      events = fitSnapshot(s.events.filter(e => e.seq > sinceSeq));
-    } else {
-      reset = true;
-      events = fitSnapshot(compactEvents(s.events));
+      const missed = fitSnapshot(forPhone(s.events.filter(e => e.seq > sinceSeq)));
+      // a catch-up never leaves a hole: if some of it would not fit, the phone starts over from a snapshot
+      if (!isTruncationMarker(missed[0])) { reset = false; events = missed; }
     }
+    if (reset) events = fitSnapshot(compactEvents(forPhone(s.events)), SNAPSHOT_BUDGET, { trimmed: s.trimmed });
     this.#subscribe(client, s);
     s.lastActive = Date.now();
     return {

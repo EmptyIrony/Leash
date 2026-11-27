@@ -5,7 +5,9 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { Hub, compactEvents, normalizeUpdate, fitSnapshot } from '../src/hub.mjs';
+import crypto from 'node:crypto';
+import { Hub, compactEvents, normalizeUpdate, fitSnapshot, isTruncationMarker, SNAPSHOT_BUDGET } from '../src/hub.mjs';
+import { imageSize, phoneUpdate, MEDIA_CHUNK } from '../src/media.mjs';
 import { QuotaPoller, normalizeQuota } from '../src/quota.mjs';
 import { Router } from '../src/router.mjs';
 import { createServer } from '../src/server.mjs';
@@ -366,28 +368,343 @@ test('normalizeUpdate drops rawOutput a tool call also has as content', () => {
   assert.equal(bare.rawOutput, 'out', 'kept when it is all there is');
 });
 
-test('fitSnapshot keeps an image-heavy history under the budget, oldest pictures first', () => {
-  const pic = 'A'.repeat(400_000);
-  const ev = [];
-  for (let i = 1; i <= 100; i++) ev.push({ seq: i, update: { sessionUpdate: 'tool_call', toolCallId: 't' + i, title: 'Poll', status: 'completed',
-    content: [{ type: 'content', content: { type: 'text', text: 'shot ' + i } }, { type: 'content', content: { type: 'image', mimeType: 'image/png', data: pic } }] } });
-  ev.push({ seq: 101, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'done' } } });
-  const budget = 10_000_000;
-  const out = fitSnapshot(ev, budget);
-  assert.ok(Buffer.byteLength(JSON.stringify(out)) <= budget);
-  assert.equal(out.length, ev.length, 'no history dropped');
-  assert.equal(out[0].update.content[1].content.type, 'text', 'oldest picture replaced');
-  assert.match(out[0].update.content[1].content.text, /not sent to the phone/);
-  assert.equal(out[99].update.content[1].content.type, 'image', 'newest picture kept');
-  assert.equal(ev[0].update.content[1].content.type, 'image', 'input not mutated');
-  assert.equal(fitSnapshot(ev.slice(-3), budget).length, 3);
-  assert.equal(fitSnapshot(ev.slice(-3), budget)[0], ev[98], 'small histories pass through untouched');
+const MARKER_UPDATE = { sessionUpdate: 'notice', severity: 'info', title: 'Earlier history not shown',
+  description: 'Open the conversation on the computer to see all of it.', _meta: { leash: { synthetic: true, historyTruncated: true } } };
+const bytesOf = v => Buffer.byteLength(JSON.stringify(v));
+
+test('fitSnapshot cuts old tool text first, then drops the start and says so within the budget', () => {
+  assert.equal(SNAPSHOT_BUDGET, 2 * 1024 * 1024);
+  const tools = Array.from({ length: 20 }, (_, i) => ({ seq: i + 1, update: { sessionUpdate: 'tool_call', toolCallId: 't' + i, title: 'Bash', status: 'completed',
+    content: [{ type: 'content', content: { type: 'text', text: 'x'.repeat(100_000) } }] } }));
+  const cut = fitSnapshot(tools, 1_000_000);
+  assert.ok(bytesOf(cut) <= 1_000_000);
+  assert.equal(cut.length, 20, 'cutting was enough: nothing dropped, no marker');
+  assert.ok(!cut.some(isTruncationMarker));
+  assert.match(cut[0].update.content[0].content.text, /more not sent to the phone/);
+  assert.equal(cut.at(-1).update.content[0].content.text.length, 100_000, 'the newest stays whole');
+  assert.equal(tools[0].update.content[0].content.text.length, 100_000, 'input not mutated');
+  assert.equal(fitSnapshot(tools), tools, 'small histories pass through untouched');
+
   // nothing left to shrink: the start goes
-  const texts = Array.from({ length: 50 }, (_, i) => ({ seq: i + 1, update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + i, content: { type: 'text', text: 'x'.repeat(100_000) } } }));
-  const cut = fitSnapshot(texts, 1_000_000);
-  assert.ok(Buffer.byteLength(JSON.stringify(cut)) <= 1_000_000); assert.equal(cut.at(-1).seq, 50);
+  const texts = Array.from({ length: 50 }, (_, i) => ({ seq: i + 1, update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + i, content: { type: 'text', text: 'é'.repeat(50_000) } } }));
+  const dropped = fitSnapshot(texts, 1_000_000);
+  assert.ok(bytesOf(dropped) <= 1_000_000); assert.equal(dropped.at(-1).seq, 50);
+  assert.deepEqual(dropped[0].update, MARKER_UPDATE);
+  assert.ok(Number.isInteger(dropped[0].seq));
+  assert.equal(dropped.filter(isTruncationMarker).length, 1);
+  // the marker counts: at every budget around an exact fit the result stays within it
+  const small = Array.from({ length: 30 }, (_, i) => ({ seq: i + 1, update: { sessionUpdate: 'agent_message_chunk', messageId: 'm' + i, content: { type: 'text', text: 'y'.repeat(100) } } }));
+  for (let budget = 700; budget <= bytesOf(small) + 400; budget++) {
+    for (const trimmed of [false, true]) {
+      const out = fitSnapshot(small, budget, { trimmed });
+      assert.ok(bytesOf(out) <= budget, `${bytesOf(out)} > ${budget}`);
+      assert.equal(isTruncationMarker(out[0]), trimmed || out.length < small.length);
+    }
+  }
+  // a log that had already lost its start is marked even when it all fits
+  assert.deepEqual(fitSnapshot(small.slice(5), SNAPSHOT_BUDGET, { trimmed: true })[0], { seq: 5, update: MARKER_UPDATE });
 });
 
+// ---------------------------------------------------------------- pictures
+/** Distinct, incompressible bytes behind a real PNG header, as base64. */
+function picture(n = 3000, width = 1080, height = 2400) {
+  const head = Buffer.alloc(33);
+  Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').copy(head);
+  head.writeUInt32BE(width, 16); head.writeUInt32BE(height, 20);
+  return Buffer.concat([head, crypto.randomBytes(n)]).toString('base64');
+}
+/** What must not turn up in a frame: a stretch from the random middle of the base64. */
+const needle = b64 => b64.slice(80, 144);
+const decodedSize = b64 => Buffer.from(b64, 'base64').length;
+const fromAgent = (t, sessionId, update) => t.hub.agent.emit('notification', 'session/update', { sessionId, update });
+
+async function fetchImage(c, sessionId, ref) {
+  const chunks = [];
+  let offset = 0, total = Infinity, mimeType;
+  while (offset < total) {
+    const r = await c.call('bridge/media', { sessionId, ref, offset });
+    assert.deepEqual(Object.keys(r).sort(), ['data', 'mimeType', 'offset', 'ref', 'total']);
+    assert.equal(r.ref, ref); assert.equal(r.offset, offset);
+    assert.ok(r.data.length > 0 && r.data.length <= MEDIA_CHUNK);
+    ({ total, mimeType } = r);
+    offset += r.data.length;
+    chunks.push(r.data);
+  }
+  return { mimeType, total, chunks: chunks.length, base64: chunks.join('') };
+}
+
+/** One update of every kind that can hold a picture; returns {updates: [[sessionId, update]], pics}. */
+function pictureUpdates(sid) {
+  const pics = Object.fromEntries(['answer', 'thought', 'tool', 'raw', 'anthropic', 'hookRead', 'hookMcp', 'child', 'message', 'messageChunk', 'resource'].map(k => [k, picture()]));
+  const image = data => ({ type: 'image', mimeType: 'image/png', data });
+  const anthropic = data => ({ type: 'image', source: { type: 'base64', media_type: 'image/png', data } });
+  const child = 'child-' + sid;
+  const updates = [
+    [sid, { sessionUpdate: 'agent_message_chunk', messageId: 'a', content: { ...image(pics.answer), uri: 'file:///a.png' } }],
+    [sid, { sessionUpdate: 'agent_thought_chunk', messageId: 'th', content: image(pics.thought) }],
+    [sid, { sessionUpdate: 'tool_call', toolCallId: 'p1', title: 'Screenshot', status: 'pending' }],
+    [sid, { sessionUpdate: 'tool_call_update', toolCallId: 'p1', status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'shot' } }, { type: 'content', content: image(pics.tool) }] }],
+    // the PostToolUse report of claude-agent-acp: the whole tool result again, a Read's in its own form
+    [sid, { sessionUpdate: 'tool_call_update', toolCallId: 'p1', _meta: { claudeCode: { toolName: 'Read',
+      toolResponse: { type: 'image', file: { base64: pics.hookRead, type: 'image/png' } } } } }],
+    [sid, { sessionUpdate: 'tool_call', toolCallId: 'p2', title: 'Poll', status: 'completed',
+      _meta: { claudeCode: { toolName: 'Poll', toolResponse: { status: 'ok', isAsync: false, media: [[anthropic(pics.hookMcp)]] } } } }],
+    [sid, { sessionUpdate: 'tool_call_update', toolCallId: 'p3', status: 'completed', rawOutput: [{ type: 'text', text: 'raw' }, image(pics.raw), { nested: { deeper: [anthropic(pics.anthropic)] } }] }],
+    [sid, { sessionUpdate: 'tool_call_update', toolCallId: 'p4', status: 'completed',
+      content: [{ type: 'content', content: { type: 'resource', resource: { uri: 'file:///r.png', mimeType: 'image/png', blob: pics.resource } } }] }],
+    [sid, { sessionUpdate: 'subagent_update', sessionId: child, title: 'Look', state: { state: 'running' } }],
+    [child, { sessionUpdate: 'agent_message_chunk', messageId: 'c', content: image(pics.child) }],
+    [child, { sessionUpdate: 'session_message', messageId: 'm-in', senderSessionId: sid, recipientSessionId: child, content: [{ type: 'text', text: 'look' }, image(pics.message)] }],
+    [child, { sessionUpdate: 'session_message_chunk', messageId: 'm-2', content: image(pics.messageChunk) }],
+    [sid, { sessionUpdate: 'subagent_update', sessionId: child, state: { state: 'idle', stopReason: 'end_turn' } }],
+  ];
+  return { updates, pics };
+}
+
+test('pictures leave the bridge only as references: live, catch-up and reset; the log keeps the bytes', async () => {
+  const t = await setup();
+  const c = new Client(t.port), late = new Client(t.port);
+  try {
+    await c.opened; await late.opened;
+    const frames = [];
+    for (const x of [c, late]) x.ws.on('message', d => frames.push(String(d)));
+    const ns = await c.call('session/new', { cwd: t.home });
+    const sid = ns.sessionId;
+    // the phone's own photo: inline to the agent, a reference in the echo
+    const photo = picture(5000, 1200, 1600);
+    await c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'look' }, { type: 'image', mimeType: 'image/png', data: photo }] });
+    const info = await c.wait(m => m.op === 'update' && m.update._meta?.mockImages);
+    assert.deepEqual(info.update._meta.mockImages, [crypto.createHash('sha256').update(photo).digest('hex')], 'the agent got the bytes');
+    const echo = c.msgs.find(m => m.op === 'update' && m.update.content?.type === 'image').update;
+    assert.deepEqual(Object.keys(echo.content).sort(), ['height', 'mimeType', 'ref', 'size', 'type', 'width']);
+    assert.deepEqual([echo.content.width, echo.content.height, echo.content.size, echo.content.mimeType], [1200, 1600, decodedSize(photo), 'image/png']);
+    assert.equal(echo._meta.leash.synthetic, true);
+
+    const before = await c.call('bridge/attach', { sessionId: sid });
+    const { updates, pics } = pictureUpdates(sid);
+    const inputs = JSON.stringify(updates);
+    for (const [id, u] of updates) fromAgent(t, id, u);
+    await c.wait(m => m.op === 'update' && m.update.sessionUpdate === 'subagent_update' && m.update.state?.state === 'idle');
+    assert.equal(JSON.stringify(updates), inputs, 'nothing changed in place');
+    const live = c.msgs.filter(m => m.op === 'update' && m.seq > before.lastSeq).map(m => m.update);
+    const catchUp = await late.call('bridge/attach', { sessionId: sid, epoch: before.epoch, sinceSeq: before.lastSeq });
+    assert.equal(catchUp.reset, false);
+    assert.deepEqual(catchUp.events.map(e => e.update), live, 'the catch-up has what went out live');
+    const snap = await late.call('bridge/attach', { sessionId: sid });
+    assert.equal(snap.reset, true);
+    assert.ok(!snap.events.some(isTruncationMarker), 'nothing is missing, no marker');
+    const loaded = await late.call('session/load', { sessionId: sid });
+    assert.deepEqual(loaded.events, snap.events);
+
+    for (const [name, data] of Object.entries({ ...pics, photo })) {
+      assert.ok(!frames.some(f => f.includes(needle(data))), 'no bytes of ' + name + ' in any frame');
+    }
+    // and the references are there, in each place, in each of the three forms of delivery
+    const refOf = data => 'm_' + crypto.createHash('sha256').update(data).digest('base64url').slice(0, 32);
+    const full = data => ({ type: 'image', mimeType: 'image/png', ref: refOf(data), size: decodedSize(data), width: 1080, height: 2400 });
+    for (const events of [live, snap.events.map(e => e.update)]) {
+      const text = JSON.stringify(events);
+      for (const k of ['answer', 'thought', 'tool', 'raw', 'anthropic', 'child', 'message', 'messageChunk', 'resource']) assert.ok(text.includes(refOf(pics[k])), k);
+      const find = pred => events.find(pred);
+      assert.deepEqual(find(u => u.messageId === 'a').content, { ...full(pics.answer), uri: 'file:///a.png' }, 'other keys kept');
+      assert.deepEqual(find(u => u.toolCallId === 'p3').rawOutput[2].nested.deeper[0], full(pics.anthropic), 'the Anthropic form is replaced whole');
+      assert.deepEqual(find(u => u.messageId === 'm-in').content[1], full(pics.message));
+      assert.equal(find(u => u.messageId === 'm-in')._meta.leash.subagent, 'child-' + sid);
+      assert.deepEqual(find(u => u.toolCallId === 'p4').content[0].content, { ...full(pics.resource), uri: 'file:///r.png' });
+      assert.deepEqual(find(u => u.toolCallId === 'p2')._meta.claudeCode, { toolName: 'Poll', toolResponse: { status: 'ok', isAsync: false } });
+    }
+    assert.deepEqual(snap.events.find(e => e.update.toolCallId === 'p1').update.content[1].content, full(pics.tool));
+    assert.deepEqual(live.find(u => u.toolCallId === 'p1' && u._meta)._meta, { claudeCode: { toolName: 'Read' } });
+
+    // the log still has everything, and bridge/media serves it, subagents' under the root
+    const s = t.hub.sessions.get(sid);
+    const logged = JSON.stringify(s.events.map(e => e.update));
+    for (const [name, data] of Object.entries({ ...pics, photo })) assert.ok(logged.includes(data), 'log keeps ' + name);
+    for (const k of ['tool', 'child', 'message', 'anthropic', 'resource']) assert.equal((await fetchImage(c, sid, refOf(pics[k]))).base64, pics[k], k);
+    // what only the dropped tool report held is not filed
+    await assert.rejects(c.call('bridge/media', { sessionId: sid, ref: refOf(pics.hookRead) }), e => e.code === -32004);
+    await assert.rejects(c.call('bridge/media', { sessionId: 'child-' + sid, ref: refOf(pics.child) }), e => e.code === -32004);
+  } finally { c.close(); late.close(); t.done(); }
+});
+
+test('replayed history is stripped and served; the reference is the same after a reload; bridge/media never loads', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    await assert.rejects(c.call('bridge/media', { sessionId: 'pics-1', ref: 'm_x' }), e => e.code === -32004);
+    assert.ok(!t.hub.sessions.has('pics-1'));
+    const a = await c.call('bridge/attach', { sessionId: 'pics-1' });
+    const img = a.events[0].update.content;
+    assert.equal(img.data, undefined);
+    assert.equal(img.width, undefined, 'size unknown: both left out'); assert.equal(img.height, undefined);
+    assert.equal((await fetchImage(c, 'pics-1', img.ref)).base64, 'cmVwbGF5ZWQtcGljdHVyZQ==');
+    t.hub.sessions.get('pics-1').loaded = false;
+    const b = await c.call('bridge/attach', { sessionId: 'pics-1' });
+    assert.notEqual(b.epoch, a.epoch);
+    assert.deepEqual(b.events[0].update.content, img);
+    assert.equal(t.hub.sessions.get('pics-1').media.get(img.ref).uses, 1, 'the reload started the index over');
+  } finally { c.close(); t.done(); }
+});
+
+test('bridge/media: a large picture comes in slices that join byte for byte; bad requests are refused; routed by session', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-home-'));
+  const mk = id => new Hub({ id, agentCommand: process.execPath, agentArgs: [path.join(here, 'mock-agent.mjs')], log: () => {}, home });
+  const hubs = [mk('agy'), mk('claude')];
+  const router = new Router({ hubs, log: () => {} });
+  const server = createServer({ hub: router, token: TOKEN, log: () => {} });
+  const srv = await server.listen('127.0.0.1', 0);
+  await Promise.all(hubs.map(h => h.startAgent()));
+  const c = new Client(srv.address().port);
+  try {
+    await c.opened;
+    const ns = await c.call('session/new', { cwd: home, agent: 'claude' });
+    const sid = ns.sessionId;
+    const big = picture(700_000);
+    await c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'image', mimeType: 'image/png', data: big }], agent: 'claude' });
+    const { ref, size } = (await c.wait(m => m.op === 'update' && m.update.content?.type === 'image')).update.content;
+    assert.equal(size, decodedSize(big));
+    // no agent given: the router knows whose session it is; a wrong guess does not mislead it either
+    const got = await fetchImage(c, sid, ref);
+    assert.equal(got.chunks, Math.ceil(big.length / MEDIA_CHUNK)); assert.ok(got.chunks >= 3);
+    assert.equal(got.total, big.length); assert.equal(got.mimeType, 'image/png');
+    assert.equal(got.base64, big);
+    assert.ok(Buffer.from(got.base64, 'base64').equals(Buffer.from(big, 'base64')));
+    const media = p => c.call('bridge/media', { sessionId: sid, ref, ...p });
+    assert.equal((await media({ agent: 'agy' })).offset, 0, 'offset defaults to 0');
+    assert.equal((await media({ offset: big.length - 1 })).data, big.slice(-1));
+    for (const offset of [-1, 1.5, '0', big.length, big.length + MEDIA_CHUNK]) await assert.rejects(media({ offset }), e => e.code === -32602, 'offset ' + offset);
+    for (const bad of [undefined, '', 7]) await assert.rejects(media({ ref: bad }), e => e.code === -32602, 'ref ' + bad);
+    await assert.rejects(c.call('bridge/media', { ref }), e => e.code === -32602);
+    await assert.rejects(media({ ref: 'm_unknown' }), e => e.code === -32004);
+    await assert.rejects(c.call('bridge/media', { sessionId: 'nope', ref, agent: 'claude' }), e => e.code === -32004);
+    await assert.rejects(c.call('bridge/media', { sessionId: 'nope', ref }), e => e.code === -32004);
+  } finally { c.close(); router.stop(); server.close(); }
+});
+
+test('maxEvents: a trimmed log marks its snapshot, forgets trimmed pictures and turns a short catch-up into a reset', async () => {
+  const t = await setup({ maxEvents: 4 });
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const sid = (await c.call('session/new', { cwd: t.home })).sessionId;
+    const once = picture(), twice = picture();
+    const chunk = (messageId, data) => ({ sessionUpdate: 'agent_message_chunk', messageId, content: { type: 'image', mimeType: 'image/png', data } });
+    fromAgent(t, sid, chunk('1', once));
+    fromAgent(t, sid, chunk('2', twice));
+    const full = await c.call('bridge/attach', { sessionId: sid });
+    assert.ok(!full.events.some(isTruncationMarker));
+    const [refOnce, refTwice] = full.events.map(e => e.update.content.ref);
+    fromAgent(t, sid, chunk('3', twice));
+    for (const id of ['4', '5', '6']) fromAgent(t, sid, { sessionUpdate: 'agent_message_chunk', messageId: id, content: { type: 'text', text: id } });
+    const s = t.hub.sessions.get(sid);
+    assert.equal(s.events[0].seq, 3);
+    await assert.rejects(c.call('bridge/media', { sessionId: sid, ref: refOnce }), e => e.code === -32004);
+    assert.equal((await fetchImage(c, sid, refTwice)).base64, twice, 'still held by a later event');
+    assert.deepEqual([...s.media.keys()], [refTwice]);
+    const a = await c.call('bridge/attach', { sessionId: sid });
+    assert.deepEqual(a.events[0], { seq: 2, update: MARKER_UPDATE });
+    assert.equal(a.events.length, 5);
+    // everything after sinceSeq is still logged: an ordinary catch-up, unmarked
+    const ok = await c.call('bridge/attach', { sessionId: sid, epoch: a.epoch, sinceSeq: 2 });
+    assert.equal(ok.reset, false); assert.deepEqual(ok.events.map(e => e.seq), [3, 4, 5, 6]);
+    const gap = await c.call('bridge/attach', { sessionId: sid, epoch: a.epoch, sinceSeq: 1 });
+    assert.equal(gap.reset, true); assert.ok(isTruncationMarker(gap.events[0]));
+  } finally { c.close(); t.done(); }
+});
+
+test('a catch-up that cannot carry everything becomes a marked reset; one that only needs text cut stays a catch-up', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const sid = (await c.call('session/new', { cwd: t.home })).sessionId;
+    const first = await c.call('bridge/attach', { sessionId: sid });
+    const long = 'z'.repeat(300_000);
+    for (let i = 0; i < 10; i++) fromAgent(t, sid, { sessionUpdate: 'tool_call', toolCallId: 'b' + i, title: 'Bash', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: long } }] });
+    const cut = await c.call('bridge/attach', { sessionId: sid, epoch: first.epoch, sinceSeq: first.lastSeq });
+    assert.equal(cut.reset, false); assert.equal(cut.events.length, 10); assert.ok(bytesOf(cut.events) <= SNAPSHOT_BUDGET);
+    assert.equal(t.hub.sessions.get(sid).events.at(-10).update.content[0].content.text.length, long.length);
+    // message text is never cut, so these cannot all go
+    for (let i = 0; i < 10; i++) fromAgent(t, sid, { sessionUpdate: 'agent_message_chunk', messageId: 'big' + i, content: { type: 'text', text: long } });
+    const reset = await c.call('bridge/attach', { sessionId: sid, epoch: cut.epoch, sinceSeq: cut.lastSeq });
+    assert.equal(reset.reset, true);
+    assert.deepEqual(reset.events[0].update, MARKER_UPDATE);
+    assert.ok(bytesOf(reset.events) <= SNAPSHOT_BUDGET);
+    assert.equal(reset.events.at(-1).update.messageId, 'big9');
+    assert.equal(reset.lastSeq, t.hub.sessions.get(sid).seq);
+  } finally { c.close(); t.done(); }
+});
+
+test('bridge/unqueue still returns a queued picture inline, and requeue takes it back', async () => {
+  const t = await setup();
+  const c = new Client(t.port);
+  try {
+    await c.opened;
+    const sid = (await c.call('session/new', { cwd: t.home })).sessionId;
+    const p1 = c.call('session/prompt', { sessionId: sid, prompt: [{ type: 'text', text: 'slow' }] });
+    await c.wait(m => m.op === 'turn' && m.running);
+    const data = picture();
+    const prompt = [{ type: 'text', text: 'with photo' }, { type: 'image', mimeType: 'image/png', data }];
+    const q = await c.call('session/prompt', { sessionId: sid, prompt });
+    await c.call('session/cancel', { sessionId: sid });
+    await p1;
+    const back = await c.call('bridge/unqueue', { sessionId: sid, id: q.id });
+    assert.deepEqual(back.prompt, prompt);
+    await c.call('bridge/requeue', { sessionId: sid, id: q.id, prompt: back.prompt, index: 0 });
+    await c.call('session/prompt', { sessionId: sid, prompt: [] });
+    const sent = await c.wait(m => m.op === 'update' && m.update._meta?.mockImages);
+    assert.deepEqual(sent.update._meta.mockImages, [crypto.createHash('sha256').update(data).digest('hex')]);
+  } finally { c.close(); t.done(); }
+});
+
+// header-only images, one per format and variant
+const u16be = n => [n >> 8 & 255, n & 255], u16le = n => [n & 255, n >> 8 & 255], u24le = n => [...u16le(n), n >> 16 & 255];
+const u32be = n => [...u16be(n >>> 16), ...u16be(n & 0xffff)], u32le = n => [...u16le(n & 0xffff), ...u16le(n >>> 16)];
+const ascii = s => [...Buffer.from(s, 'latin1')];
+const seg = (marker, body) => [0xff, marker, ...u16be(body.length + 2), ...body];
+const sof = (marker, w, h) => seg(marker, [8, ...u16be(h), ...u16be(w), 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+function exif(orientation, le) {
+  const n16 = le ? u16le : u16be, n32 = le ? u32le : u32be;
+  return seg(0xe1, [...ascii('Exif\0\0'), ...ascii(le ? 'II' : 'MM'), ...n16(42), ...n32(8), ...n16(2),
+    ...n16(0x0100), ...n16(3), ...n32(1), ...n16(640), 0, 0,
+    ...n16(0x0112), ...n16(3), ...n32(1), ...n16(orientation), 0, 0, ...n32(0),
+    // a thumbnail with a frame header of its own, which must not be taken for the picture's
+    0xff, 0xd8, ...sof(0xc0, 16, 12)]);
+}
+const jpeg = (...parts) => Buffer.from([0xff, 0xd8, ...seg(0xe0, [...ascii('JFIF\0'), 1, 1, 0, 0, 1, 0, 1, 0, 0]), ...parts.flat(), 0xff, 0xda, 0, 2]);
+const webp = (kind, body) => Buffer.from([...ascii('RIFF'), ...u32le(body.length + 12), ...ascii('WEBP'), ...ascii(kind), ...u32le(body.length), ...body]);
+
+test('imageSize reads PNG, JPEG (with EXIF rotation), GIF and WebP headers; anything else is unknown', () => {
+  assert.deepEqual(imageSize(Buffer.from(picture(10, 70000, 3), 'base64')), { width: 70000, height: 3 });
+  for (const v of ['GIF87a', 'GIF89a']) assert.deepEqual(imageSize(Buffer.from([...ascii(v), ...u16le(320), ...u16le(200), 0, 0, 0])), { width: 320, height: 200 });
+  for (const marker of [0xc0, 0xc2]) assert.deepEqual(imageSize(jpeg(seg(0xc4, [0, 1, 2, 3, 4, 5, 6]), sof(marker, 4032, 3024))), { width: 4032, height: 3024 });
+  for (const le of [true, false]) for (let o = 1; o <= 8; o++) {
+    assert.deepEqual(imageSize(jpeg(exif(o, le), sof(0xc0, 4032, 3024))), o >= 5 ? { width: 3024, height: 4032 } : { width: 4032, height: 3024 }, `orientation ${o} le=${le}`);
+  }
+  assert.deepEqual(imageSize(jpeg(seg(0xe1, ascii('http://ns.adobe.com/xap/1.0/\0<x/>')), exif(6, true), [0xff], sof(0xc0, 8, 6))), { width: 6, height: 8 }, 'XMP APP1 and fill bytes');
+  assert.deepEqual(imageSize(webp('VP8 ', [0x10, 0, 0, 0x9d, 0x01, 0x2a, ...u16le(550), ...u16le(368 | 0x4000), 0, 0])), { width: 550, height: 368 });
+  assert.deepEqual(imageSize(webp('VP8L', [0x2f, ...u32le((386 - 1) | ((395 - 1) << 14)), 0])), { width: 386, height: 395 });
+  assert.deepEqual(imageSize(webp('VP8X', [0x10, 0, 0, 0, ...u24le(20000 - 1), ...u24le(16384 - 1)])), { width: 20000, height: 16384 });
+  const unknown = [Buffer.alloc(0), Buffer.from('BM' + 'x'.repeat(60)), Buffer.from('<svg width="1" height="1"/>'), Buffer.from(picture(10, 0, 5), 'base64'),
+    jpeg(), jpeg(exif(6, true)), webp('ANIM', Array(20).fill(0)), crypto.randomBytes(64).fill(0, 0, 1)];
+  for (const b of unknown) assert.equal(imageSize(b), null);
+  // cut short or damaged anywhere: unknown or a size, never a throw
+  for (const whole of [jpeg(exif(6, true), sof(0xc0, 40, 30)), jpeg(exif(8, false), sof(0xc0, 40, 30)), webp('VP8X', Array(10).fill(1)), Buffer.from(picture(10), 'base64')]) {
+    for (let n = 0; n <= whole.length; n++) assert.doesNotThrow(() => imageSize(whole.subarray(0, n)), 'cut at ' + n);
+    for (let i = 0; i < whole.length; i++) { const bad = Buffer.from(whole); bad[i] = 0xff; assert.doesNotThrow(() => phoneUpdate({ content: { type: 'image', data: bad.toString('base64') } }), 'byte ' + i); }
+  }
+});
+
+test('phoneUpdate leaves alone what holds no picture bytes', () => {
+  for (const u of [{ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+    { sessionUpdate: 'user_message_chunk', content: { type: 'image', mimeType: '', data: '', uri: 'https://example.com/x.png' } },
+    { sessionUpdate: 'tool_call', rawInput: { type: 'image', source: { type: 'url', url: 'https://example.com/x.png' } }, _meta: { claudeCode: { toolName: 'X' } } }]) {
+    const r = phoneUpdate(u);
+    assert.equal(r.update, u); assert.deepEqual(r.images, []);
+  }
+});
 
 // ---------------------------------------------------------------- "open elsewhere" lock
 function lockState() {

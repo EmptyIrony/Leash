@@ -1,5 +1,6 @@
 // A fake `agy acp` that speaks enough ACP v1 to exercise the bridge.
 import readline from 'node:readline';
+import crypto from 'node:crypto';
 
 const sessions = new Map(); // id -> {cwd, history: [update]}
 let n = 0; let pid = 1000;
@@ -46,6 +47,11 @@ async function handle(m) {
     case 'session/list': return r({ sessions: [...sessions].filter(([, s]) => p.cwd == null ? !s.cwdPastHead : s.cwd === p.cwd)
       .map(([id, s]) => ({ sessionId: id, cwd: s.cwd, title: s.title ?? null, updatedAt: s.updatedAt ?? '2026-11-23T00:00:00Z' })) });
     case 'session/load': {
+      // a conversation with a picture in its replayed history, left out of session/list
+      if (p.sessionId === 'pics-1') {
+        update(p.sessionId, { sessionUpdate: 'user_message_chunk', content: { type: 'image', mimeType: 'image/png', data: 'cmVwbGF5ZWQtcGljdHVyZQ==' } });
+        return r({ configOptions: configOptions() });
+      }
       const s = sessions.get(p.sessionId); if (!s) return e(-32602, 'no such session');
       const hist = s.history.slice(); s.history = [];
       for (const u of hist) update(p.sessionId, u);
@@ -105,7 +111,9 @@ async function prompt(m, p, r) {
       if (text.includes('stubborn')) await sleep(300);   // ignores cancel and ends normally
       if (text.includes('slow')) { for (let i = 0; i < 40 && !cancelled.has(sid); i++) await sleep(25); if (cancelled.has(sid)) return r({ stopReason: 'cancelled' }); }
       for (const s of steered.get(sid).splice(0)) update(sid, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' steered: ' + s } });
-      update(sid, { sessionUpdate: 'session_info_update', title: 'Chat: ' + text.slice(0, 20), _meta: { mockPrompt: text } });
+      // what reached the agent of each picture in the prompt
+      const mockImages = p.prompt?.filter(b => b.type === 'image').map(b => crypto.createHash('sha256').update(b.data ?? '').digest('hex'));
+      update(sid, { sessionUpdate: 'session_info_update', title: 'Chat: ' + text.slice(0, 20), _meta: { mockPrompt: text, ...(mockImages?.length ? { mockImages } : {}) } });
       return r({ stopReason: 'end_turn', usage: { inputTokens: 1000, outputTokens: 40, thoughtTokens: 10, totalTokens: 1050 } });
 }
 

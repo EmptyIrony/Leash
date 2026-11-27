@@ -276,7 +276,7 @@ Names that come from the bridge or agents (modes, models, tool titles) are shown
 JSON text frames on `ws://<bridge>:8787/ws` with `Authorization: Bearer <token>` (and `X-Leash-Client: ios|android`, used in the bridge log).
 
 * phone → bridge: `{op:"call", id, method, params}` (ACP methods like `session/new|list|prompt|cancel|set_config_option`,
-  plus `bridge/attach|detach|browse|readFile|restartAgent|shell|btw|unqueue|requeue`), `{op:"reply", key, result}` to answer a permission/elicitation.
+  plus `bridge/attach|detach|media|browse|readFile|restartAgent|shell|btw|unqueue|requeue`), `{op:"reply", key, result}` to answer a permission/elicitation.
 * bridge → phone: `ready`, `result`, `update` (`session/update` with `epoch`+`seq`), `request`/`resolved`
   (permission & questions, broadcast to every device), `turn` (running/idle), `shell` (a "!" command running/done), `agent` (agent process state),
   `queue` (messages waiting for the running turn to end).
@@ -286,7 +286,17 @@ JSON text frames on `ws://<bridge>:8787/ws` with `Authorization: Bearer <token>`
   `interrupt:true` queues it and cancels the turn, so it goes out right after (an empty `prompt` sends just the queue). A plain
   `session/cancel` keeps the queue; it goes out ahead of the next prompt, or `bridge/unqueue {sessionId, id}` takes one back
   (returns its `prompt` blocks); `bridge/requeue {sessionId, id, prompt, index}` puts it back (the phone's Undo). `bridge/attach` returns the `queue`; agent summaries carry `steering`, `turbo` and `btw`.
-* `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot.
+* `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot, at most
+  2 MiB of JSON (long tool text is cut to 16 KB, oldest first, then the start is dropped; the newest event always stays). A
+  snapshot missing earlier history (that, or the bridge's own event cap) starts with a `notice` carrying
+  `_meta.leash.historyTruncated`. A catch-up never drops events: if it would have to, the answer is a snapshot (`reset: true`).
+* Pictures: no update sent to a phone carries image bytes. An image block arrives as `{type:"image", mimeType, ref, size,
+  width?, height?}` (`ref` is a hash of the base64; `size` is in bytes; width/height as displayed, for PNG, JPEG, GIF, WebP),
+  and the phone fetches it once it is on screen. `bridge/media {sessionId, ref, offset?}` (the root conversation's id, also for
+  subagents) returns `{ref, mimeType, offset, total, data}`: at most 131072 characters of the base64 from `offset`; ask again
+  at `offset + data.length` until `total`, then decode the whole string. `-32602` bad params, `-32004` not available (not
+  attached since the bridge started, or trimmed from its log). Prompts, and the `prompt` that `bridge/unqueue` returns,
+  still carry images inline.
 * `bridge/readFile {path, sessionId?, mode?, maxBytes?}`: text (default, first 512 KB) or `mode: "base64"` (whole file as
   `data`, ≤ 32 MB, else `-32007`); a relative path is taken from the conversation's folder. Reads stay under `$HOME`.
 * `bridge/noticed {key}`: the phone alerted about this pending request itself (Live Activity / local notification), so Bark skips it.
