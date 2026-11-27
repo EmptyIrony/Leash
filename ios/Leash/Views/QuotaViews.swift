@@ -35,6 +35,9 @@ struct QuotaSheet: View {
                 }
                 .padding(16)
             }
+            .scrollContentBackground(.hidden)
+            .background { SpaceBackground(stars: false) }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .navigationTitle("Quota")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -85,7 +88,7 @@ struct PoolCard: View {
     let pool: QuotaPool
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(pool.label).font(.headline).fontWidth(.expanded)
+            Text(pool.label).font(.headline)
             ForEach(pool.buckets) { b in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {

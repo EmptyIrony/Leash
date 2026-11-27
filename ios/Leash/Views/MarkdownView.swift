@@ -379,19 +379,13 @@ private struct MarkdownBlockView: View, Equatable {
             }
             .padding(.vertical, 2)
         case .code(let c, let lang):
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(lang.isEmpty ? "code" : lang).font(.caption2).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { UIPasteboard.general.string = c; Haptics.impact(.light, intensity: 0.6) } label: { Image(systemName: "doc.on.doc").font(.caption2) }
-                }
-                .padding(.horizontal, 10).padding(.top, 6)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    reveal(Text(c).font(.system(size: 13, design: .monospaced))).foregroundStyle(Theme.textPrimary).lineSpacing(2).fixedSize(horizontal: true, vertical: false).padding(10)
-                }
+            CodeBlockView(code: c, lang: lang) {
+                reveal(Text(c).font(.system(size: 13, design: .monospaced)))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(10)
             }
-            .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
             .opacity(chrome)
         case .rule:
             Rectangle().fill(Theme.hairline).frame(height: 1).padding(.vertical, 4).opacity(whole)
@@ -407,6 +401,60 @@ private struct MarkdownBlockView: View, Equatable {
             }
             .opacity(whole)
         }
+    }
+}
+
+/// Fenced code block with horizontal scroll-edge fades only on edges that actually overflow.
+private struct CodeBlockView<Content: View>: View {
+    let code: String
+    let lang: String
+    @ViewBuilder let content: () -> Content
+
+    private struct EdgeOverflow: Equatable {
+        var leading = false
+        var trailing = false
+    }
+
+    @State private var overflow = EdgeOverflow()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(lang.isEmpty ? "code" : lang).font(.caption2).foregroundStyle(.secondary)
+                Spacer()
+                Button { UIPasteboard.general.string = code; Haptics.impact(.light, intensity: 0.6) } label: { Image(systemName: "doc.on.doc").font(.caption2) }
+            }
+            .padding(.horizontal, 10).padding(.top, 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                content()
+            }
+            .onScrollGeometryChange(for: EdgeOverflow.self) { g in
+                let hasOverflow = g.contentSize.width > g.containerSize.width + 1
+                let visibleLeading = g.contentOffset.x + g.contentInsets.leading
+                let visibleTrailing = visibleLeading + g.containerSize.width
+                return EdgeOverflow(
+                    leading: hasOverflow && visibleLeading > 1,
+                    trailing: hasOverflow && visibleTrailing < g.contentSize.width - 1
+                )
+            } action: { _, next in
+                if overflow != next { overflow = next }
+            }
+            .mask {
+                HStack(spacing: 0) {
+                    if overflow.leading {
+                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 18)
+                    }
+                    Rectangle().fill(.black)
+                    if overflow.trailing {
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                            .frame(width: 24)
+                    }
+                }
+            }
+        }
+        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous).stroke(Theme.hairline, lineWidth: 1))
     }
 }
 

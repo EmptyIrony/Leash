@@ -63,7 +63,7 @@ enum LeashPalette {
     static let danger = PaletteColor(light: 0xD43A3A, dark: 0xFF6B6B)
     static let turbo = PaletteColor(light: 0xC0267E, dark: 0xFF5CA8)
     static let codeInk = PaletteColor(light: 0x3D41A8, dark: 0xB9BDFF)
-    static let codeBg = PaletteColor(light: 0x4B50E6, dark: 0x8088FF, lightAlpha: 0.07, darkAlpha: 0.12)
+    static let codeBg = PaletteColor(light: 0x4B5080, dark: 0x949AB8, lightAlpha: 0.06, darkAlpha: 0.10)
     /// "!" shell mode (composer, command bubbles).
     static let shell = PaletteColor(light: 0x0F7B6C, dark: 0x5EE6C8)
 }

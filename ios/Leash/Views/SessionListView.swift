@@ -128,7 +128,7 @@ struct SessionListView: View {
         .onChange(of: expanded) { _, ids in if expansionLoaded { expandedRaw = ids.sorted().joined(separator: "\n") } }
         .scrollContentBackground(.hidden)
         .background { SpaceBackground() }
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: [.top, .bottom])
         .refreshable { await model.refreshSessions() }
         .overlay {
             if searching && filtered.isEmpty {
