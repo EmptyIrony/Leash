@@ -477,3 +477,11 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
   changes: the subagent screen and the side-question composer. The keyboard spacing is still unverified (no keyboard
   drawn on the emulator).
 
+## Background keep-alive: decided on leaving
+
+Replaces the 3-minute grace described under the notifications phase (and the "turn started on the computer" known issue
+there). Leaving the app with any running turn (wherever it was started, subagents included) or waiting request keeps the
+foreground service until all of them are done; then, after a 15 s settle, the service stops and the link is released.
+Leaving with nothing running lets go after the same 15 s. Work that appears after that is not picked up. On screen the
+service still runs only for turns this phone started and live requests; for other work the background notification says
+just "Connected to the bridge". Not run on a device.

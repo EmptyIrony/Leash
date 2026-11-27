@@ -23,7 +23,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Runs the foreground service ([LeashService]) by [BackgroundPolicy], and keeps its ongoing notification current: it follows the
- * turns this phone started and the requests that arrived live. Everything runs on the main thread (the model's scope).
+ * turns this phone started and the requests that arrived live (other work the policy stays for shows as just connected).
+ * Everything runs on the main thread (the model's scope).
  * The notification text only changes on state changes; the elapsed time is the system's chronometer, so nothing ticks here.
  */
 class BackgroundController(
@@ -37,7 +38,7 @@ class BackgroundController(
     /** what the ongoing notification shows (null: only listening) */
     var content: OngoingContent? = null
         private set
-    private var leftAtMs: Long? = null
+    private val policy = BackgroundPolicy()
     private var service: LeashService? = null
     /** a start was requested and the service has not been destroyed since */
     private var requested = false
@@ -45,7 +46,6 @@ class BackgroundController(
     private var blocked = false
     /** what the ongoing notification shows right now, so it is only posted again when it changed */
     private var shown: OngoingContent? = null
-    private var recheck: Job? = null
     private var release: Job? = null
 
     fun start() {
@@ -71,8 +71,8 @@ class BackgroundController(
 
     /** The app came on screen, or left it ([leaving] false: only a configuration change, the screen is coming right back). */
     fun sceneChanged(active: Boolean, leaving: Boolean = true) {
-        if (active) { leftAtMs = null; blocked = false; release?.cancel(); release = null }
-        else if (leaving) leftAtMs = Clock.now()
+        if (active) { policy.returned(); blocked = false; cancelRelease() }
+        else if (leaving) model.state.value.let { policy.left(it.keepAlive, it.hasWork) }
         evaluate()
     }
 
@@ -91,21 +91,31 @@ class BackgroundController(
         tracker.reconcile(s.running)
         attention.keys.retainAll(s.pending.keys)
         content = OngoingFocus.pick(tracker.all, attention.values.toList(), s::agentLabel, s::conversationTitle)
-        val decision = BackgroundPolicy.decide(s.keepAlive, model.sceneActive, content != null, leftAtMs, Clock.now())
-        recheck?.cancel(); recheck = null
-        if (decision.run) {
-            release?.cancel(); release = null
-            startService()
-            if (service != null && content != shown) notifyOngoing()
-            decision.recheckAtMs?.let { at -> recheck = scope.launch { delay((at - Clock.now()).coerceAtLeast(0)); evaluate() } }
-        } else {
-            stopService()
-            // nothing needs the connection and Leash is off screen: let go of it once the last calls have finished
-            if (!model.sceneActive && release == null) {
-                release = scope.launch { delay(BackgroundPolicy.RELEASE_MS); release = null; model.releaseConnection() }
+        when (policy.decide(s.keepAlive, model.sceneActive, content != null, s.hasWork)) {
+            BackgroundPolicy.Action.Run -> {
+                startService()
+                // refused from the background: no service to stay with, so the connection goes too
+                if (blocked && !model.sceneActive) settle() else cancelRelease()
             }
+            BackgroundPolicy.Action.Stop -> { cancelRelease(); stopService() }
+            BackgroundPolicy.Action.Settle -> settle()
+        }
+        // also while settling: the service is still up then
+        if (requested && service != null && content != shown) notifyOngoing()
+    }
+
+    private fun settle() {
+        if (release != null) return
+        release = scope.launch {
+            delay(BackgroundPolicy.SETTLE_MS)
+            release = null
+            policy.released()
+            stopService()
+            model.releaseConnection()
         }
     }
+
+    private fun cancelRelease() { release?.cancel(); release = null }
 
     private fun notifyOngoing() {
         try { NotificationManagerCompat.from(app).notify(LeashNotifier.ONGOING_ID, ongoingNotification()) } catch (_: SecurityException) { /* permission gone */ }

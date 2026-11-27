@@ -233,7 +233,7 @@
     <string name="notif_open_to_answer">Open Leash to answer.</string>
     <string name="notif_hidden_title">Leash needs you</string>
     <string name="notif_connected_title">Connected to the bridge</string>
-    <string name="notif_connected_text">Leash keeps listening for a little while after you leave</string>
+    <string name="notif_connected_text">Leash stays connected until the work is done</string>
     <string name="notif_others">+%1$d more</string>
     <!-- notification settings -->
     <string name="notifications_section">Notifications</string>
@@ -243,7 +243,7 @@
     <string name="allow_notifications">Allow notifications</string>
     <string name="notification_settings">Notification settings</string>
     <string name="keep_alive">Keep running while an agent works</string>
-    <string name="keep_alive_detail">Shows an ongoing notification and keeps the connection to the bridge alive after you leave the app, so approvals and results reach you.</string>
+    <string name="keep_alive_detail">If something is still running when you leave the app, shows an ongoing notification and stays connected to the bridge until all of it is done, so approvals and results reach you.</string>
 
     <!-- file viewer -->
     <string name="file_wrap">Wrap lines</string>

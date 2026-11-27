@@ -192,8 +192,9 @@ Kotlin, Jetpack Compose, Material 3 with Leash's own design system (`android/DES
 parity with the iPhone app minus the watch; no Google Play Services or FCM (sideloaded APK). Plan, phase log and known issues: `android/PLAN.md`, `android/PROGRESS.md`.
 
 Replacements for the Apple-only surfaces:
-* **Foreground service** instead of BackgroundAudio: keeps the WebSocket alive while a turn this phone started runs, while a request is pending, and for a 3-minute
-  grace after leaving the app (Settings → *Keep running while an agent works*, default on; off = no service and no ongoing notification).
+* **Foreground service** instead of BackgroundAudio: keeps the WebSocket alive while a turn this phone started runs or a request is pending. Leaving the app
+  while anything runs on the bridge (wherever it was started) keeps it until all of that is done; leaving with nothing running lets go after 15 s
+  (Settings → *Keep running while an agent works*, default on; off = no service and no ongoing notification).
 * **Local notifications** instead of Live Activity: an ongoing notification for a running turn, a high-importance *Needs you* channel for requests (Allow / Deny
   buttons answer without opening the app, questions open the chat) and a *Turn finished* channel; each alert is followed by `bridge/noticed` so Bark skips it.
   `POST_NOTIFICATIONS` is asked once, at the first turn. Deep links: `leash://pair`, `leash://session?id=…&agent=…`.

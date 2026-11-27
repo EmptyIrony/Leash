@@ -3,7 +3,7 @@ package dev.leash.personal.core
 /** A conversation whose turn this phone started (ios LiveActivityController.Tracked). */
 data class TrackedTurn(val sessionId: String, val agent: String, val title: String, val startedAtMs: Long)
 
-/** The turns this phone started and that are still going. Only these keep the app running in the background and get the ongoing notification. */
+/** The turns this phone started and that are still going; the ongoing notification follows them. */
 class TurnTracker {
     private val turns = LinkedHashMap<String, TrackedTurn>()
     val all: List<TrackedTurn> get() = turns.values.toList()
@@ -68,25 +68,42 @@ object OngoingFocus {
     }
 }
 
-/** Whether the foreground service that keeps the connection alive should run. */
-object BackgroundPolicy {
-    /** how long the connection stays up after you leave the app with nothing running */
-    const val GRACE_MS = 180_000L
-    /** how long the connection stays up after the service is no longer needed, so the last calls (noticed, an answer) can finish */
-    const val RELEASE_MS = 15_000L
+/**
+ * Whether the foreground service that keeps the connection alive should run. Leaving the app decides it: with work still
+ * going on the bridge (a running turn, wherever it was started, or a waiting request) Leash stays until all of it is done,
+ * otherwise it lets go. Work that only appears after Leash has let go does not bring the service back.
+ */
+class BackgroundPolicy {
+    enum class Action {
+        /** the service runs */
+        Run,
+        /** on screen with nothing for the notification: no service, the connection stays */
+        Stop,
+        /** off screen with nothing to stay for: after [SETTLE_MS] stop the service and let go of the connection */
+        Settle,
+    }
 
-    data class Decision(val run: Boolean, /** when to decide again (the grace ends), if the answer then changes */ val recheckAtMs: Long?)
+    /** staying in the background, since the app was last left with work going on */
+    private var staying = false
+
+    /** The app left the screen. [busy]: a turn runs or a request waits on the bridge. */
+    fun left(enabled: Boolean, busy: Boolean) { staying = enabled && busy }
+    fun returned() { staying = false }
+    /** The service and the connection were let go. */
+    fun released() { staying = false }
 
     /**
-     * Runs while a turn this phone started works or a request waits, and for [GRACE_MS] after leaving the app. In the
-     * foreground it only runs while something is busy (that is when its notification is wanted). [leftAtMs]: when the app
-     * last left the screen (null: it did not, e.g. started in the background by a notification action: no grace then).
+     * [tracked]: there is something for the ongoing notification, which is all that runs the service on screen. A process
+     * that was never on screen (a notification action started it) has not [left], so it only settles.
      */
-    fun decide(enabled: Boolean, sceneActive: Boolean, busy: Boolean, leftAtMs: Long?, nowMs: Long): Decision {
-        if (!enabled) return Decision(false, null)
-        if (busy) return Decision(true, null)
-        if (sceneActive || leftAtMs == null) return Decision(false, null)
-        val end = leftAtMs + GRACE_MS
-        return if (nowMs < end) Decision(true, end) else Decision(false, null)
+    fun decide(enabled: Boolean, sceneActive: Boolean, tracked: Boolean, busy: Boolean): Action = when {
+        sceneActive -> if (enabled && tracked) Action.Run else Action.Stop
+        staying && enabled && busy -> Action.Run
+        else -> Action.Settle
+    }
+
+    companion object {
+        /** how long things stay up once nothing is left to stay for, so the last calls (noticed, an answer) can finish */
+        const val SETTLE_MS = 15_000L
     }
 }

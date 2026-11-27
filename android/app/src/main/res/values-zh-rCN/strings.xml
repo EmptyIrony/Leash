@@ -225,7 +225,7 @@
     <string name="notif_open_to_answer">打开拴绳再回复。</string>
     <string name="notif_hidden_title">拴绳需要你</string>
     <string name="notif_connected_title">已连接 Bridge</string>
-    <string name="notif_connected_text">离开 App 后，拴绳还会继续监听一小段时间</string>
+    <string name="notif_connected_text">任务全部结束前，拴绳会保持连接</string>
     <string name="notif_others">另有 %1$d 个在工作</string>
     <string name="notifications_section">通知</string>
     <string name="notifications_on">已开启：agent 需要你或完成时，拴绳会在你离开期间提醒你。</string>
@@ -234,7 +234,7 @@
     <string name="allow_notifications">允许通知</string>
     <string name="notification_settings">通知设置</string>
     <string name="keep_alive">Agent 工作时保持运行</string>
-    <string name="keep_alive_detail">显示一条持续通知，并在你离开 App 后保持与 Bridge 的连接，这样审批和结果能及时送达。</string>
+    <string name="keep_alive_detail">离开 App 时如果还有任务在跑，会显示一条持续通知，并保持与 Bridge 的连接直到任务全部结束，这样审批和结果能及时送达。</string>
     <string name="file_wrap">自动换行</string>
     <string name="file_no_wrap">不自动换行</string>
     <string name="file_share">分享</string>

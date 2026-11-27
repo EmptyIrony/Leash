@@ -67,7 +67,8 @@ Motion: Material motion; the "working" state can echo iOS's shimmer idea in Comp
 - Live Activity / Dynamic Island → an ongoing notification for a running turn (title, elapsed, state; API 36:
   `setRequestPromotedOngoing` Live Update), updated from the app process.
 - BackgroundAudio hack → a foreground service (type `specialUse` with the subtype property; `FOREGROUND_SERVICE_SPECIAL_USE`)
-  that keeps the WebSocket alive while a turn runs, a request is pending, or for a grace period after leaving the app.
+  that keeps the WebSocket alive while a turn runs or a request is pending. Leaving the app decides whether it stays: with
+  work going on at the bridge it stays until all of it is done, otherwise it lets go.
   Same presence semantics as iOS: `visible` true only while on screen; ping every 15 s.
 - Local notifications (`Core/LocalNotifier.swift`): channels for "Needs you" (high importance; permission requests with
   Allow / Deny actions handled by a BroadcastReceiver without opening the app; questions open the chat) and "Turn finished".

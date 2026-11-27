@@ -8,9 +8,9 @@ import android.os.IBinder
 import dev.leash.personal.LeashApplication
 
 /**
- * Keeps Leash's process (and with it the connection to the bridge) alive while a turn works, a request waits, and for a short
- * grace after you leave the app. Its notification is the ongoing "working" notification. [BackgroundController] starts, updates
- * and stops it; it never restarts by itself (a killed process starts clean and the bridge's `ready` brings it up to date).
+ * Keeps Leash's process (and with it the connection to the bridge) alive while a turn this phone
+ * started works or a request waits, and, if you left the app with work going on, until all of it is done. Its notification is
+ * the ongoing "working" notification. [BackgroundController] starts, updates and stops it; it never restarts by itself (a killed process starts clean and the bridge's `ready` brings it up to date).
  */
 class LeashService : Service() {
     override fun onCreate() {

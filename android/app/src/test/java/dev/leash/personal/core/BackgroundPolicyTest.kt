@@ -1,39 +1,63 @@
 package dev.leash.personal.core
 
+import dev.leash.personal.core.BackgroundPolicy.Action
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BackgroundPolicyTest {
-    private val now = 1_000_000L
+    private val policy = BackgroundPolicy()
+    private fun offScreen(busy: Boolean, enabled: Boolean = true) = policy.decide(enabled, sceneActive = false, tracked = false, busy = busy)
 
-    @Test fun busyRunsInTheForegroundToo() {
-        assertTrue(BackgroundPolicy.decide(true, sceneActive = true, busy = true, leftAtMs = null, nowMs = now).run)
-        assertTrue(BackgroundPolicy.decide(true, sceneActive = false, busy = true, leftAtMs = null, nowMs = now).run)
+    @Test fun leavingWithNothingGoingOnLetsGo() {
+        policy.left(enabled = true, busy = false)
+        assertEquals(Action.Settle, offScreen(busy = false))
     }
 
-    @Test fun idleInTheForegroundDoesNotRun() {
-        assertFalse(BackgroundPolicy.decide(true, sceneActive = true, busy = false, leftAtMs = now - 10, nowMs = now).run)
+    @Test fun leavingWithWorkStaysUntilAllOfItIsDone() {
+        policy.left(enabled = true, busy = true)   // wherever it was started: nothing tracked is needed
+        assertEquals(Action.Run, offScreen(busy = true))
+        assertEquals(Action.Settle, offScreen(busy = false))
     }
 
-    @Test fun leavingStartsAGraceThatEnds() {
-        val d = BackgroundPolicy.decide(true, sceneActive = false, busy = false, leftAtMs = now - 1_000, nowMs = now)
-        assertTrue(d.run)
-        assertEquals(now - 1_000 + BackgroundPolicy.GRACE_MS, d.recheckAtMs)
-        val over = BackgroundPolicy.decide(true, sceneActive = false, busy = false, leftAtMs = now - BackgroundPolicy.GRACE_MS - 1, nowMs = now)
-        assertFalse(over.run)
-        assertNull(over.recheckAtMs)
+    @Test fun workThatComesBackWhileSettlingKeepsItRunning() {
+        policy.left(enabled = true, busy = true)
+        assertEquals(Action.Settle, offScreen(busy = false))
+        assertEquals(Action.Run, offScreen(busy = true))
     }
 
-    @Test fun startedInTheBackgroundHasNoGrace() {
+    @Test fun onceLetGoNewWorkDoesNotBringItBack() {
+        policy.left(enabled = true, busy = true)
+        policy.released()
+        assertEquals(Action.Settle, offScreen(busy = true))
+    }
+
+    @Test fun workAppearingAfterAnIdleLeaveDoesNotStartIt() {
+        policy.left(enabled = true, busy = false)
+        assertEquals(Action.Settle, offScreen(busy = true))
+    }
+
+    @Test fun aProcessThatWasNeverOnScreenOnlySettles() {
         // a notification action that started the process: do the answer, then let go
-        assertFalse(BackgroundPolicy.decide(true, sceneActive = false, busy = false, leftAtMs = null, nowMs = now).run)
+        assertEquals(Action.Settle, offScreen(busy = true))
+    }
+
+    @Test fun onScreenOnlyWhatTheNotificationShowsRunsTheService() {
+        assertEquals(Action.Run, policy.decide(true, sceneActive = true, tracked = true, busy = true))
+        assertEquals(Action.Stop, policy.decide(true, sceneActive = true, tracked = false, busy = true))
+    }
+
+    @Test fun comingBackForgetsThatItWasStaying() {
+        policy.left(enabled = true, busy = true)
+        policy.returned()
+        assertEquals(Action.Settle, offScreen(busy = true))
     }
 
     @Test fun theSettingTurnsEverythingOff() {
-        assertFalse(BackgroundPolicy.decide(false, sceneActive = false, busy = true, leftAtMs = now, nowMs = now).run)
+        policy.left(enabled = false, busy = true)
+        assertEquals(Action.Settle, offScreen(busy = true, enabled = false))
+        assertEquals(Action.Stop, policy.decide(false, sceneActive = true, tracked = true, busy = true))
     }
 
     private fun turn(id: String, at: Long, agent: String = "claude") = TrackedTurn(id, agent, "Title $id", at)

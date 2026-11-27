@@ -146,6 +146,8 @@ data class AppState(
 ) {
     val isConfigured: Boolean get() = useDemo || (host.isNotEmpty() && token.isNotEmpty())
     val isConnected: Boolean get() = connection == LinkState.Connected
+    /** something still goes on at the bridge (a turn, with its subagents, or a request): what leaving the app stays connected for */
+    val hasWork: Boolean get() = running.isNotEmpty() || pending.isNotEmpty()
     /** at least one agent can take work */
     val agentReady: Boolean get() = isConnected && (if (agents.isEmpty()) agentState == "ready" else agents.any { it.isReady })
     fun agent(id: String): AgentInfo? = agents.firstOrNull { it.id == id }
@@ -270,7 +272,7 @@ class AppModel(
         if (t != null) {
             t.configChanged()
             // the node runs only while Leash has a reason to be connected (on screen, or the foreground service): a connection
-            // attempt is what starts it, and releaseConnection / the end of the grace stops it
+            // attempt is what starts it, and releaseConnection stops it
             link.route = if (t.enabled) ({ host, port -> t.proxyPort(host, port) }) else null
         }
         link.configure(s.host, s.port, s.token)
