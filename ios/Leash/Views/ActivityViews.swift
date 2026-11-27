@@ -404,18 +404,15 @@ struct StepRow: View {
             EmptyView()
         case .reads(let ts):
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(ts) { t in
-                    let p = t.locations.first ?? t.commandPreview ?? t.title
-                    Button { openFile(p) } label: { Text(p).font(Theme.monoSmall).lineLimit(1).truncationMode(.head) }.buttonStyle(.pressable(scale: 1))
-                        .foregroundStyle(Theme.accent)
-                }
+                ForEach(ts) { t in ReadDetail(tool: t, openFile: openFile) }
             }
         case .tool(let t):
             VStack(alignment: .leading, spacing: 6) {
                 if t.kind != "execute", let cmd = t.commandPreview { Text(cmd).font(Theme.monoSmall).foregroundStyle(Theme.textSecondary).textSelection(.enabled) }
                 if let d = t.firstDiff { DiffView(path: d.path, old: d.old, new: d.new, openFile: openFile, maxCollapsedLines: 12) }
-                ForEach(t.content) { c in
-                    if case .text(let s) = c { CodeText(text: s, maxLines: 12) }
+                // text and images in the tool's own order (by position: two blocks can be identical)
+                ForEach(Array(t.content.enumerated()), id: \.offset) { i, c in
+                    ToolOutputBlock(content: c, number: i + 1)
                 }
                 if t.content.isEmpty, let out = t.rawOutput, !out.pretty.isEmpty { CodeText(text: out.pretty, maxLines: 12) }
                 ForEach(t.locations.prefix(3), id: \.self) { loc in
@@ -423,6 +420,37 @@ struct StepRow: View {
                         .buttonStyle(.pressable(scale: 1)).foregroundStyle(Theme.accent)
                 }
             }
+        }
+    }
+}
+
+/// One file of a "Read N files" row: its path, and the images reading it returned (a screenshot).
+private struct ReadDetail: View {
+    let tool: ToolItem
+    var openFile: (String) -> Void
+
+    var body: some View {
+        let p = tool.locations.first ?? tool.commandPreview ?? tool.title
+        VStack(alignment: .leading, spacing: 4) {
+            Button { openFile(p) } label: { Text(p).font(Theme.monoSmall).lineLimit(1).truncationMode(.head) }.buttonStyle(.pressable(scale: 1))
+                .foregroundStyle(Theme.accent)
+            ForEach(Array(tool.images.enumerated()), id: \.offset) { i, image in
+                TranscriptImage(source: image, number: i + 1)
+            }
+        }
+    }
+}
+
+/// A block of an opened tool step's output; diffs are drawn on their own, above.
+private struct ToolOutputBlock: View {
+    let content: ToolContent
+    let number: Int
+
+    var body: some View {
+        switch content {
+        case .text(let s): CodeText(text: s, maxLines: 12)
+        case .image(let image): TranscriptImage(source: image, number: number)
+        case .diff, .terminal: EmptyView()
         }
     }
 }

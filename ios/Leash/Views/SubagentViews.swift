@@ -192,7 +192,10 @@ private struct SubagentTranscript: View {
     @ViewBuilder private func row(_ d: DisplayItem) -> some View {
         switch d {
         case .user(let m):
-            PromptQuote(text: m.text)
+            VStack(alignment: .leading, spacing: 8) {
+                PromptQuote(text: m.text)
+                if !m.images.isEmpty || !m.files.isEmpty { MessageAttachments(images: m.images, files: m.files) }
+            }
         case .activity(let g):
             VStack(alignment: .leading, spacing: 8) {
                 if g.live {

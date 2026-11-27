@@ -74,10 +74,8 @@ struct UserBubble: View {
         let files = item.files + linked.refs.filter { r in !item.files.contains { $0.path == r.path } }
         let segments = UserSegment.parse(linked.text)
         VStack(alignment: .trailing, spacing: 8) {
-            ForEach(Array(item.images.enumerated()), id: \.offset) { i, d in
-                if let ui = UIImage(data: d) {
-                    ImageTile(image: ui, data: d, name: "image-\(i + 1).png", maxWidth: 220, maxHeight: 220, cornerRadius: Theme.Radius.card)
-                }
+            ForEach(Array(item.images.enumerated()), id: \.offset) { i, image in
+                TranscriptImage(source: image, number: i + 1, maxWidth: 220, maxHeight: 220, cornerRadius: Theme.Radius.card)
             }
             if !files.isEmpty {
                 VStack(alignment: .trailing, spacing: 6) {

@@ -279,17 +279,157 @@ struct ComposerFileChip: View {
 
 /// Images and files that came as content blocks of a message (not as markdown).
 struct MessageAttachments: View {
-    let images: [Data]
+    let images: [ImageSource]
     let files: [FileRef]
     var alignment: HorizontalAlignment = .leading
 
     var body: some View {
         VStack(alignment: alignment, spacing: 6) {
-            ForEach(Array(images.enumerated()), id: \.offset) { i, d in
-                if let ui = UIImage(data: d) { ImageTile(image: ui, data: d, name: "image-\(i + 1).png") }
+            ForEach(Array(images.enumerated()), id: \.offset) { i, image in
+                TranscriptImage(source: image, number: i + 1)
             }
             ForEach(files) { f in FileChip(ref: f) }
         }
+    }
+}
+
+// MARK: - Content block images
+
+/// An image block of a message or a tool result, as a tile.
+struct TranscriptImage: View {
+    let source: ImageSource
+    /// its place among the images around it, for the file name QuickLook and Share show
+    let number: Int
+    var maxWidth: CGFloat = 480
+    var maxHeight: CGFloat = 320
+    var cornerRadius: CGFloat = Theme.Radius.row
+
+    var body: some View {
+        switch source {
+        case .local(let data):
+            if let ui = UIImage(data: data) {
+                ImageTile(image: ui, data: data, name: "image-\(number).png", maxWidth: maxWidth, maxHeight: maxHeight, cornerRadius: cornerRadius)
+            }
+        case .remote(let image):
+            RemoteImageTile(image: image, name: "image-\(number).\(image.fileExtension)", maxWidth: maxWidth, maxHeight: maxHeight,
+                            cornerRadius: cornerRadius)
+                .id(image.ref)   // a tile's state (its QuickLook file too) belongs to one image
+        }
+    }
+}
+
+/// A referenced image: fetched when this view appears (never before), given up when it goes away. Its placeholder
+/// takes the loaded tile's exact size when the size is known, so nothing moves when the image arrives.
+private struct RemoteImageTile: View {
+    let image: RemoteImage
+    let name: String
+    let maxWidth: CGFloat
+    let maxHeight: CGFloat
+    let cornerRadius: CGFloat
+    @Environment(AppModel.self) private var model
+    @Environment(\.embedAgent) private var agent
+    @Environment(\.transcriptSession) private var session
+    @State private var loaded: LoadedImage?
+    @State private var failure: String?
+    @State private var attempt = 0
+
+    var body: some View {
+        // read the cache here too: a lazy row scrolled back in shows the image in its first layout
+        let shown = loaded ?? RemoteImageLoader.shared.cached(image.ref)
+        let size = image.pixelSize ?? RemoteImageLoader.shared.knownSize(image.ref)
+        // a ZStack, not a Group: the task must outlive the switch between placeholder, failure and tile
+        ZStack {
+            if let shown {
+                ImageTile(image: shown.thumbnail, data: shown.data, name: name, pixelSize: shown.pixelSize,
+                          maxWidth: maxWidth, maxHeight: maxHeight, cornerRadius: cornerRadius)
+            } else if let failure {
+                // over the placeholder's footprint, so failing and retrying don't move the transcript
+                placeholder(size).hidden()
+                ImageFailureRow(title: String(localized: "Image"), reason: failure, retry: { attempt += 1 })
+            } else {
+                placeholder(size)
+            }
+        }
+        .task(id: attempt) { await load() }
+        // a failure from a dropped link, or from a bridge that restarted and had not loaded the conversation again
+        .onChange(of: model.isConnected) { _, connected in if connected && failure != nil { attempt += 1 } }
+        .onChange(of: model.attachCount) { _, _ in if failure != nil { attempt += 1 } }
+    }
+
+    @ViewBuilder private func placeholder(_ size: CGSize?) -> some View {
+        if let size {
+            ImageFit(pixelSize: size, maxWidth: maxWidth, maxHeight: maxHeight) {
+                ImageLoadingBox(cornerRadius: cornerRadius)
+            }
+        } else {
+            ImageLoadingBox(cornerRadius: cornerRadius).frame(maxWidth: maxWidth).frame(height: 180)
+        }
+    }
+
+    /// Runs on every appearance, so a failed image is asked for again when it comes back on screen.
+    private func load() async {
+        if let c = RemoteImageLoader.shared.cached(image.ref) { loaded = c; return }
+        guard loaded == nil, let session else { return }
+        failure = nil
+        do {
+            loaded = try await RemoteImageLoader.shared.image(image.ref, sessionId: session, agent: agent, link: model.link)
+        } catch {
+            if !Task.isCancelled && !(error is CancellationError) { failure = error.localizedDescription }
+        }
+    }
+}
+
+/// The size of an image tile: the image's pixels as points, never upscaled, fitted into the caps and the width offered.
+/// The loaded tile and its placeholder both use it.
+struct ImageFit: Layout {
+    let pixelSize: CGSize
+    let maxWidth: CGFloat
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard pixelSize.width > 0, pixelSize.height > 0 else { return .zero }
+        let width = min(maxWidth, proposal.width ?? maxWidth)
+        let scale = max(0, min(1, width / pixelSize.width, maxHeight / pixelSize.height))
+        return CGSize(width: pixelSize.width * scale, height: pixelSize.height * scale)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for view in subviews { view.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
+    }
+}
+
+/// An image on its way.
+struct ImageLoadingBox: View {
+    var cornerRadius: CGFloat = Theme.Radius.row
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(Color(uiColor: .secondarySystemFill))
+            .overlay { ProgressView() }
+            .accessibilityLabel(Text("Loading image"))
+    }
+}
+
+/// An image that could not be loaded: what, why, and Retry (plus Open for a file on the agent's host).
+struct ImageFailureRow: View {
+    let title: String
+    let reason: String
+    var open: (() -> Void)? = nil
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.attention)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title).font(.footnote.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
+                Text(reason).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(2)
+            }
+            Spacer()
+            if let open { Button("Open", action: open).font(.footnote) }
+            Button("Retry", action: retry).font(.footnote)
+        }
+        .padding(12)
+        .frame(maxWidth: 480, alignment: .leading)
+        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
     }
 }
 
@@ -339,32 +479,15 @@ struct MarkdownImage: View {
             } else if quiet {
                 Color.clear.frame(height: 0)
             } else if let failure = failure ?? cache.failed[key]?.reason {
-                failureRow(failure)
+                ImageFailureRow(title: alt.isEmpty ? (src as NSString).lastPathComponent : alt, reason: failure,
+                                open: localPath == nil ? nil : { openFile = true },
+                                retry: { Task { await load(force: true) } })
             } else {
-                RoundedRectangle(cornerRadius: Theme.Radius.row, style: .continuous).fill(Color(uiColor: .secondarySystemFill))
-                    .frame(maxWidth: 480).frame(height: 180)
-                    .overlay { ProgressView() }
-                    .accessibilityLabel(Text("Loading image"))
+                ImageLoadingBox().frame(maxWidth: 480).frame(height: 180)
             }
         }
         .task(id: key) { await load(force: false) }
         .sheet(isPresented: $openFile) { if let p = localPath { FileViewer(path: p, agent: agent, sessionId: session) } }
-    }
-
-    private func failureRow(_ reason: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.attention)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(verbatim: alt.isEmpty ? (src as NSString).lastPathComponent : alt).font(.footnote.weight(.medium)).foregroundStyle(Theme.textPrimary).lineLimit(1)
-                Text(reason).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(2)
-            }
-            Spacer()
-            if localPath != nil { Button("Open") { openFile = true }.font(.footnote) }
-            Button("Retry") { Task { await load(force: true) } }.font(.footnote)
-        }
-        .padding(12)
-        .frame(maxWidth: 480, alignment: .leading)
-        .background(Theme.bgSunken, in: RoundedRectangle(cornerRadius: Theme.Radius.inset, style: .continuous))
     }
 
     /// Shows the cached copy at once and refetches it when it is older than 30 s; a failure is never cached, so a
@@ -421,6 +544,8 @@ struct ImageTile: View {
     var name: String = "image.png"
     var alt: String = ""
     var path: String? = nil
+    /// the original's size when `image` is a downscaled copy of `data`
+    var pixelSize: CGSize? = nil
     var maxWidth: CGFloat = 480
     var maxHeight: CGFloat = 320
     var cornerRadius: CGFloat = Theme.Radius.row
@@ -428,22 +553,20 @@ struct ImageTile: View {
     @State private var fileURL: URL?
 
     var body: some View {
-        let w = image.size.width, h = image.size.height
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: min(w, maxWidth), maxHeight: min(h, maxHeight))
+        ImageFit(pixelSize: pixelSize ?? image.size, maxWidth: maxWidth, maxHeight: maxHeight) {
+            Image(uiImage: image).resizable()
+        }
             .clipShape(shape)
             .overlay(shape.strokeBorder(Color(uiColor: .separator), lineWidth: 0.5))
             .contentShape(shape)
             .onTapGesture { preview = localURL() }
             .contextMenu {
-                Button { UIPasteboard.general.image = image } label: { Label("Copy", systemImage: "doc.on.doc") }
-                ShareLink(item: Image(uiImage: image), preview: SharePreview(name, image: Image(uiImage: image))) {
+                Button { UIPasteboard.general.image = original } label: { Label("Copy", systemImage: "doc.on.doc") }
+                ShareLink(item: Image(uiImage: original), preview: SharePreview(name, image: Image(uiImage: image))) {
                     Label("Share…", systemImage: "square.and.arrow.up")
                 }
-                Button { UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil); Haptics.success() } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
+                Button { UIImageWriteToSavedPhotosAlbum(original, nil, nil, nil); Haptics.success() } label: { Label("Save to Photos", systemImage: "square.and.arrow.down") }
                 if let path { Button { UIPasteboard.general.string = path } label: { Label("Copy Path", systemImage: "link") } }
             }
             .accessibilityElement()
@@ -452,6 +575,9 @@ struct ImageTile: View {
             .accessibilityAction { preview = localURL() }
             .quickLookPreview($preview)
     }
+
+    /// The full-size image, for what leaves the app.
+    private var original: UIImage { pixelSize == nil ? image : UIImage(data: data) ?? image }
 
     /// QuickLook and the share sheet need a file; written once per tile.
     private func localURL() -> URL? {

@@ -113,6 +113,8 @@ final class AppModel {
     var pending: [String: PendingRequest] = [:]
     var running: Set<String> = []
     var lastAttention: PendingRequest?
+    /// counts successful attaches: an image the bridge couldn't serve before one (it had restarted) is asked again
+    private(set) var attachCount = 0
     /// the conversation currently on screen (set by ChatView)
     @ObservationIgnored var visibleSessionId: String?
     var agents: [AgentInfo] = []
@@ -546,6 +548,7 @@ final class AppModel {
             for p in r["pending"]?.array ?? [] { addPending(p, notify: false) }
             s.attached = true
             s.lockedBy = nil
+            attachCount += 1
             // idle and the catch-up held no echo of it: the prompt never reached the bridge (connection dropped)
             if !s.running, let echoAtStart, s.pendingEcho?.id == echoAtStart { withAnimation(Motion.layout) { s.pendingEcho = nil } }
         } catch let e as BridgeError where e.code == BridgeError.lockedElsewhere {
@@ -692,7 +695,7 @@ final class AppModel {
     private static func echoItem(text: String, images: [Data], attachments: [JSON]) -> MessageItem {
         let item = MessageItem(role: .user, text: text, messageId: nil)
         item.synthetic = true
-        item.images = images
+        item.images = images.map { .local($0) }
         item.files = attachments.compactMap { FileRef(block: $0) }
         return item
     }

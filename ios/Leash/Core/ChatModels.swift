@@ -10,7 +10,7 @@ final class MessageItem: Identifiable {
     let id = UUID()
     let role: Role
     var text: String
-    var images: [Data] = []
+    var images: [ImageSource] = []
     /// attached files (resource_link / resource blocks); Claude Code's replay writes them as "[@name](file://…)" text instead
     var files: [FileRef] = []
     var messageId: String?
@@ -24,13 +24,13 @@ enum ToolContent: Identifiable {
     case text(String)
     case diff(path: String, old: String?, new: String)
     case terminal(String)
-    case image(Data)
+    case image(ImageSource)
     var id: String {
         switch self {
         case .text(let s): return "t\(s.hashValue)"
         case .diff(let p, let o, let n): return "d\(p)\(o?.hashValue ?? 0)\(n.hashValue)"
         case .terminal(let t): return "x\(t)"
-        case .image(let d): return "i\(d.hashValue)"
+        case .image(let s): return "i\(s.hashValue)"
         }
     }
 }
@@ -115,7 +115,7 @@ final class ToolItem: Identifiable {
         case "content":
             let b = c["content"]
             if b?["type"]?.string == "text", let t = b?["text"]?.string { return .text(ToolItem.stripCommandPreamble(t)) }
-            if b?["type"]?.string == "image", let d = b?["data"]?.string, let data = Data(base64Encoded: d) { return .image(data) }
+            if let b, b["type"]?.string == "image", let image = ImageSource(block: b) { return .image(image) }
             if let t = b?["resource"]?["text"]?.string { return .text(t) }
             return nil
         default: return nil
@@ -138,6 +138,10 @@ final class ToolItem: Identifiable {
 
     var diffs: [(path: String, old: String?, new: String)] {
         content.compactMap { if case .diff(let p, let o, let n) = $0 { return (p, o, n) }; return nil }
+    }
+
+    var images: [ImageSource] {
+        content.compactMap { if case .image(let s) = $0 { return s }; return nil }
     }
 
     /// The file an edit / delete / move changed: its diff's, else its first location without the line.
@@ -192,6 +196,17 @@ final class NoticeItem: Identifiable {
     let title: String
     let detail: String?
     init(severity: String, title: String, detail: String?) { self.severity = severity; self.title = title; self.detail = detail }
+
+    convenience init(update u: JSON) {
+        let severity = u["severity"]?.string ?? "info"
+        // the bridge's mark where it left older history out; its own words are English only
+        if u["_meta"]?["leash"]?["historyTruncated"]?.bool == true {
+            self.init(severity: severity, title: String(localized: "Earlier history not shown"),
+                      detail: String(localized: "Open the conversation on the computer to see all of it."))
+        } else {
+            self.init(severity: severity, title: u["title"]?.string ?? String(localized: "Notice"), detail: u["description"]?.string)
+        }
+    }
 }
 
 /// Per-turn numbers the bridge measures: tokens, speed, duration.
@@ -305,9 +320,12 @@ final class SubagentItem: Identifiable {
         guard u["recipientSessionId"]?.string == sessionId || u["recipientSessionId"] == nil else { return }
         guard let blocks = u["content"]?.array else { return }
         let text = blocks.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n")
-        if let m = prompt(mid) { m.text = text; return }
+        let images = blocks.compactMap { $0["type"]?.string == "image" ? ImageSource(block: $0) : nil }
+        if let m = prompt(mid) { m.text = text; m.images = images; return }
         // in order: the parent can message the same child again later
-        entries.append(.message(MessageItem(role: .user, text: text, messageId: mid)))
+        let item = MessageItem(role: .user, text: text, messageId: mid)
+        item.images = images
+        entries.append(.message(item))
     }
 
     func applySessionMessageChunk(_ u: JSON) {
@@ -896,8 +914,8 @@ final class ChatStore {
             if synthetic && last.role == .user && !last.text.isEmpty { last.text += "\n" + t } else { last.text += t }
             return true
         }
-        if type == "image", let d = block["data"]?.string, let data = Data(base64Encoded: d) {
-            last.images.append(data); return true
+        if type == "image", let image = ImageSource(block: block) {
+            last.images.append(image); return true
         }
         if type == "resource_link" || type == "resource", let f = FileRef(block: block) {
             if !last.files.contains(f) { last.files.append(f) }
@@ -936,7 +954,7 @@ final class ChatStore {
         let type = block["type"]?.string
         let item = MessageItem(role: role, text: "", messageId: messageId)
         if type == "text" { item.text = block["text"]?.string ?? "" }
-        else if type == "image", let d = block["data"]?.string, let data = Data(base64Encoded: d) { item.images.append(data) }
+        else if type == "image", let image = ImageSource(block: block) { item.images.append(image) }
         else if type == "resource_link" || type == "resource", let f = FileRef(block: block) { item.files.append(f) }
         else if type == "resource" { item.text = block["resource"]?["text"]?.string ?? "" }   // embedded text without a file uri
         else { return nil }
@@ -944,13 +962,14 @@ final class ChatStore {
     }
 
     /// The optimistic bubble's item becomes the transcript row; the echo's text replaces its text (identical unless
-    /// messages held on the bridge went out ahead of it), images it already shows are skipped, files dedupe.
+    /// messages held on the bridge went out ahead of it), images it already shows are skipped (the bubble keeps its own
+    /// bytes, so the echo's references to them are never fetched), files dedupe.
     private func adopt(_ item: MessageItem, block: JSON, type: String?, messageId: String?, synthetic: Bool) {
         item.messageId = messageId
         item.synthetic = synthetic
         echoImagesToSkip = item.images.count
         if type == "text", let t = block["text"]?.string { item.text = t }
-        else if type == "image" { echoImagesToSkip = max(0, echoImagesToSkip - 1) }
+        else if type == "image", echoImagesToSkip > 0 { echoImagesToSkip -= 1 }
         else if type == "resource" && FileRef(block: block) == nil { item.text = block["resource"]?["text"]?.string ?? item.text }
         else { _ = Self.merge(block, type: type, into: item, synthetic: synthetic) }
         adoptedEcho = item
@@ -1016,7 +1035,7 @@ final class ChatStore {
         case "leash_auto_approved":
             if let id = u["toolCallId"]?.string, let t = toolIndex[id] { t.autoApproved = true }
         case "notice":
-            entries.append(.notice(NoticeItem(severity: u["severity"]?.string ?? "info", title: u["title"]?.string ?? String(localized: "Notice"), detail: u["description"]?.string)))
+            entries.append(.notice(NoticeItem(update: u)))
         default:
             break
         }
@@ -1064,7 +1083,7 @@ final class ChatStore {
             let p = s.planItem ?? { let p = PlanItem(); s.planItem = p; s.entries.append(.plan(p)); return p }()
             p.entries = (u["entries"]?.array ?? []).map { PlanEntry(content: $0["content"]?.string ?? "", status: $0["status"]?.string ?? "pending", priority: $0["priority"]?.string ?? "medium") }
         case "notice":
-            s.entries.append(.notice(NoticeItem(severity: u["severity"]?.string ?? "info", title: u["title"]?.string ?? String(localized: "Notice"), detail: u["description"]?.string)))
+            s.entries.append(.notice(NoticeItem(update: u)))
         default:
             break
         }
