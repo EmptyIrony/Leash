@@ -251,6 +251,13 @@ class DemoBridgeTest {
         val files = m.store("demo-files").also { m.attach(it) }
         val user = (files.displayItems().first() as DisplayItem.User).item
         assertEquals(1, user.images.size)
+        // like the real bridge: the history refers to its images, and bridge/media hands them out in slices
+        val photo = user.images.single() as ChatImage.Remote
+        assertEquals(96 to 64, photo.width to photo.height)
+        assertEquals(photo.size.toInt(), m.images.load(photo.ref, "demo-files", "claude").size)
+        val shots = files.entries.filterIsInstance<ChatEntry.Tool>().flatMap { it.item.images }.map { it as ChatImage.Remote }
+        assertEquals(listOf(480 to 280, 540 to 1200), shots.map { it.width to it.height })
+        for (shot in shots) assertEquals(shot.size.toInt(), m.images.load(shot.ref, "demo-files", "claude").size)
         assertEquals(listOf("spec.pdf"), user.files.map { it.name })
         assertNotNull(m.state.value.quotas["claude"]!!.limiting("claude-sonnet", "claude"))
     }

@@ -157,16 +157,21 @@ fun MarkdownImage(src: String, alt: String = "", quiet: Boolean = false, modifie
     }
 
     val shown = entry
-    val c = Leash.colors
     when {
         shown != null -> ImageTile(shown, alt, source, modifier)
         quiet -> Box(Modifier.height(0.dp))
-        failure != null -> FailureRow(failure!!, alt.ifEmpty { ImageSource.fallbackName(src) }, source as? ImageSource.Local, { attempt++ }, modifier)
-        else -> Box(
-            modifier.widthIn(max = 480.dp).fillMaxWidth().height(180.dp).clip(LeashShapes.row).background(c.bgSunken)
-                .semantics { contentDescription = "" }, contentAlignment = Alignment.Center,
-        ) { Spinner(size = 20.dp, label = stringResource(R.string.image_loading)) }
+        failure != null -> ImageFailureRow(failure!!, alt.ifEmpty { ImageSource.fallbackName(src) }, source as? ImageSource.Local, { attempt++ }, modifier)
+        else -> ImageLoadingBox(modifier)
     }
+}
+
+/** An image on its way whose size isn't known yet. */
+@Composable
+internal fun ImageLoadingBox(modifier: Modifier = Modifier) {
+    Box(
+        modifier.widthIn(max = 480.dp).fillMaxWidth().height(180.dp).clip(LeashShapes.row).background(Leash.colors.bgSunken)
+            .semantics { contentDescription = "" }, contentAlignment = Alignment.Center,
+    ) { Spinner(size = 20.dp, label = stringResource(R.string.image_loading)) }
 }
 
 @Composable
@@ -193,7 +198,7 @@ private fun ImageTile(e: InlineImages.Entry, alt: String, source: ImageSource, m
 }
 
 @Composable
-private fun FailureRow(reason: String, name: String, local: ImageSource.Local?, retry: () -> Unit, modifier: Modifier) {
+internal fun ImageFailureRow(reason: String, name: String, local: ImageSource.Local?, retry: () -> Unit, modifier: Modifier) {
     val c = Leash.colors
     val openFile = LocalOpenFile.current
     Row(

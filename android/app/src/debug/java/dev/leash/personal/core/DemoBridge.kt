@@ -35,6 +35,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     }
 
     private val sessions = LinkedHashMap<String, Sess>()
+    private val media = DemoMedia()
     private val pending = LinkedHashMap<String, JsonElement>()
     private val answers = HashMap<String, CompletableDeferred<JsonElement>>()
     private var generation = 0
@@ -123,6 +124,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
             "initialize" -> jsonObj("protocolVersion" to 1, "agentInfo" to jsonObj("name" to "demo", "version" to "0"), "agentCapabilities" to jsonObj("loadSession" to true))
             "session/list" -> jsonObj("sessions" to sessions.values.map { listed(it) })
             "bridge/attach" -> attach(s ?: throw BridgeError(-32004, "unknown session"), params)
+            "bridge/media" -> media.media(params)
             "bridge/detach" -> { s?.subscribed = false; jsonObj("ok" to true) }
             "session/new" -> newSession(params)
             "session/prompt" -> prompt(s ?: throw BridgeError(-32004, "attach to the session before prompting"), params)
@@ -179,7 +181,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
         val since = params["sinceSeq"].int ?: 0
         val delta = params["epoch"].string == DemoScript.EPOCH && since > 0 && since <= s.seq
         return jsonObj("sessionId" to s.id, "cwd" to DemoScript.PROJECT, "epoch" to DemoScript.EPOCH, "lastSeq" to s.seq, "reset" to !delta,
-            "events" to s.events.mapIndexed { i, u -> jsonObj("seq" to i + 1, "update" to u) }.filter { !delta || it["seq"].int!! > since },
+            "events" to s.events.mapIndexed { i, u -> jsonObj("seq" to i + 1, "update" to media.strip(u)) }.filter { !delta || it["seq"].int!! > since },
             "running" to s.running, "subagents" to 0, "lastStopReason" to "end_turn", "turnStartedAt" to (if (s.running) Clock.now() - 20_000 else null),
             "configOptions" to DemoScript.configOptions(s.model, s.effort), "modes" to DemoScript.modes(s.mode), "title" to s.title, "autoApprove" to false,
             "queue" to s.queue, "availableCommands" to DemoScript.commands, "pending" to pending.values.filter { it["sessionId"].string == s.id })
@@ -255,7 +257,7 @@ class DemoBridge(private val scope: CoroutineScope) : BridgeLink {
     private fun record(s: Sess, update: JsonElement) {
         s.events += update
         s.seq++
-        if (s.subscribed) emit(jsonObj("op" to "update", "agentId" to s.agent, "sessionId" to s.id, "epoch" to DemoScript.EPOCH, "seq" to s.seq, "update" to update))
+        if (s.subscribed) emit(jsonObj("op" to "update", "agentId" to s.agent, "sessionId" to s.id, "epoch" to DemoScript.EPOCH, "seq" to s.seq, "update" to media.strip(update)))
     }
 
     private fun broadcastTurn(s: Sess, running: Boolean, stopReason: String? = null) =

@@ -263,6 +263,9 @@
     <string name="image_unsupported">不支持的图片来源</string>
     <string name="image_invalid">图片数据无效</string>
     <string name="image">图片</string>
+    <string name="history_truncated_title">更早的记录未显示</string>
+    <string name="history_truncated_detail">在电脑上打开这个对话可查看全部内容。</string>
+    <string name="image_unavailable">这张图片已无法获取</string>
     <string name="embed_too_large">这个嵌入内容超过 512 KB</string>
     <string name="embed_not_html">这个嵌入内容不是 HTML 文件</string>
     <string name="embed_unsupported">不支持的嵌入来源</string>

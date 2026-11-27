@@ -203,6 +203,14 @@ class AppModel(
     /** the scripted demo bridge exists in this build (debug) */
     val demoAvailable: Boolean get() = demoLink != null
 
+    /** Images referenced by the transcripts, fetched while a view shows them; one queue for the whole app. */
+    val images = ImageDownloads(scope, { ref, sessionId, agent, offset ->
+        link.call("bridge/media", jsonObj("sessionId" to sessionId, "ref" to ref, "offset" to offset, "agent" to agent), ImageDownloads.CHUNK_TIMEOUT_MS)
+    })
+    private val _attachGeneration = MutableStateFlow(0)
+    /** Counts attaches the bridge answered: an image that failed while the link was down (or before the re-attach) is tried again. */
+    val attachGeneration: StateFlow<Int> = _attachGeneration
+
     private val stores = mutableMapOf<String, ChatStore>()
     /** the conversation currently on screen (set by the chat screen) */
     var visibleSessionId: String? = null
@@ -704,6 +712,7 @@ class AppModel(
             st.lockedBy = null
             // idle and the catch-up held no echo of it: the prompt never reached the bridge (connection dropped)
             if (!st.running && echoAtStart != null && st.pendingEcho?.id == echoAtStart) st.pendingEcho = null
+            _attachGeneration.value++
         } catch (e: CancellationException) { throw e } catch (e: Exception) {
             if (e is BridgeError && e.code == BridgeError.LOCKED_ELSEWHERE) {
                 st.lockedBy = e.holder ?: "other"
@@ -853,7 +862,7 @@ class AppModel(
     private fun echoItem(text: String, images: List<ByteArray>, attachments: List<JsonElement>): MessageItem {
         val item = MessageItem(MessageItem.Role.User, text, null)
         item.synthetic = true
-        item.images += images
+        item.images += images.map { ChatImage.Local(it) }
         item.files += attachments.mapNotNull { FileRef.fromBlock(it) }
         return item
     }

@@ -90,7 +90,7 @@ fun UserBubble(item: MessageItem, modifier: Modifier = Modifier) {
     val files = item.files + linked.filter { r -> item.files.none { it.path == r.path } }
     val segments = UserSegment.parse(text)
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 220.dp).heightIn(max = 220.dp), stringResource(R.string.image_numbered, i + 1), "image-" + (i + 1) + ".png") }
+        item.images.forEachIndexed { i, image -> MessageImage(image, i + 1, maxWidth = 220.dp, maxHeight = 220.dp) }
         if (files.isNotEmpty()) Column(Modifier.padding(start = 48.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             files.forEach { FileChip(it) }
         }
@@ -197,12 +197,14 @@ fun ShellOutputView(stdout: String, stderr: String, exitCode: Int?) {
 fun NoticeView(item: NoticeItem) {
     val c = Leash.colors
     val color = when (item.severity) { "error" -> c.danger; "warning" -> c.attention; else -> c.textSecondary }
+    val title = if (item.historyTruncated) stringResource(R.string.history_truncated_title) else item.title ?: stringResource(R.string.notice)
+    val detail = if (item.historyTruncated) stringResource(R.string.history_truncated_detail) else item.detail
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(if (item.severity == "error") LeashIcons.failed else if (item.severity == "warning") LeashIcons.warning else LeashIcons.info, null, Modifier.size(16.dp), tint = color)
-            Text(item.title ?: stringResource(R.string.notice), style = Leash.type.subheadline.medium(), color = if (item.severity == "info" || item.severity.isNullOrEmpty()) c.textSecondary else c.textPrimary)
+            Text(title, style = Leash.type.subheadline.medium(), color = if (item.severity == "info" || item.severity.isNullOrEmpty()) c.textSecondary else c.textPrimary)
         }
-        item.detail?.let { Text(it, style = Leash.type.footnote, color = c.textSecondary, modifier = Modifier.padding(start = 22.dp)) }
+        detail?.let { Text(it, style = Leash.type.footnote, color = c.textSecondary, modifier = Modifier.padding(start = 22.dp)) }
     }
 }
 
@@ -264,7 +266,7 @@ fun AnswerView(item: MessageItem) {
     val open = LocalOpenFile.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MessageMenu(item.text, markdown = true) { MarkdownView(item.text, open) }
-        item.images.forEachIndexed { i, data -> ImageTile(data, Modifier.widthIn(max = 320.dp), stringResource(R.string.image_numbered, i + 1), "image-" + (i + 1) + ".png") }
+        item.images.forEachIndexed { i, image -> MessageImage(image, i + 1, maxWidth = 320.dp) }
         item.files.forEach { FileChip(it) }
     }
 }

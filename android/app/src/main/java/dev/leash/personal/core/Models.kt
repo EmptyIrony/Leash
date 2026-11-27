@@ -96,11 +96,38 @@ data class FileRef(val name: String, val path: String, val size: Long? = null) {
     }
 }
 
+/**
+ * An image of a message or a tool result: bytes this phone holds (the optimistic echo of what was just sent, or an inline
+ * `data` block), or a reference to one the bridge keeps, fetched when it scrolls into view ([ImageDownloads]).
+ */
+sealed interface ChatImage {
+    class Local(val data: ByteArray) : ChatImage
+    /** [ref] is content-addressed; [size] is the decoded byte count; [width] and [height] are displayed pixels, both or neither. */
+    data class Remote(val ref: String, val mimeType: String, val size: Long, val width: Int? = null, val height: Int? = null) : ChatImage
+
+    companion object {
+        /** From an image block with inline `data` or with a `ref`; null for anything else. */
+        fun parse(block: JsonElement?): ChatImage? {
+            if (block["type"].string != "image") return null
+            val data = block["data"].string
+            // empty data is a picture given some other way (by URL): there are no bytes to show
+            if (!data.isNullOrEmpty()) return decodeBase64(data)?.let { Local(it) }
+            val ref = block["ref"].string?.takeIf { it.isNotEmpty() } ?: return null
+            val w = block["width"].int?.takeIf { it > 0 }
+            val h = block["height"].int?.takeIf { it > 0 }
+            val sized = w != null && h != null
+            return Remote(ref, block["mimeType"].string ?: "image/png", block["size"].long ?: 0, w.takeIf { sized }, h.takeIf { sized })
+        }
+
+        fun parseAll(blocks: List<JsonElement>): List<ChatImage> = blocks.mapNotNull(::parse)
+    }
+}
+
 class MessageItem(val role: Role, var text: String, var messageId: String?) {
     enum class Role { User, Agent, Thought }
 
     val id: UUID = UUID.randomUUID()
-    val images = mutableListOf<ByteArray>()
+    val images = mutableListOf<ChatImage>()
     /** attached files (resource_link / resource blocks); Claude Code's replay writes them as "[@name](file://…)" text instead */
     val files = mutableListOf<FileRef>()
     var synthetic = false
@@ -110,7 +137,7 @@ sealed interface ToolContent {
     data class Text(val text: String) : ToolContent
     data class Diff(val path: String, val old: String?, val new: String) : ToolContent
     data class Terminal(val terminalId: String) : ToolContent
-    class Image(val data: ByteArray) : ToolContent
+    class Image(val image: ChatImage) : ToolContent
 }
 
 class ChecklistStep(val index: Int, val title: String, /** pending | in_progress | completed */ val status: String) {
@@ -209,6 +236,8 @@ class ToolItem(val toolCallId: String) {
         u["rawOutput"]?.takeIf { !it.isJsonNull }?.let { rawOutput = it }
     }
 
+    val images: List<ChatImage> get() = content.mapNotNull { (it as? ToolContent.Image)?.image }
+
     val firstDiff: ToolContent.Diff? get() = content.firstOrNull { it is ToolContent.Diff } as ToolContent.Diff?
     val diffs: List<ToolContent.Diff> get() = content.filterIsInstance<ToolContent.Diff>()
 
@@ -237,7 +266,7 @@ class ToolItem(val toolCallId: String) {
             "content" -> {
                 val b = c["content"]
                 if (b["type"].string == "text" && b["text"].string != null) ToolContent.Text(stripCommandPreamble(b["text"].string!!))
-                else if (b["type"].string == "image" && b["data"].string != null) decodeBase64(b["data"].string!!)?.let { ToolContent.Image(it) }
+                else if (b["type"].string == "image") ChatImage.parse(b)?.let { ToolContent.Image(it) }
                 else b["resource"]["text"].string?.let { ToolContent.Text(it) }
             }
             else -> null
@@ -276,11 +305,16 @@ class PlanItem {
 }
 
 /** [title] is the bridge's own text; null when it sent none (the UI says "Notice"). */
-class NoticeItem(val severity: String, val title: String?, val detail: String?) {
+class NoticeItem(
+    val severity: String, val title: String?, val detail: String?,
+    /** the bridge's marker that the start of the history was left out: the UI words it itself */
+    val historyTruncated: Boolean = false,
+) {
     val id: UUID = UUID.randomUUID()
 
     companion object {
-        fun from(u: JsonElement) = NoticeItem(u["severity"].string ?: "info", u["title"].string, u["description"].string)
+        fun from(u: JsonElement) = NoticeItem(u["severity"].string ?: "info", u["title"].string, u["description"].string,
+            u["_meta"]["leash"]["historyTruncated"].bool == true)
     }
 }
 
@@ -425,9 +459,10 @@ class SubagentItem(val sessionId: String) {
         if (!(u["recipientSessionId"].string == sessionId || u["recipientSessionId"] == null)) return
         val blocks = u["content"].array ?: return
         val text = blocks.mapNotNull { if (it["type"].string == "text") it["text"].string else null }.joinToString("\n")
-        prompt(mid)?.let { it.text = text; return }
+        val images = ChatImage.parseAll(blocks)
+        prompt(mid)?.let { it.text = text; it.images.clear(); it.images += images; return }
         // in order: the parent can message the same child again later
-        entries += ChatEntry.Message(MessageItem(MessageItem.Role.User, text, mid))
+        entries += ChatEntry.Message(MessageItem(MessageItem.Role.User, text, mid).also { it.images += images })
     }
 
     fun applySessionMessageChunk(u: JsonElement) {

@@ -105,7 +105,10 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
                 ) {
                     items(rows, key = { it.id }) { d ->
                         when (d) {
-                            is DisplayItem.User -> PromptQuote(d.item.text)
+                            is DisplayItem.User -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (d.item.text.isNotBlank() || d.item.images.isEmpty()) PromptQuote(d.item.text)
+                                d.item.images.forEachIndexed { i, image -> MessageImage(image, i + 1, maxWidth = 220.dp, maxHeight = 220.dp) }
+                            }
                             is DisplayItem.Activity -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val g = d.group
                                 if (g.live) LiveLine(if (needsAction) stringResource(R.string.waiting_approval) else res().liveText(liveAction ?: g.liveAction), needsAction)

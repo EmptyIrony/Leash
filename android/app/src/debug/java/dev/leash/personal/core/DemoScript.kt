@@ -46,6 +46,10 @@ object DemoScript {
 
     private val tinyPng = DemoFiles.png(96, 64, boxes = false)
 
+    /** A tool result's image, as the agent reports it. */
+    private fun screenshot(width: Int, height: Int) = jsonObj("type" to "content",
+        "content" to jsonObj("type" to "image", "mimeType" to "image/png", "data" to java.util.Base64.getEncoder().encodeToString(DemoFiles.png(width, height, boxes = true))))
+
     /** Files in and out of a conversation: an attachment and a photo in the prompt, paths, images and a "!" run in the reply. */
     fun filesHistory(): List<JsonElement> = listOf(
         user("Review the attached spec and this screenshot", "u1"),
@@ -54,6 +58,10 @@ object DemoScript {
         user("<bash-input>ls docs</bash-input>", "u2"),
         user("<bash-stdout>big-shot.png\nflow.png\nspec.pdf\n</bash-stdout><bash-stderr></bash-stderr>", "u3"),
         tool("t-read2", "Read spec.pdf", "read", "completed", "locations" to listOf(jsonObj("path" to PROJECT + "/docs/spec.pdf"))),
+        tool("t-read3", "Read flow.png", "read", "completed", "locations" to listOf(jsonObj("path" to PROJECT + "/docs/flow.png")),
+            "content" to listOf(screenshot(480, 280))),
+        tool("t-shot", "Take a screenshot", "other", "completed",
+            "content" to listOf(jsonObj("type" to "content", "content" to text("Captured the running app.")), screenshot(540, 1200))),
         agent(
             "I went through [the spec](" + PROJECT + "/docs/spec.pdf). The parser entry point is in " + BT + "src/Parser.kt:12" + BT + ".\n\n" +
                 "The flow is in " + BT + "docs/flow.png" + BT + " and a taller capture is in " + BT + "docs/big-shot.png" + BT + ".\n\n" +

@@ -187,6 +187,85 @@ class ChatStoreTest {
         assertEquals(listOf(FileRef("My File.txt", "/Users/me/.leash/uploads/s/My File.txt")), m.files)
     }
 
+    private fun ref(id: String, w: Int? = 1080, h: Int? = 2400) =
+        jsonObj("type" to "image", "mimeType" to "image/png", "ref" to id, "size" to 302114, "width" to w, "height" to h)
+    private val synthetic = jsonObj("leash" to jsonObj("synthetic" to true))
+    private fun userBlock(block: JsonElement, mid: String = "u", meta: JsonElement? = synthetic) =
+        jsonObj("sessionUpdate" to "user_message_chunk", "messageId" to mid, "content" to block, "_meta" to meta)
+
+    @Test fun referenceBlocksParseWithAndWithoutASize() {
+        assertEquals(ChatImage.Remote("m_1", "image/png", 302114, 1080, 2400), ChatImage.parse(ref("m_1")))
+        assertEquals(ChatImage.Remote("m_1", "image/png", 302114), ChatImage.parse(ref("m_1", null, null)))
+        // a size is both numbers or none
+        assertEquals(ChatImage.Remote("m_1", "image/png", 302114), ChatImage.parse(ref("m_1", 10, null)))
+        assertTrue(ChatImage.parse(jsonObj("type" to "image", "data" to "AQI=")) is ChatImage.Local)
+        assertNull(ChatImage.parse(jsonObj("type" to "image", "mimeType" to "image/png")))
+        assertNull(ChatImage.parse(jsonObj("type" to "text", "text" to "x")))
+        assertNull(ChatImage.parse(jsonObj("type" to "image", "data" to "", "uri" to "https://example.com/a.png")))
+    }
+
+    @Test fun toolContentKeepsReferencedImagesInOrderWithItsText() {
+        val s = ChatStore("s1")
+        s.feed(jsonObj("sessionUpdate" to "tool_call", "toolCallId" to "t1", "title" to "Screenshot", "kind" to "other", "status" to "pending"),
+            jsonObj("sessionUpdate" to "tool_call_update", "toolCallId" to "t1", "status" to "completed", "content" to listOf(
+                jsonObj("type" to "content", "content" to text("shot")), jsonObj("type" to "content", "content" to ref("m_a")))))
+        val t = (s.entries.single() as ChatEntry.Tool).item
+        assertEquals(listOf("Text", "Image"), t.content.map { it::class.simpleName })
+        assertEquals(listOf("m_a"), t.images.map { (it as ChatImage.Remote).ref })
+    }
+
+    @Test fun messagesThatAreOnlyAReferencedImageSurvive() {
+        val s = ChatStore("s1")
+        val child = jsonObj("leash" to jsonObj("subagent" to "c1"))
+        s.feed(
+            userBlock(ref("m_user"), "u"),
+            jsonObj("sessionUpdate" to "agent_message_chunk", "messageId" to "a", "content" to ref("m_agent")),
+            jsonObj("sessionUpdate" to "subagent_update", "sessionId" to "c1", "state" to jsonObj("state" to "running")),
+            jsonObj("sessionUpdate" to "session_message", "messageId" to "in", "senderSessionId" to "s1", "recipientSessionId" to "c1", "content" to listOf(text("look"), ref("m_prompt")), "_meta" to child),
+            jsonObj("sessionUpdate" to "session_message_chunk", "messageId" to "in2", "content" to ref("m_chunk"), "_meta" to child),
+            jsonObj("sessionUpdate" to "agent_thought_chunk", "messageId" to "th", "content" to ref("m_thought"), "_meta" to child),
+        )
+        fun refs(entries: List<ChatEntry>) = entries.filterIsInstance<ChatEntry.Message>().map { e -> e.item.images.map { (it as ChatImage.Remote).ref } }
+        assertEquals(listOf(listOf("m_user"), listOf("m_agent")), refs(s.entries))
+        assertEquals(listOf(listOf("m_prompt"), listOf("m_chunk"), listOf("m_thought")), refs(s.subagent("c1")!!.entries))
+        assertEquals("look", (s.subagent("c1")!!.entries.first() as ChatEntry.Message).item.text)
+        // a replaced prompt replaces its images too
+        s.feed(jsonObj("sessionUpdate" to "session_message", "messageId" to "in", "recipientSessionId" to "c1", "content" to listOf(text("look"), ref("m_prompt")), "_meta" to child))
+        assertEquals(listOf("m_prompt"), refs(s.subagent("c1")!!.entries).first())
+    }
+
+    @Test fun theBubbleKeepsItsOwnBytesWhenTheEchoRefersToThem() {
+        for (textFirst in listOf(true, false)) {
+            val s = ChatStore("s1")
+            val photos = listOf(ChatImage.Local(byteArrayOf(1)), ChatImage.Local(byteArrayOf(2)))
+            val bubble = MessageItem(MessageItem.Role.User, if (textFirst) "see" else "", null).also { it.synthetic = true; it.images += photos }
+            s.pendingEcho = PendingEcho(bubble)
+            if (textFirst) s.feed(userBlock(text("see")))
+            s.feed(userBlock(ref("m_1")), userBlock(ref("m_2")))
+            assertNull(s.pendingEcho)
+            val row = (s.entries.single() as ChatEntry.Message).item
+            assertSame(bubble, row)
+            assertEquals(photos, row.images.toList())
+        }
+    }
+
+    @Test fun aBubbleWithoutPhotosTakesTheEchosFirstImage() {
+        val s = ChatStore("s1")
+        s.pendingEcho = PendingEcho(MessageItem(MessageItem.Role.User, "", null))
+        s.feed(userBlock(ref("m_held")))
+        assertEquals(1, (s.entries.single() as ChatEntry.Message).item.images.size)
+    }
+
+    @Test fun theTruncationMarkerIsFlaggedSoTheUiCanWordIt() {
+        val s = ChatStore("s1")
+        s.reset(listOf(
+            jsonObj("seq" to 7, "update" to jsonObj("sessionUpdate" to "notice", "severity" to "info", "title" to "Earlier history not shown",
+                "description" to "Open the conversation on the computer to see all of it.", "_meta" to jsonObj("leash" to jsonObj("synthetic" to true, "historyTruncated" to true)))),
+            jsonObj("seq" to 8, "update" to jsonObj("sessionUpdate" to "notice", "severity" to "info", "title" to "Other")),
+        ))
+        assertEquals(listOf(true, false), s.entries.map { (it as ChatEntry.Notice).item.historyTruncated })
+    }
+
     @Test fun planPlanUpdateAndRemoval() {
         val s = ChatStore("s1")
         s.feed(jsonObj("sessionUpdate" to "plan", "entries" to listOf(jsonObj("content" to "a", "status" to "completed"), jsonObj("content" to "b", "status" to "pending", "priority" to "high"))))

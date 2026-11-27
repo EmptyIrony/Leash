@@ -290,8 +290,8 @@ class ChatStore(val sessionId: String) {
                 return true
             }
             if (type == "image") {
-                val data = block["data"].string?.let(::decodeBase64)
-                if (data != null) { last.images += data; return true }
+                val image = ChatImage.parse(block)
+                if (image != null) { last.images += image; return true }
             }
             if (type == "resource_link" || type == "resource") {
                 val f = FileRef.fromBlock(block)
@@ -306,8 +306,8 @@ class ChatStore(val sessionId: String) {
             val item = MessageItem(role, "", messageId)
             if (type == "text") {
                 item.text = block["text"].string ?: ""
-            } else if (type == "image" && block["data"].string?.let(::decodeBase64) != null) {
-                item.images += decodeBase64(block["data"].string!!)!!
+            } else if (type == "image") {
+                item.images += ChatImage.parse(block) ?: return null
             } else if (type == "resource_link" || type == "resource") {
                 val f = FileRef.fromBlock(block)
                 if (f != null) item.files += f
@@ -350,7 +350,8 @@ class ChatStore(val sessionId: String) {
         echoImagesToSkip = item.images.size
         val text = block["text"].string
         if (type == "text" && text != null) item.text = text
-        else if (type == "image") echoImagesToSkip = maxOf(0, echoImagesToSkip - 1)
+        // the bubble keeps showing its own bytes for the echo's (referenced) copy; a bubble without photos takes the echo's
+        else if (type == "image" && echoImagesToSkip > 0) echoImagesToSkip -= 1
         else if (type == "resource" && FileRef.fromBlock(block) == null) item.text = block["resource"]["text"].string ?: item.text
         else merge(block, type, item, synthetic)
         adoptedEcho = item

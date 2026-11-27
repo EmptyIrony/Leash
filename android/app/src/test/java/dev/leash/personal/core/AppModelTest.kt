@@ -410,6 +410,23 @@ class AppModelTest {
         assertEquals("/Users/me/proj", sent["cwd"].string)
     }
 
+    @Test fun attachingFetchesNoImageAndCountsForTheRetryOfFailedOnes() = runTest {
+        val r = Rig(this)
+        connect(r)
+        r.link.on("bridge/attach") { attachResult(listOf(jsonObj("seq" to 1, "update" to jsonObj("sessionUpdate" to "user_message_chunk", "messageId" to "u",
+            "content" to jsonObj("type" to "image", "mimeType" to "image/png", "ref" to "m_1", "size" to 2))))) }
+        val st = r.model.store("a").also { it.agent = "claude" }
+        val before = r.model.attachGeneration.value
+        r.model.attach(st); runCurrent()
+        assertEquals(before + 1, r.model.attachGeneration.value)
+        assertTrue(r.link.callsOf("bridge/media").isEmpty())
+        r.link.on("bridge/media") { jsonObj("ref" to "m_1", "offset" to 0, "total" to 4, "data" to "AQI=") }
+        assertEquals(listOf<Byte>(1, 2), r.model.images.load("m_1", "a", "claude").toList())
+        val p = r.link.callsOf("bridge/media").single()
+        assertEquals(listOf("a", "m_1", "claude"), listOf(p["sessionId"].string, p["ref"].string, p["agent"].string))
+        assertEquals(0, p["offset"].int)
+    }
+
     @Test fun reattachAsksOnlyForMissedEventsAndAppliesThemWithoutReset() = runTest {
         val r = Rig(this)
         var n = 0

@@ -274,6 +274,9 @@
     <string name="image_unsupported">Unsupported image source</string>
     <string name="image_invalid">Invalid image data</string>
     <string name="image">Image</string>
+    <string name="history_truncated_title">Earlier history not shown</string>
+    <string name="history_truncated_detail">Open the conversation on the computer to see all of it.</string>
+    <string name="image_unavailable">This image is no longer available</string>
     <string name="embed_too_large">This embed is larger than 512 KB</string>
     <string name="embed_not_html">This embed isn\'t an HTML file</string>
     <string name="embed_unsupported">Unsupported embed source</string>

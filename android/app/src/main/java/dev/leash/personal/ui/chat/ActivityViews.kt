@@ -28,7 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.leash.personal.R
 import dev.leash.personal.core.ActivityGroup
+import dev.leash.personal.core.ChatImage
 import dev.leash.personal.core.ChatStore
+import dev.leash.personal.core.ToolContent
 import dev.leash.personal.core.ChecklistStep
 import dev.leash.personal.core.Clock
 import dev.leash.personal.core.DiffLine
@@ -210,16 +212,30 @@ fun StepRow(row: StepRowModel, store: ChatStore, onOpenSubagent: (String) -> Uni
         annotatedTitle = annotated,
         detail = if (textRow) null else ({
             when (kind) {
-                is StepRowModel.Kind.Reads -> kind.items.forEach { t ->
-                    val p = t.locations.firstOrNull() ?: t.commandPreview ?: t.title
-                    Text(p, Modifier.pressable(scale = PressScale.Text) { openFile(p) }, style = Leash.type.monoSmall, color = c.accent, maxLines = 1, overflow = TextOverflow.StartEllipsis)
-                }
+                is StepRowModel.Kind.Reads -> ReadsDetail(kind.items)
                 is StepRowModel.Kind.Tool -> ToolDetail(kind.item)
                 else -> Unit
             }
         }),
     )
 }
+
+/** The files of a run of reads: each path, and under it what the read showed as images (a screenshot). */
+@Composable
+private fun ReadsDetail(items: List<ToolItem>) {
+    ObserveChat()
+    val openFile = LocalOpenFile.current
+    var number = 0
+    items.forEach { t ->
+        val p = t.locations.firstOrNull() ?: t.commandPreview ?: t.title
+        Text(p, Modifier.pressable(scale = PressScale.Text) { openFile(p) }, style = Leash.type.monoSmall, color = Leash.colors.accent, maxLines = 1, overflow = TextOverflow.StartEllipsis)
+        t.images.forEach { ToolImage(it, ++number) }
+    }
+}
+
+/** A tool result's screenshot in an opened step. */
+@Composable
+private fun ToolImage(image: ChatImage, number: Int) = MessageImage(image, number, maxWidth = 320.dp, maxHeight = 320.dp)
 
 @Composable
 private fun ToolDetail(t: ToolItem) {
@@ -229,7 +245,14 @@ private fun ToolDetail(t: ToolItem) {
     val cmd = t.commandPreview
     if (t.kind != "execute" && cmd != null) Text(cmd, style = Leash.type.monoSmall, color = c.textSecondary)
     t.firstDiff?.let { d -> DiffBlock(d.path, d.old, d.new) }
-    t.content.forEach { ct -> if (ct is dev.leash.personal.core.ToolContent.Text) CodeText(ct.text, 12) }
+    var number = 0
+    t.content.forEach { ct ->
+        when (ct) {
+            is ToolContent.Text -> CodeText(ct.text, 12)
+            is ToolContent.Image -> ToolImage(ct.image, ++number)
+            is ToolContent.Diff, is ToolContent.Terminal -> Unit
+        }
+    }
     if (t.content.isEmpty()) t.rawOutput.pretty().takeIf { it.isNotEmpty() }?.let { CodeText(it, 12) }
     t.locations.take(3).forEach { loc ->
         Text(loc, Modifier.pressable(scale = PressScale.Text) { openFile(loc) }, style = Leash.type.monoSmall, color = c.accent, maxLines = 1, overflow = TextOverflow.StartEllipsis)
