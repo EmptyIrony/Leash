@@ -287,9 +287,11 @@ JSON text frames on `ws://<bridge>:8787/ws` with `Authorization: Bearer <token>`
   `session/cancel` keeps the queue; it goes out ahead of the next prompt, or `bridge/unqueue {sessionId, id}` takes one back
   (returns its `prompt` blocks); `bridge/requeue {sessionId, id, prompt, index}` puts it back (the phone's Undo). `bridge/attach` returns the `queue`; agent summaries carry `steering`, `turbo` and `btw`.
 * `bridge/attach {sessionId, epoch, sinceSeq}` returns only missed events after a reconnect, or a compacted snapshot, at most
-  2 MiB of JSON (long tool text is cut to 16 KB, oldest first, then the start is dropped; the newest event always stays). A
-  snapshot missing earlier history (that, or the bridge's own event cap) starts with a `notice` carrying
-  `_meta.leash.historyTruncated`. A catch-up never drops events: if it would have to, the answer is a snapshot (`reset: true`).
+  2 MiB of JSON. Past that, a snapshot sheds weight oldest first, in this order: long tool text cut to 16 KB; subagents'
+  tool calls shortened; subagents' transcripts left out (their rows stay, with a note inside); the conversation's own tool
+  calls shortened; and only then history dropped from the start (the newest event always stays). A snapshot missing the
+  start (dropped here, or by the bridge's own event cap) begins with a `notice` carrying `_meta.leash.historyTruncated`.
+  A catch-up only cuts long tool text: if that is not enough, the answer is a snapshot (`reset: true`).
 * Pictures: no update sent to a phone carries image bytes. An image block arrives as `{type:"image", mimeType, ref, size,
   width?, height?}` (`ref` is a hash of the base64; `size` is in bytes; width/height as displayed, for PNG, JPEG, GIF, WebP),
   and the phone fetches it once it is on screen. `bridge/media {sessionId, ref, offset?}` (the root conversation's id, also for

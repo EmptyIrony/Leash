@@ -123,43 +123,123 @@ const isTool = u => u?.sessionUpdate === 'tool_call' || u?.sessionUpdate === 'to
 /** The first event of a snapshot that lacks the start of the conversation (phones show their own wording). */
 const truncationMarker = seq => ({ seq, update: { sessionUpdate: 'notice', severity: 'info', title: 'Earlier history not shown',
   description: 'Open the conversation on the computer to see all of it.', _meta: { leash: { synthetic: true, historyTruncated: true } } } });
-export const isTruncationMarker = e => !!e?.update?._meta?.leash?.historyTruncated;
+export const isTruncationMarker = e => !!e?.update?._meta?.leash?.historyTruncated && !e.update._meta.leash.subagent;
+
+/** What is left of a long string once the snapshot is short of room. */
+const SHORT_TEXT = 300;
+const cutText = (s, keep) => s.length > keep + 100 ? s.slice(0, keep) + `\n… [${kb(Buffer.byteLength(s.slice(keep)))} more not sent to the phone]` : s;
+
+/** `v` with every long string in it cut to SHORT_TEXT, keys and shape kept (the phones read fields of rawInput); `v` itself when none is long. */
+function shortStrings(v) {
+  if (typeof v === 'string') return cutText(v, SHORT_TEXT);
+  if (!v || typeof v !== 'object') return v;
+  let out = null;
+  for (const key of Object.keys(v)) {
+    const next = shortStrings(v[key]);
+    if (next === v[key]) continue;
+    out ??= Array.isArray(v) ? v.slice() : { ...v };
+    out[key] = next;
+  }
+  return out ?? v;
+}
+
+/** A tool call's output cut to 16 KB per block. */
+function cutLongOutput(u) {
+  if (!isTool(u) || !Array.isArray(u.content)) return u;
+  let changed = false;
+  const content = u.content.map(b => {
+    if (b?.type !== 'content' || b.content?.type !== 'text' || !(b.content.text?.length > LONG_TEXT)) return b;
+    changed = true;
+    return { type: 'content', content: { type: 'text', text: cutText(b.content.text, LONG_TEXT) } };
+  });
+  return changed ? { ...u, content } : u;
+}
 
 /**
- * Events (as phones get them) that fit in `budget` bytes of JSON: past it, long tool output is cut, oldest first, and
- * history that still does not fit is dropped from the start (the newest event always stays). When events were dropped
- * here, or `trimmed` says the log had already lost its start, a marker saying so comes first, within the budget.
- * Returns copies; the log itself keeps everything.
+ * A tool call down to what its row needs: long input and output cut short, a large diff replaced by a line naming its
+ * file (cut text would show wrong changes; the file stays in locations). Picture references are small and stay.
  */
-export function fitSnapshot(events, budget = SNAPSHOT_BUDGET, { trimmed = false } = {}) {
-  const size = e => Buffer.byteLength(JSON.stringify(e)) + 1;   // with its comma
+function shortTool(u) {
+  if (!isTool(u)) return u;
+  let out = null;
+  const set = (key, v) => { if (v !== u[key]) (out ??= { ...u })[key] = v; };
+  for (const key of ['title', 'rawInput', 'rawOutput', 'args']) if (u[key] !== undefined) set(key, shortStrings(u[key]));
+  if (Array.isArray(u.content)) {
+    let changed = false;
+    const dropped = [];
+    const content = u.content.map(b => {
+      if (b?.type === 'diff') {
+        const length = String(b.oldText ?? '').length + String(b.newText ?? '').length;
+        if (length <= 2 * SHORT_TEXT) return b;
+        changed = true;
+        if (b.path) dropped.push(b.path);
+        return { type: 'content', content: { type: 'text', text: `[changes to ${b.path ?? 'a file'} not sent to the phone (${kb(length)})]` } };
+      }
+      if (b?.type !== 'content' || b.content?.type !== 'text' || typeof b.content.text !== 'string') return b;
+      const text = cutText(b.content.text, SHORT_TEXT);
+      if (text === b.content.text) return b;
+      changed = true;
+      return { type: 'content', content: { type: 'text', text } };
+    });
+    if (changed) set('content', content);
+    const known = new Set((u.locations ?? []).map(l => l?.path));
+    const missing = [...new Set(dropped)].filter(p => !known.has(p));
+    if (missing.length) set('locations', [...(u.locations ?? []), ...missing.map(path => ({ path }))]);
+  }
+  return out ?? u;
+}
+
+/**
+ * Events (as phones get them) that fit in `budget` bytes of JSON. Past it, weight goes in the order a reader misses it
+ * least, oldest first within each step, until the rest fits: long tool output is cut to 16 KB; subagents' tool calls are
+ * shortened; subagents' transcripts are left out (their rows stay, each with a note inside); the conversation's own tool
+ * calls are shortened; and only then is history dropped from the start (the newest event always stays), so what was
+ * said outlasts what tools printed. With `shed: false` (a catch-up, which must lose nothing) only the first and last
+ * steps apply. When events were dropped from the start, or `trimmed` says the log had already lost it, a marker saying
+ * so comes first, within the budget. Returns copies; the log itself keeps everything.
+ */
+export function fitSnapshot(events, budget = SNAPSHOT_BUDGET, { trimmed = false, shed = true } = {}) {
+  const size = e => e ? Buffer.byteLength(JSON.stringify(e)) + 1 : 0;   // with its comma
   const sizes = events.map(size);
-  let total = sizes.reduce((a, b) => a + b, 1);                 // and the array's brackets
+  let total = sizes.reduce((a, b) => a + b, 1);                           // and the array's brackets
   // room for the marker, whatever its seq
   const marker = size(truncationMarker(Number.MAX_SAFE_INTEGER));
   const limit = trimmed ? budget - marker : budget;
   const marked = list => [truncationMarker(Math.max(0, (list[0]?.seq ?? 1) - 1)), ...list];
   if (total <= limit) return trimmed ? marked(events) : events;
-  const out = events.slice();
-  for (let i = 0; i < out.length && total > limit; i++) {
-    const u = out[i].update;
-    if (!isTool(u) || !Array.isArray(u.content)) continue;
-    let changed = false;
-    const content = u.content.map(b => {
-      if (b?.type !== 'content' || b.content?.type !== 'text' || !(b.content.text?.length > LONG_TEXT)) return b;
-      changed = true;
-      const text = b.content.text.slice(0, LONG_TEXT) + `\n… [${kb(Buffer.byteLength(b.content.text.slice(LONG_TEXT)))} more not sent to the phone]`;
-      return { type: 'content', content: { type: 'text', text } };
+  const out = events.slice();                                             // null: left out
+  /** One step: `change(update, seq)` gives the update to send, or null to leave the event out. */
+  const step = change => {
+    for (let i = 0; i < out.length && total > limit; i++) {
+      if (!out[i]) continue;
+      const update = change(out[i].update, out[i].seq);
+      if (update === out[i].update) continue;
+      out[i] = update && { ...out[i], update };
+      const n = size(out[i]);
+      total -= sizes[i] - n; sizes[i] = n;
+    }
+  };
+  step(cutLongOutput);
+  if (shed) {
+    step(u => subagentOf(u) ? shortTool(u) : u);
+    const noted = new Set();
+    step((u, seq) => {
+      const child = subagentOf(u);
+      // announcements make the subagent's row (and those of the subagents it launched)
+      if (!child || u.sessionUpdate === 'subagent_update') return u;
+      if (noted.has(child)) return null;
+      noted.add(child);
+      const note = truncationMarker(seq).update;
+      return { ...note, _meta: { leash: { ...note._meta.leash, subagent: child } } };
     });
-    if (!changed) continue;
-    out[i] = { ...out[i], update: { ...u, content } };
-    const n = size(out[i]);
-    total -= sizes[i] - n; sizes[i] = n;
+    step(u => subagentOf(u) ? u : shortTool(u));
   }
-  if (total <= limit) return trimmed ? marked(out) : out;
+  const left = [], leftSizes = [];
+  for (let i = 0; i < out.length; i++) if (out[i]) { left.push(out[i]); leftSizes.push(sizes[i]); }
+  if (total <= limit) return trimmed ? marked(left) : left;
   let drop = 0;
-  while (total > budget - marker && drop < out.length - 1) total -= sizes[drop++];
-  const kept = drop ? out.slice(drop) : out;
+  while (total > budget - marker && drop < left.length - 1) total -= leftSizes[drop++];
+  const kept = drop ? left.slice(drop) : left;
   return drop || trimmed ? marked(kept) : kept;
 }
 
@@ -918,7 +998,7 @@ export class Hub extends EventEmitter {
     const forPhone = list => list.map(e => ({ seq: e.seq, update: e.phone }));
     let reset = true, events;
     if (epoch && epoch === s.epoch && sinceSeq >= firstSeq - 1 && sinceSeq <= s.seq) {
-      const missed = fitSnapshot(forPhone(s.events.filter(e => e.seq > sinceSeq)));
+      const missed = fitSnapshot(forPhone(s.events.filter(e => e.seq > sinceSeq)), SNAPSHOT_BUDGET, { shed: false });
       // a catch-up never leaves a hole: if some of it would not fit, the phone starts over from a snapshot
       if (!isTruncationMarker(missed[0])) { reset = false; events = missed; }
     }

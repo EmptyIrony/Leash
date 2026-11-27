@@ -405,6 +405,67 @@ test('fitSnapshot cuts old tool text first, then drops the start and says so wit
   assert.deepEqual(fitSnapshot(small.slice(5), SNAPSHOT_BUDGET, { trimmed: true })[0], { seq: 5, update: MARKER_UPDATE });
 });
 
+test('fitSnapshot keeps what was said: subagent work gives way first, then old tool detail', () => {
+  const big = 'o'.repeat(12_000);
+  const events = [];
+  const push = update => events.push({ seq: events.length + 1, update });
+  const tool = (id, sub) => ({ sessionUpdate: 'tool_call', toolCallId: id, title: 'Edit', kind: 'edit', status: 'completed',
+    rawInput: { file_path: '/p/a.js', command: big, steps: [{ title: 'one' }] },
+    content: [{ type: 'diff', path: '/p/a.js', oldText: big, newText: big }, { type: 'content', content: { type: 'text', text: big } },
+      { type: 'content', content: { type: 'image', mimeType: 'image/png', ref: 'm_x', size: 1 } }],
+    ...(sub ? { _meta: { leash: { subagent: sub } } } : {}) });
+  for (let turn = 0; turn < 10; turn++) {
+    push({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'ask ' + turn } });
+    push(tool('root' + turn));
+    push({ sessionUpdate: 'subagent_update', sessionId: 'kid' + turn, title: 'Explore' });
+    for (let i = 0; i < 8; i++) push(tool('k' + turn + '-' + i, 'kid' + turn));
+    push({ sessionUpdate: 'agent_message_chunk', messageId: 'm' + turn, content: { type: 'text', text: 'answer ' + turn } });
+  }
+  const original = JSON.stringify(events);
+  const of = (list, kind) => list.filter(e => e.update.sessionUpdate === kind);
+  const roots = list => of(list, 'tool_call').filter(e => !e.update._meta);
+  const kids = list => of(list, 'tool_call').filter(e => e.update._meta);
+  const saidAll = list => {
+    for (const kind of ['user_message_chunk', 'agent_message_chunk']) assert.equal(of(list, kind).length, 10, kind);
+    assert.equal(of(list, 'subagent_update').length, 10, 'every subagent keeps its row');
+    assert.ok(!list.some(isTruncationMarker), 'nothing missing from the conversation itself');
+  };
+
+  // shortening the subagents' tool calls is enough: all of them stay, the conversation's own stay whole
+  const roomy = fitSnapshot(events, 900_000);
+  assert.ok(bytesOf(roomy) <= 900_000); saidAll(roomy);
+  assert.equal(kids(roomy).length, 80);
+  assert.equal(roots(roomy).at(-1).update.content[0].type, 'diff');
+  assert.equal(roots(roomy).at(-1).update.rawInput.command, big);
+  const k = kids(roomy)[0].update;
+  assert.match(k.rawInput.command, /more not sent to the phone/);
+  assert.deepEqual(k.rawInput.steps, [{ title: 'one' }]);
+  assert.match(k.content[0].content.text, /changes to \/p\/a\.js not sent/);
+  assert.deepEqual(k.locations, [{ path: '/p/a.js' }]);
+  assert.equal(k.content[2].content.ref, 'm_x', 'pictures can still be fetched');
+
+  // less room: the subagents' transcripts go, each with a note inside it, before the conversation's own tool calls
+  const tighter = fitSnapshot(events, 420_000);
+  assert.ok(bytesOf(tighter) <= 420_000); saidAll(tighter);
+  assert.ok(kids(tighter).length < 80);
+  assert.equal(roots(tighter).length, 10);
+  const notes = of(tighter, 'notice');
+  assert.ok(notes.length && notes.every(e => e.update._meta.leash.subagent && e.update._meta.leash.historyTruncated));
+  assert.equal(new Set(notes.map(e => e.update._meta.leash.subagent)).size, notes.length, 'one note per subagent');
+
+  // tighter still: old tool calls shrink to their rows
+  const tight = fitSnapshot(events, 30_000);
+  assert.ok(bytesOf(tight) <= 30_000); saidAll(tight);
+  assert.equal(roots(tight).length, 10);
+  assert.match(roots(tight)[0].update.content[1].content.text, /more not sent/);
+
+  // a catch-up sheds nothing selectively: it drops from the start, which attach turns into a snapshot
+  const catchUp = fitSnapshot(events, 420_000, { shed: false });
+  assert.ok(isTruncationMarker(catchUp[0]));
+  assert.equal(kids(catchUp).at(-1).update.rawInput.command, big);
+  assert.equal(JSON.stringify(events), original, 'input not mutated');
+});
+
 // ---------------------------------------------------------------- pictures
 /** Distinct, incompressible bytes behind a real PNG header, as base64. */
 function picture(n = 3000, width = 1080, height = 2400) {
