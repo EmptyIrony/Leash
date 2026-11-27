@@ -1,5 +1,6 @@
 package dev.leash.personal.core
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -74,5 +75,81 @@ class AppModelTailnetTest {
         r.model.setTailnetEnabled(true); runCurrent()
         assertEquals(1, r.node.starts.size)
         assertEquals(TailnetStatus.Connected("leash-android", "100.64.0.9"), r.tailnet.state.value.status)
+    }
+
+    @Test fun coldStartWaitsForTailnetPrefsBeforeConnecting() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val prefs = object : TailnetPrefs {
+            override suspend fun load(): TailnetConfig {
+                gate.await()
+                return TailnetConfig(enabled = true, authKey = "tskey-auth-x")
+            }
+            override suspend fun save(config: TailnetConfig) {}
+        }
+        val transport = FakeTransport()
+        val node = FakeTailnetNode()
+        val tailnet = TailnetController(backgroundScope, node, prefs, "/data/tailnet")
+        val model = AppModel(
+            backgroundScope,
+            InMemorySettingsStore(Settings(host = "jerrymac-mini.tail1.ts.net", port = 8787, token = "tok")),
+            BridgeConnection(backgroundScope, transport), null, tailnet = tailnet,
+        )
+
+        model.start(); runCurrent()
+        assertTrue(transport.sockets.isEmpty())
+        assertTrue(node.starts.isEmpty())
+
+        gate.complete(Unit); runCurrent()
+        assertEquals("ws://127.0.0.1:40123/ws", transport.last.endpoint.url)
+        assertEquals(1, node.starts.size)
+        assertEquals(TailnetStatus.Connected("leash-android", "100.64.0.9"), tailnet.state.value.status)
+    }
+
+    @Test fun returningToForegroundRestartsTailscaleAfterRelease() = runTest {
+        val r = Rig(this, TailnetConfig(enabled = true, authKey = "tskey-auth-x"))
+        r.model.start(); runCurrent()
+        r.transport.last.ready(); runCurrent()
+        r.model.releaseConnection()
+        assertEquals(1, r.node.stops)
+        assertEquals(TailnetStatus.Stopped, r.tailnet.state.value.status)
+
+        r.model.sceneChanged(true); runCurrent()
+        assertEquals(2, r.node.starts.size)
+        assertEquals("ws://127.0.0.1:40123/ws", r.transport.last.endpoint.url)
+        assertEquals(TailnetStatus.Connected("leash-android", "100.64.0.9"), r.tailnet.state.value.status)
+    }
+
+    @Test fun coldStartWithoutABridgeWarmsUpEnabledTailscale() = runTest {
+        val r = Rig(this, TailnetConfig(enabled = true, authKey = "tskey-auth-x"), paired = false)
+        r.model.start(); runCurrent()
+        assertEquals(1, r.node.starts.size)
+        assertEquals(TailnetStatus.Connected("leash-android", "100.64.0.9"), r.tailnet.state.value.status)
+    }
+
+    @Test fun earlyPairBeforeTailnetLoadsStillRoutesThroughTailscale() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val prefs = object : TailnetPrefs {
+            override suspend fun load(): TailnetConfig {
+                gate.await()
+                return TailnetConfig(enabled = true, authKey = "tskey-auth-x")
+            }
+            override suspend fun save(config: TailnetConfig) {}
+        }
+        val transport = FakeTransport()
+        val node = FakeTailnetNode()
+        val tailnet = TailnetController(backgroundScope, node, prefs, "/data/tailnet")
+        val model = AppModel(
+            backgroundScope, InMemorySettingsStore(Settings()),
+            BridgeConnection(backgroundScope, transport), null, tailnet = tailnet,
+        )
+
+        model.start()
+        model.pair(PairingInfo("jerrymac-mini.tail1.ts.net", 8787, "tok", "Mac"))
+        runCurrent()
+        assertTrue(transport.sockets.isEmpty())
+
+        gate.complete(Unit); runCurrent()
+        assertEquals("ws://127.0.0.1:40123/ws", transport.last.endpoint.url)
+        assertEquals(1, node.starts.size)
     }
 }

@@ -66,11 +66,17 @@ class TailnetController(
 
     fun start() {
         scope.launch {
-            config = prefs.load()
-            publish(status = if (enabled) TailnetStatus.Stopped else TailnetStatus.Off)
-            loaded.complete(Unit)
+            try {
+                config = runCatching { prefs.load() }.getOrElse { TailnetConfig() }
+                publish(status = if (enabled) TailnetStatus.Stopped else TailnetStatus.Off)
+            } finally {
+                loaded.complete(Unit)
+            }
         }
     }
+
+    /** Suspends until [start] has finished loading the saved configuration. */
+    suspend fun awaitLoaded() = loaded.await()
 
     private fun publish(status: TailnetStatus? = null, logoutNote: Problem? = _state.value.logoutNote) {
         _state.update {
@@ -144,6 +150,7 @@ class TailnetController(
 
     /** Settings changed: stop the node when it was switched off or its key or control URL changed; the next connection attempt starts it again. */
     fun configChanged() {
+        if (!loaded.isCompleted) return
         if (!enabled || runningFingerprint != fingerprint) stop()
     }
 

@@ -233,13 +233,16 @@ class AppModel(
         tailnet?.start()
         scope.launch {
             val st = settings.load()
+            // Wait for TailnetController's persisted config before reconfigure() inspects it, otherwise
+            // DataStore+Keystore decryption finishing after settings.load() leaves link.route null.
+            tailnet?.awaitLoaded()
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
             set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = st.useDemo && demoLink != null,
                 drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread,
                 turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed, keepAlive = st.keepAlive, notificationsAsked = st.notificationsAsked) }
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
-            if (s.isConfigured) reconfigure()
+            if (s.isConfigured) reconfigure() else tailnet?.warmUp()
         }
     }
 
@@ -280,8 +283,9 @@ class AppModel(
         if (t != null) {
             t.configChanged()
             // the node runs only while Leash has a reason to be connected (on screen, or the foreground service): a connection
-            // attempt is what starts it, and releaseConnection stops it
-            link.route = if (t.enabled) ({ host, port -> t.proxyPort(host, port) }) else null
+            // attempt is what starts it, and releaseConnection stops it. Always delegate to proxyPort so even an early
+            // reconfigure() (e.g. a deep-link pair before tailnet finishes loading) awaits loaded and routes if enabled.
+            link.route = { host, port -> t.proxyPort(host, port) }
         }
         link.configure(s.host, s.port, s.token)
         if (s.isConfigured) link.connect() else t?.warmUp()
@@ -394,7 +398,7 @@ class AppModel(
     suspend fun awaitSettings() { _state.first { it.settingsLoaded } }
 
     fun foreground() {
-        if (!s.isConfigured) return
+        if (!s.isConfigured) { if (s.settingsLoaded) tailnet?.warmUp(); return }
         link.ensureConnected()
         if (s.isConnected) scope.launch { refreshQuota() }
     }
