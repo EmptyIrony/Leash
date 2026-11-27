@@ -1,5 +1,7 @@
 # Leash (拴绳) — your coding agents on a leash, from your phone
 
+[简体中文](README.zh-CN.md)
+
 A personal native client for coding agents (Antigravity, Claude Code), on iPhone and Android, in the spirit of Claude Code Remote / Codex remote.
 The phone talks to a small **bridge** (Node) on the computer where the agents live: macOS, Linux or Windows; the bridge drives the official
 `agy acp` (Agent Client Protocol over stdio) and, optionally, Claude Code. Everything still runs through the agent's own CLI on that computer with your own login;
@@ -67,6 +69,23 @@ Same code, with these differences: `agy.cmd` / `agy.exe`
 are found through PATH and PATHEXT plus the usual install folders (`%LOCALAPPDATA%\agy\bin`, `%APPDATA%\npm`, winget links), `.cmd` shims are started
 through `cmd.exe`, the `!` shell is PowerShell (`pwsh`, else `powershell.exe`), file paths accept `C:\`, `/C:/` and `file:///C:/` forms, and
 the Antigravity quota and busy lock are off (they need `script` / `lsof` / `sqlite3`).
+
+#### Platform feature matrix (Bridge & Clients)
+
+| Feature | macOS | Linux | Windows | Notes |
+|---|---|---|---|---|
+| **Antigravity (`agy`) busy lock** | Yes | Yes (needs `lsof`, `ps`, `sqlite3`) | **Off** | Disabled on `win32` in `bridge/src/agents.mjs`; `agylock.mjs` relies on `lsof`, `ps`, `sqlite3` |
+| **Antigravity (`agy`) quota** | Yes | Yes (needs `script`) | **Off** | Disabled on `win32` in `bridge/src/agents.mjs`; `quota.mjs` needs `script` for a PTY |
+| **Local Claude Code busy lock (`helper.mjs locks`)** | **Unsupported** | Yes (same PID namespace) | **Unsupported** | Reads `/proc/self/ns/pid` and `/proc/<pid>/stat` (Linux-only) |
+| **Local Claude Code quota & `/btw`** | Yes | Yes | Partial (`.exe` only) | `helper.mjs` uses `execFile(claude, ...)` directly; an npm `.cmd` shim fails on Windows |
+| **Remote Claude Code (`add-claude --fn`)** | Yes (`zsh -ic`) | Yes (needs `zsh`) | **Unsupported (`--fn`)** | `--fn` hardcodes `zsh -ic`; `ssh -T` prefix works when `ssh` is available |
+| **Core ACP / prompts / approvals / uploads / embeds** | Yes | Yes | Yes | Adapted via `bridge/src/platform.mjs` (`.cmd` via `cmd.exe`, `taskkill /T /F`, CRLF) |
+| **`!` shell mode** | Login shell | Login shell | PowerShell (`pwsh` / `powershell.exe`) | UTF-8 output & exit code preserved; `agy.cmd` rejects args with `"`, `%`, or newlines |
+| **File browse / read (`browse` / `read`)** | Under `$HOME` | Under `$HOME` | Under `%USERPROFILE%` only | `safePath` sandboxes to home; paths on other drive letters (e.g. `D:\`) are refused |
+| **Background autostart script** | LaunchAgent | Manual (systemd / pm2) | Task Scheduler (`install-windows-task.ps1`) | Logs to `~/Library/Logs/leash-bridge.log` (macOS) or `%USERPROFILE%\.leash\bridge.log` (Windows) |
+| **Bark push notifications** | Yes (to iOS) | Yes (to iOS) | Yes (to iOS) | iOS only; Android uses its own foreground service & local notifications |
+
+Client differences (iPhone vs Android): both support lock indicators in the session list and `-32020` lock cards in chat; Bark, Live Activity, Dynamic Island, and the Apple Watch app are iOS/watchOS-only, while Android replaces background keep-alive and alerts with a foreground service and local notifications.
 
 1. Install Node.js LTS (nodejs.org), open a new PowerShell. Install the Antigravity CLI (`agy`) and sign in once (`agy`).
 2. Copy the `bridge` folder, e.g. to `C:\leash\bridge`, then `cd C:\leash\bridge; npm install`.
