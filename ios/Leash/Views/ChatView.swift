@@ -20,7 +20,7 @@ struct ChatView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     /// Following the newest output; cleared when the user scrolls up, set again at the bottom or on send.
     @State private var pinned = true
-    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var scrollHelper = ScrollHelper()
     @State private var userScrolling = false
     @State private var lastAtEnd = true
     @State private var showPhotoPicker = false
@@ -32,8 +32,7 @@ struct ChatView: View {
     @State private var sendTick = 0
     @State private var stopTick = 0
     @State private var showQuota = false
-    @State private var showModelPicker = false
-    @State private var showEffort = false
+    @State private var showModelEffort = false
     @State private var showFiles = false
     /// "New Conversation Here" is waiting on the agent (session/new can take a while)
     @State private var startingNew = false
@@ -60,11 +59,14 @@ struct ChatView: View {
         lifecycle(folderActions(chrome(scrollArea)))
     }
 
-    /// What pinning needs from the scroll view: content height, bottom inset (composer + trays) and whether the
-    /// visible area reaches the end.
+    fileprivate static let bottomAnchorID = "chat-bottom-anchor"
+
+    /// What pinning needs from the scroll view: content height, container height, bottom inset (composer + trays)
+    /// and whether the visible area reaches the end.
     private struct ScrollMetrics: Equatable {
-        var contentHeight: CGFloat
-        var bottomInset: CGFloat
+        var contentHeight: Int
+        var containerHeight: Int
+        var bottomInset: Int
         var atEnd: Bool
         /// The visible area runs past the end: content shrank under a scroll that was at the bottom (a lazy row
         /// measured shorter than its estimate). The scroll view doesn't pull back on its own, so it reads blank
@@ -72,54 +74,77 @@ struct ChatView: View {
         var pastEnd: Bool
     }
 
-    // Pinning is geometry-based (no sentinel row): short conversations sit at the top, long ones open at the
-    // bottom, and growth (streaming, a tray appearing, the keyboard) keeps the end in view only while pinned.
+    // Pinning is geometry-based with a lightweight bottom anchor: short conversations sit at the top, long ones open
+    // at the bottom, and growth (streaming, a tray appearing, the keyboard) keeps the end in view only while pinned.
+    // All programmatic scrolling is coalesced asynchronously outside `onScrollGeometryChange` and layout mutations so
+    // LazyVStack height estimation never re-enters into a layout/scroll loop.
     private var scrollArea: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                transcript
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        transcript
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 3)
+
+                    Color.clear
+                        .frame(height: 1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .id(Self.bottomAnchorID)
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-        }
-        .scrollPosition($position)
-        .environment(\.embedAgent, store.agent)
-        .environment(\.transcriptSession, store.sessionId)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
-        .scrollDismissesKeyboard(.interactively)
-        .scrollEdgeEffectStyle(.soft, for: [.top, .bottom])
-        .onScrollPhaseChange { _, phase in
-            userScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
-            // a system scroll (status-bar tap to top) also ends here: follow again only if it ended at the bottom
-            if phase == .idle { pinned = lastAtEnd }
-        }
-        .onScrollGeometryChange(for: ScrollMetrics.self) { g in
-            // contentOffset is UIKit's (−top inset when at the top) and containerSize already leaves out both insets
-            // (measured on device: at the bottom, offset 1040 + top 116 + container 620 = content 1776)
-            let visibleEnd = g.contentOffset.y + g.contentInsets.top + g.containerSize.height
-            return ScrollMetrics(contentHeight: g.contentSize.height, bottomInset: g.contentInsets.bottom,
-                                 atEnd: visibleEnd >= g.contentSize.height - 32,
-                                 pastEnd: visibleEnd > max(g.contentSize.height, g.containerSize.height) + 2)
-        } action: { old, new in
-            lastAtEnd = new.atEnd
-            if new.pastEnd && !userScrolling {
-                position.scrollTo(edge: .bottom)
-            } else if userScrolling {
-                if pinned != new.atEnd { pinned = new.atEnd }
-            } else if pinned && (new.contentHeight != old.contentHeight || new.bottomInset != old.bottomInset) && !new.atEnd {
-                position.scrollTo(edge: .bottom)
-            } else if new.atEnd && !pinned {
-                pinned = true
+            .environment(\.embedAgent, store.agent)
+            .environment(\.transcriptSession, store.sessionId)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.top, for: .alignment)
+            .scrollDismissesKeyboard(.interactively)
+            .scrollEdgeEffectStyle(.soft, for: [.top, .bottom])
+            .onAppear { scrollHelper.proxy = proxy }
+            .onDisappear { scrollHelper.cancel() }
+            .onChange(of: store.loading) { was, now in
+                scrollHelper.proxy = proxy
+                if was && !now && pinned && !store.entries.isEmpty {
+                    scrollToBottom(animated: false)
+                }
             }
+            .onScrollPhaseChange { _, phase in
+                userScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
+                if userScrolling { scrollHelper.cancel() }
+                // a system scroll (status-bar tap to top) also ends here: follow again only if it ended at the bottom
+                if phase == .idle { pinned = lastAtEnd }
+            }
+            .onScrollGeometryChange(for: ScrollMetrics.self) { g in
+                // contentOffset is UIKit's (−top inset when at the top) and containerSize already leaves out both insets
+                // (measured on device: at the bottom, offset 1040 + top 116 + container 620 = content 1776)
+                let visibleEnd = g.contentOffset.y + g.contentInsets.top + g.containerSize.height
+                return ScrollMetrics(contentHeight: Int(g.contentSize.height.rounded()),
+                                     containerHeight: Int(g.containerSize.height.rounded()),
+                                     bottomInset: Int(g.contentInsets.bottom.rounded()),
+                                     atEnd: visibleEnd >= g.contentSize.height - 32,
+                                     pastEnd: visibleEnd > max(g.contentSize.height, g.containerSize.height) + 2)
+            } action: { old, new in
+                lastAtEnd = new.atEnd
+                let fitsOnScreen = new.contentHeight <= new.containerHeight
+                if new.pastEnd && !userScrolling {
+                    scrollHelper.schedule(animated: false, bypassAnimating: true) { !userScrolling }
+                } else if userScrolling {
+                    if pinned != new.atEnd { pinned = new.atEnd }
+                } else if pinned && !fitsOnScreen && (new.contentHeight != old.contentHeight || new.bottomInset != old.bottomInset) && !new.atEnd {
+                    scrollHelper.schedule(animated: false) { pinned && !userScrolling && !lastAtEnd }
+                } else if new.atEnd && !pinned {
+                    pinned = true
+                }
+            }
+            // floats over the transcript rather than sitting in the bar: in the bar it would raise the bottom inset
+            // as it appears, moving the end out of reach of `atEnd` and keeping itself on screen at the bottom
+            .overlay(alignment: .bottomTrailing) { jumpButton }
+            // a bar, not just an inset: the system's soft scroll edge effect keeps text legible under the glass
+            // (no custom fade, so the glass refracts the transcript like the system's own bars)
+            .safeAreaBar(edge: .bottom, spacing: 0) { bottomControls }
         }
-        // floats over the transcript rather than sitting in the bar: in the bar it would raise the bottom inset
-        // as it appears, moving the end out of reach of `atEnd` and keeping itself on screen at the bottom
-        .overlay(alignment: .bottomTrailing) { jumpButton }
-        // a bar, not just an inset: the system's soft scroll edge effect keeps text legible under the glass
-        // (no custom fade, so the glass refracts the transcript like the system's own bars)
-        .safeAreaBar(edge: .bottom, spacing: 0) { bottomControls }
     }
 
     /// Shown while not following the newest output; laid out inside the safe area, so it rides just above the bar.
@@ -142,7 +167,11 @@ struct ChatView: View {
 
     private func jumpToBottom() {
         pinned = true
-        withAnimation(Motion.layout) { position.scrollTo(edge: .bottom) }
+        scrollToBottom(animated: true)
+    }
+
+    private func scrollToBottom(animated: Bool) {
+        scrollHelper.schedule(animated: animated, force: true, bypassAnimating: true) { pinned && !userScrolling }
     }
 
     private var subtitle: String {
@@ -397,7 +426,7 @@ struct ChatView: View {
         case .answer(let m):
             // the answer streaming at the end of a running turn reveals its new text as it arrives
             let streaming: Bool = {
-                guard store.running, !store.loading, case .message(let last)? = store.entries.last else { return false }
+                guard store.running, !store.loading, store.pendingEcho == nil, case .message(let last)? = store.entries.last else { return false }
                 return last === m
             }()
             AnswerView(item: m, live: streaming)
@@ -419,8 +448,8 @@ struct ChatView: View {
         withAnimation(Motion.layout) {
             model.send(store, text: String(localized: "Commit the changes from your last turn: \(paths)"), images: [])
             pinned = true
-            position.scrollTo(edge: .bottom)
         }
+        scrollToBottom(animated: true)
         sendTick += 1
     }
 
@@ -431,57 +460,59 @@ struct ChatView: View {
         let commands = paletteMatches
         GlassEffectContainer(spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
-                if let req = permissionRequests.first {
-                    ApprovalTray(request: req, index: 1, total: permissionRequests.count, openFile: { fileToOpen = $0 })
-                        .glassEffectID("tray", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
-                } else if let req = questionRequests.first {
-                    QuestionTray(request: req, index: 1, total: questionRequests.count)
-                        .glassEffectID("tray", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
+                VStack(alignment: .leading, spacing: 8) {
+                    if let req = permissionRequests.first {
+                        ApprovalTray(request: req, index: 1, total: permissionRequests.count, openFile: { fileToOpen = $0 })
+                            .glassEffectID("tray", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    } else if let req = questionRequests.first {
+                        QuestionTray(request: req, index: 1, total: questionRequests.count)
+                            .glassEffectID("tray", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    }
+                    let agents = store.runningSubagents
+                    if !agents.isEmpty {
+                        SubagentsTray(agents: agents, rootSessionId: store.sessionId, collapsed: trayVisible)
+                            .glassEffectID("subagents", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    }
+                    if let side = store.sideQuestions.first {
+                        SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
+                                         close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
+                            .environment(\.embedAgent, store.agent)
+                            .environment(\.transcriptSession, store.sessionId)
+                            .id(side.id)
+                            .glassEffectID("btw", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    }
+                    if !store.queued.isEmpty || store.removedQueued != nil {
+                        QueueTray(items: store.queued, running: store.running, collapsed: trayVisible, enabled: composerEnabled,
+                                  removed: store.removedQueued,
+                                  edit: { model.unqueue(store, $0); composerFocused = true },
+                                  delete: removeQueued,
+                                  sendNow: sendQueuedNow,
+                                  undo: { model.undoRemoveQueued(store); Haptics.selection() })
+                            .glassEffectID("queue", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    }
+                    if !commands.isEmpty {
+                        CommandPalette(items: commands, compact: trayVisible || !store.queued.isEmpty || !store.sideQuestions.isEmpty,
+                                       pick: pickCommand)
+                            .glassEffectID("commands", in: glassNS)
+                            .glassEffectTransition(.materialize)
+                            .transition(Motion.tray)
+                    }
+                    slab
                 }
-                let agents = store.runningSubagents
-                if !agents.isEmpty {
-                    SubagentsTray(agents: agents, rootSessionId: store.sessionId, collapsed: trayVisible)
-                        .glassEffectID("subagents", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
-                }
-                if let side = store.sideQuestions.first {
-                    SideQuestionTray(item: side, index: 1, total: store.sideQuestions.count, collapsed: trayVisible,
-                                     close: { withAnimation(Motion.layout) { model.closeSideQuestion(store, side.id) }; Haptics.selection() })
-                        .environment(\.embedAgent, store.agent)
-                        .environment(\.transcriptSession, store.sessionId)
-                        .id(side.id)
-                        .glassEffectID("btw", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
-                }
-                if !store.queued.isEmpty || store.removedQueued != nil {
-                    QueueTray(items: store.queued, running: store.running, collapsed: trayVisible, enabled: composerEnabled,
-                              removed: store.removedQueued,
-                              edit: { model.unqueue(store, $0); composerFocused = true },
-                              delete: removeQueued,
-                              sendNow: sendQueuedNow,
-                              undo: { model.undoRemoveQueued(store); Haptics.selection() })
-                        .glassEffectID("queue", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
-                }
-                if !commands.isEmpty {
-                    CommandPalette(items: commands, compact: trayVisible || !store.queued.isEmpty || !store.sideQuestions.isEmpty,
-                                   pick: pickCommand)
-                        .glassEffectID("commands", in: glassNS)
-                        .glassEffectTransition(.materialize)
-                        .transition(Motion.tray)
-                }
-                slab
+                .padding(.horizontal, 12)
                 if !trayVisible { chipRow.transition(Motion.tray) }
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 6)
+            .padding(.bottom, 10)
             .padding(.top, 10)
             .animation(Motion.layout, value: permissionRequests.first?.key)
             .animation(Motion.layout, value: questionRequests.first?.key)
@@ -900,8 +931,8 @@ struct ChatView: View {
         withAnimation(Motion.layout) {
             sendDraft(interrupt: store.running)
             pinned = true
-            position.scrollTo(edge: .bottom)
         }
+        if files.isEmpty { scrollToBottom(animated: true) }
         stopTick += 1
     }
 
@@ -911,12 +942,12 @@ struct ChatView: View {
         withAnimation(Motion.layout) {
             model.sendQueued(store)
             pinned = true
-            position.scrollTo(edge: .bottom)
         }
+        scrollToBottom(animated: true)
         if interrupting { stopTick += 1 } else { sendTick += 1 }
     }
 
-    /// The draft clears, the message rises into the transcript and the scroll follows it in one motion.
+    /// The draft clears, the message rises into the transcript and the scroll follows it.
     private func send() {
         guard canSend else { return }
         clearComposerError()
@@ -934,8 +965,8 @@ struct ChatView: View {
                 sendDraft(interrupt: false)
             }
             pinned = true
-            position.scrollTo(edge: .bottom)
         }
+        if isShell || files.isEmpty { scrollToBottom(animated: true) }
         sendTick += 1
     }
 
@@ -966,8 +997,8 @@ struct ChatView: View {
                     if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draft = "" }
                     if images == imgs { images = [] }
                     files.removeAll { f in picked.contains { $0.id == f.id } }
-                    if pinned { position.scrollTo(edge: .bottom) }
                 }
+                if pinned { scrollToBottom(animated: true) }
             } catch {
                 store.composerError = error.localizedDescription
                 uploadError = store.composerError
@@ -980,52 +1011,80 @@ struct ChatView: View {
     private var chipRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let opt = store.modelOption { modelChip(opt) }
-                if let opt = store.effortOption { effortChip(opt) }
+                if store.modelOption != nil || store.effortOption != nil { modelEffortChip }
                 modeChip
                 quotaChip
                 contextChip
             }
-            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
         }
-        .scrollClipDisabled()
+        .contentMargins(.horizontal, 12, for: .scrollContent)
+        .mask {
+            HStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 10)
+                Rectangle().fill(.black)
+                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                    .frame(width: 10)
+            }
+        }
     }
 
-    private func modelChip(_ opt: ConfigOption) -> some View {
-        Button { showModelPicker = true } label: {
+    private var modelEffortChip: some View {
+        let m = store.modelOption
+        let e = store.effortOption
+        return Button { showModelEffort = true } label: {
             HStack(spacing: 6) {
-                ProviderIcon(provider: store.agent == "claude" ? .anthropic : Provider.of(opt.current.string), size: 15)
-                Text(verbatim: shortModel(opt.currentName)).font(.footnote.weight(.medium)).lineLimit(1)
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).opacity(0.6)
+                if let m {
+                    ProviderIcon(provider: store.agent == "claude" ? .anthropic : Provider.of(m.current.string), size: 15)
+                    Text(verbatim: shortModel(m.currentName))
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                } else if let e {
+                    Image(systemName: effortIcon(e.current.string))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                if let e {
+                    if m != nil {
+                        Text(verbatim: "·")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    Text(verbatim: EffortNames.name(e.current.string ?? "", fallback: e.currentName))
+                        .font(.footnote.weight(m == nil ? .medium : .regular))
+                        .foregroundStyle(m == nil ? Theme.textPrimary : Theme.textSecondary)
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textTertiary)
             }
-            .foregroundStyle(Theme.textPrimary)
             .padding(.horizontal, 12).frame(height: 32)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .capsule)
-        .popover(isPresented: $showModelPicker) {
-            ModelPicker(option: opt, agent: store.agent) { v in model.setConfig(store, option: opt, value: .string(v)); Haptics.selection() }
-                .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private func effortChip(_ opt: ConfigOption) -> some View {
-        Button { showEffort = true } label: {
-            HStack(spacing: 5) {
-                Image(systemName: effortIcon(opt.current.string)).font(.caption.weight(.semibold))
-                    .contentTransition(.symbolEffect(.replace))
-                Text(verbatim: EffortNames.name(opt.current.string ?? "", fallback: opt.currentName)).font(.footnote.weight(.medium)).lineLimit(1)
-            }
-            .foregroundStyle(Theme.textPrimary)
-            .padding(.horizontal, 12).frame(height: 32)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .popover(isPresented: $showEffort) {
-            EffortPopover(option: opt) { v in model.setConfig(store, option: opt, value: .string(v)) }
-                .presentationCompactAdaptation(.popover)
+        .popover(isPresented: $showModelEffort) {
+            ModelEffortPopover(
+                modelOption: store.modelOption,
+                effortOption: store.effortOption,
+                agent: store.agent,
+                onSelectModel: { v in
+                    if let opt = store.modelOption {
+                        model.setConfig(store, option: opt, value: .string(v))
+                        Haptics.selection()
+                    }
+                },
+                onSelectEffort: { v in
+                    if let opt = store.effortOption {
+                        model.setConfig(store, option: opt, value: .string(v))
+                    }
+                }
+            )
+            .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -1081,7 +1140,7 @@ struct ChatView: View {
         let current = store.autoApprove && turbo ? "turbo" : (store.modeOption?.current.string ?? store.currentMode ?? "default")
         let approveAll = ModeNames.approvesAll(current)
         let chipTint: Color = approveAll ? Theme.turbo : (current == "plan" ? Theme.running : Theme.textPrimary)
-        let glass: Glass = approveAll ? Glass.regular.tint(Theme.turbo.opacity(0.45)).interactive() : Glass.regular.interactive()
+        let glass: Glass = approveAll ? Glass.regular.tint(Theme.turbo.opacity(0.14)).interactive() : Glass.regular.interactive()
         let chipText: String = ModeNames.name(current, agent: agent, fallback: modeChoices.first { $0.value == current }?.name ?? String(localized: "Mode"))
         if !modeChoices.isEmpty {
             Menu {
@@ -1095,12 +1154,17 @@ struct ChatView: View {
             }
             .tint(chipTint)
             .glassEffect(glass, in: .capsule)
+            .overlay {
+                if approveAll {
+                    Capsule()
+                        .stroke(Theme.turbo.opacity(0.35), lineWidth: 0.75)
+                        .allowsHitTesting(false)
+                }
+            }
         }
     }
 
-    private func shortModel(_ n: String) -> String {
-        n.replacingOccurrences(of: "Gemini 4 ", with: "").replacingOccurrences(of: "Claude ", with: "").replacingOccurrences(of: "Gemini ", with: "")
-    }
+    private func shortModel(_ n: String) -> String { ModelEffortPopover.shortModelName(n) }
     private func effortIcon(_ v: String?) -> String {
         switch v {
         case "low": return "gauge.with.dots.needle.33percent"
@@ -1329,5 +1393,51 @@ enum ImageTools {
         let fmt = UIGraphicsImageRendererFormat(); fmt.scale = 1
         let out = UIGraphicsImageRenderer(size: size, format: fmt).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
         return out.jpegData(compressionQuality: 0.8)
+    }
+}
+
+/// Coalesces programmatic scroll-to-bottom requests onto a post-layout main-actor tick so `onScrollGeometryChange`
+/// and animated `LazyVStack` updates never re-enter each other.
+@MainActor
+fileprivate final class ScrollHelper {
+    var proxy: ScrollViewProxy?
+    private var task: Task<Void, Never>?
+    private var pendingAnimated = false
+    private var animatingUntil: Date = .distantPast
+    private var lastAutoScrollAt: Date = .distantPast
+
+    func schedule(animated: Bool, force: Bool = false, bypassAnimating: Bool = false, canScroll: @escaping @MainActor () -> Bool) {
+        if animated { pendingAnimated = true }
+        if !bypassAnimating && Date() < animatingUntil { return }
+        guard task == nil else { return }
+        let sinceLast = Date().timeIntervalSince(lastAutoScrollAt)
+        let delayMs = force ? 16 : max(16, Int((0.05 - min(0.05, sinceLast)) * 1000))
+        task = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(delayMs))
+            guard let self, !Task.isCancelled else { return }
+            let useAnimation = self.pendingAnimated
+            self.pendingAnimated = false
+            self.task = nil
+            guard let proxy = self.proxy, canScroll() else { return }
+            self.lastAutoScrollAt = Date()
+            if useAnimation {
+                self.animatingUntil = Date().addingTimeInterval(0.38)
+                withAnimation(Motion.layout) {
+                    proxy.scrollTo(ChatView.bottomAnchorID, anchor: .bottom)
+                }
+            } else {
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    proxy.scrollTo(ChatView.bottomAnchorID, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+        pendingAnimated = false
     }
 }
