@@ -38,7 +38,7 @@ export class Router {
       agent: first.agent,                              // legacy single-agent field
       agents: hubs.map(h => h.agentSummary()),
       pending: hubs.flatMap(h => [...h.pending.values()].map(p => h.pendingMsg(p))),
-      running: hubs.flatMap(h => [...h.sessions.values()].filter(s => s.running).map(s => s.sessionId)),
+      running: hubs.flatMap(h => h.info().running),   // a turn waiting on its subagents counts
       quota: first.quota,
     };
   }

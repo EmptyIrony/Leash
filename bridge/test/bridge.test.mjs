@@ -1019,6 +1019,7 @@ test('subagents: a turn whose prompt returned while a background subagent works 
     assert.ok(waiting.startedAt);
     assert.deepEqual(ends, [], 'no turn_end (Bark) while the subagent works');
     assert.deepEqual(t.hub.info().running, [sid]);
+    assert.deepEqual(new Router({ hubs: [t.hub], log: () => {} }).info().running, [sid], 'the multi-agent ready frame agrees');
     const snap = await c.call('bridge/attach', { sessionId: sid });
     assert.equal(snap.running, false);
     assert.equal(snap.subagents, 1);
