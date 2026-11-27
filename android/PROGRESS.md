@@ -464,4 +464,7 @@ Merged into `main` (5e21836); first seen on the device in D2 (below).
 - Frame time, `dock` page, scripted scrolling, three rounds: P50 10–18 ms with liquid glass, 9 ms with
   `--ez lens false`, P90 about equal (17–20 ms); the emulator is noisy. 304 unit tests; `releaseLike` built and opened.
   The signed release APK builds with the same certificate.
+- Follow-up from the user: the fade under the dock is now anchored low (`DockFade`) instead of scaling with the dock's
+  height, and the composer stays see-through when it grows (`glass(clear = true)`). Catalog pages `dock`, `dock-long`
+  and `dock-tray` show the three cases. Frame time was not re-measured.
 

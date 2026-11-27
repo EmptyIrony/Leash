@@ -79,6 +79,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.components.DockFade
 import dev.leash.personal.ui.design.components.dockInsets
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
@@ -88,7 +89,6 @@ import dev.leash.personal.ui.design.LocalReduceMotion
 import dev.leash.personal.ui.design.Motion
 import dev.leash.personal.ui.design.SpaceBackground
 import dev.leash.personal.ui.design.semibold
-import dev.leash.personal.ui.design.softBottomEdge
 import dev.leash.personal.ui.design.softTopEdge
 import dev.leash.personal.ui.design.components.BackButton
 import dev.leash.personal.ui.design.components.Banner
@@ -516,7 +516,7 @@ fun ChatScreen(
 
             // bottom: the dock rides the keyboard; content keeps scrolling under it, faded
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
-                Box(Modifier.matchParentSize().softBottomEdge())
+                DockFade()
                 Column(
                     Modifier.fillMaxWidth().dockInsets().padding(top = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),

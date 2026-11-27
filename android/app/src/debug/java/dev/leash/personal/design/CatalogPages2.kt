@@ -47,7 +47,6 @@ import dev.leash.personal.ui.design.SpaceBackground
 import dev.leash.personal.ui.design.components.*
 import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.semibold
-import dev.leash.personal.ui.design.softBottomEdge
 
 /** Agent prose with inline code, as the markdown renderer will style it. */
 @Composable
@@ -69,7 +68,7 @@ private fun Prose(vararg parts: String) {
 private fun Dock(draft: String, onDraft: (String) -> Unit, running: Boolean, mode: ComposerMode = ComposerMode.Normal, above: (@Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit)? = null, trays: @Composable () -> Unit = {}) {
     val c = Leash.colors
     Box(Modifier.fillMaxWidth()) {
-        Box(Modifier.matchParentSize().softBottomEdge())
+        DockFade()
         Column(Modifier.fillMaxWidth().dockInsets().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { trays() }
             ComposerSlab(
@@ -98,8 +97,8 @@ private fun Dock(draft: String, onDraft: (String) -> Unit, running: Boolean, mod
 
 /** Dense text running on under the dock to the screen edge: what shows through the glass, and between and below it. */
 @Composable
-fun DockPage() {
-    var draft by remember { mutableStateOf("") }
+fun DockPage(initialDraft: String = "", queued: Boolean = false) {
+    var draft by remember { mutableStateOf(initialDraft) }
     GlassScope(Modifier.fillMaxSize()) {
         GlassSource(Modifier.fillMaxSize()) {
             SpaceBackground()
@@ -115,7 +114,14 @@ fun DockPage() {
             }
         }
         TopBar(title = "Dock", navigation = { BackButton("Back", {}) })
-        Box(Modifier.align(Alignment.BottomCenter)) { Dock(draft, { draft = it }, running = false) }
+        Box(Modifier.align(Alignment.BottomCenter)) {
+            Dock(draft, { draft = it }, running = false, trays = {
+                if (queued) TrayShell(blur = false, padding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp)) {
+                    QueueHeader("2 queued", "Send Now", {})
+                    QueueRow("Then run the tests", {}, {}, "Remove")
+                }
+            })
+        }
     }
 }
 

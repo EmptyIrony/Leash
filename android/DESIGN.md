@@ -183,7 +183,8 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
     shader highlights, `glassLensTint`, a hairline edge and the floating shadow. Optics (`LeashOptics`) are matched to
     the iPhone's composer and chips: depth 1 and a blur that grows with the surface's shortest side (2.5 dp up to 64 dp,
     16 dp from 160 dp), so on small controls the transcript **shows through**, as on iOS, while large trays frost over
-    behind their own text. Refraction is 16 dp over a 9 dp rim: the library's Regular (48 dp over 20 dp) covers the whole
+    behind their own text. The composer is the exception (`glass(clear = true)`): grown to many lines it only reaches
+    5 dp, so the transcript still shows behind what is typed. Refraction is 16 dp over a 9 dp rim: the library's Regular (48 dp over 20 dp) covers the whole
     height of a chip and mirrors text behind its label. Accepted trade: a placeholder can cross a line of transcript
     behind it, and Android has none of iOS's adaptive legibility. `edgeSoftness` is 0 (a softened rim showed the
     dark-mode drop shadow as a black inner line that swallowed the hairline) and `edgeShadow` black @ 10%. Light / dark
@@ -206,10 +207,12 @@ the short side clamp to a capsule. Per-corner radii supported (bubble tail).
   clear 24 dp below the bar) under a bgBase gradient scrim; API 31–32 and fallback: the scrim alone.
 - **Bottom edge**: content keeps scrolling under the composer and chips to the screen bottom (IMG_5524). The dock
   **floats**: its lowest control rests 28 dp above the screen edge, or 8 dp above a taller navigation bar, and 8 dp above
-  the keyboard (`Modifier.dockInsets`, also the list's bottom circles). Under liquid glass the transcript stays sharp
-  down to the slab, then dims (bgGradientEnd 30% at 62% of the band → 75% at the bottom) with a 2 dp blur, still
-  readable between the controls. Under blurred or solid glass: a scrim 0 → 85% plus the band's 12 dp blur on 32+, so no
-  sharp text shows between the slab and the chips.
+  the keyboard (`Modifier.dockInsets`, also the list's bottom circles). The fade (`DockFade`): under liquid glass it is
+  **anchored low** and does not grow with the dock: it starts 40 dp above the lowest control's bottom edge (just over the
+  chips) and runs to the screen edge, dimming to bgGradientEnd 35% at its middle and 80% at the end with a 2 dp blur.
+  Above it the transcript is untouched and shows through the composer and trays. (Sized as a share of the dock, it
+  climbed with a tall composer or a tray and smeared the lower half of the screen.) Under blurred or solid glass it
+  covers the whole dock: a scrim 0 → 85% plus the band's 12 dp blur on 32+, so no sharp text shows between the slab and the chips.
 - **Elevation**: no Material tonal elevation anywhere. Shadows (`Modifier.dropShadow`, Compose 1.9+; elevation
   can't make these) only on floating things: glass controls (y 2 dp, blur 10 dp, #1E2250 @ 10% light; dark gets the
   rim instead, a black shadow on black does nothing — black @ 40%, y 2, blur 12), panels (y 8, blur 24, same colours),

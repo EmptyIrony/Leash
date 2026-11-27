@@ -62,6 +62,8 @@ private fun CatalogPage(page: String, open: (String) -> Unit) {
         "settings" -> SettingsPage()
         "chat" -> ChatPage()
         "dock" -> DockPage()
+        "dock-long" -> DockPage("清 /tmp 里的旧缓存（约 4.3 GB）\n清 7 周前的 Docker build cache（最多约 8 GB）\n删掉没挂载的旧 volume：venv（796 MB）和匿名卷（387 MB）\n清完再跑一次 df -h，把前后的差值告诉我。\n注意先别动正在运行的 container。")
+        "dock-tray" -> DockPage(queued = true)
         "activity" -> ActivityPage()
         "trays" -> TraysPage()
         "states" -> StatesPage()

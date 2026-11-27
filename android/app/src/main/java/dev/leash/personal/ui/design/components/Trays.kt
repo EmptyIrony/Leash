@@ -289,7 +289,7 @@ private fun SlabFrame(
         autoCorrectEnabled = mode != ComposerMode.Shell,
     )
     Column(
-        modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).glass(LeashShapes.composer, tint = tint, blur = blur)
+        modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f).glass(LeashShapes.composer, tint = tint, blur = blur, clear = true)
             .animateContentSize(Motion.quick()).heightIn(min = 48.dp).padding(start = 6.dp, end = 1.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {

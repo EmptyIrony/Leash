@@ -47,6 +47,7 @@ import dev.leash.personal.core.DisplayItem
 import dev.leash.personal.core.StepRowModel
 import dev.leash.personal.ui.components.LocalChatVersion
 import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.components.DockFade
 import dev.leash.personal.ui.design.components.dockInsets
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
@@ -60,7 +61,6 @@ import dev.leash.personal.ui.design.medium
 import dev.leash.personal.ui.design.pressable
 import dev.leash.personal.ui.design.rememberLivePhase
 import dev.leash.personal.ui.design.shimmer
-import dev.leash.personal.ui.design.softBottomEdge
 import dev.leash.personal.ui.design.components.BackButton
 import dev.leash.personal.ui.design.components.EmptyState
 import dev.leash.personal.ui.design.components.TopBar
@@ -128,7 +128,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
             navigation = { BackButton(stringResource(R.string.back), onBack) },
         )
         if (requests.isNotEmpty()) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
-            Box(Modifier.matchParentSize().softBottomEdge())
+            DockFade()
             Column(Modifier.dockInsets().padding(start = 12.dp, end = 12.dp, top = 16.dp)) {
                 RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
             }

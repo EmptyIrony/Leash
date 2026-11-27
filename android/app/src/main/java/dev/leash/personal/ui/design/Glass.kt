@@ -52,6 +52,10 @@ val glassBlurSupported: Boolean get() = Build.VERSION.SDK_INT >= 32
 /** Refraction needs runtime shaders (API 33). haze-glass's own fallback has no blur, so 32 stays on [hazeBlur]. */
 val glassLensSupported: Boolean get() = Build.VERSION.SDK_INT >= 33
 
+/** Whether glass over a source is drawn as liquid glass here (else blurred or solid). */
+@Composable
+fun glassLensActive(): Boolean = glassLensSupported && LocalGlassLensAllowed.current && LocalGlassBlurAllowed.current
+
 object GlassDefaults {
     val blur: Dp = 24.dp
 }
@@ -96,7 +100,7 @@ val LocalGlassLensAllowed = staticCompositionLocalOf { true }
  *
  * On API 33+ every surface over a source is liquid glass: it blurs and refracts what is behind it, in circular rather
  * than continuous corners, and with [interactive] lights up under the finger (iOS `.interactive()`; the press shrink
- * stays with `pressable`). Below that [blur] is the budget: only the bands blur (top edge, bottom dock, a lone tray),
+ * stays with `pressable`). [clear] keeps a surface see-through however tall it grows (the composer). Below API 33 [blur] is the budget: only the bands blur (top edge, bottom dock, a lone tray),
  * circles and chips inside a band pass blur = false and draw the tint alone.
  */
 @Composable
@@ -106,16 +110,18 @@ fun Modifier.glass(
     shadow: Boolean = true,
     blur: Boolean = true,
     interactive: Boolean = false,
+    clear: Boolean = false,
 ): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
-    val lensShape = if (state != null && glassLensSupported && LocalGlassLensAllowed.current && LocalGlassBlurAllowed.current) {
+    val lensShape = if (state != null && glassLensActive()) {
         shape.lensShape()
     } else {
         null
     }
     if (state != null && lensShape != null) {
-        val style = remember(c, lensShape, interactive) { lensStyle(c, lensShape, interactive) }
+        val optics = if (clear) ClearOptics else LeashOptics
+        val style = remember(c, lensShape, interactive, optics) { lensStyle(c, lensShape, interactive, optics) }
         var m = this
         if (shadow) m = m.floatingShadow(lensShape)
         m = m.clip(lensShape).hazeGlass(HazeInput.Sources(state), style)
@@ -161,13 +167,18 @@ private val LeashOptics = GlassOptics.regular.copy(
     refractionProfile = RefractionProfile.Edge(9.dp),
 )
 
+/** The composer's: it grows with its text but stays see-through, with just enough more blur to keep typed lines apart. */
+private val ClearOptics = LeashOptics.copy(
+    blurRadius = OpticalSizeValue.Responsive(OpticalSizePoint(64.dp, 2.5.dp), OpticalSizePoint(160.dp, 5.dp)),
+)
+
 /**
  * Regular glass in Leash's colours. haze-glass picks its light or dark values by the *system* appearance, so every value
  * that differs between the two is written here from the app's theme.
  */
-private fun lensStyle(c: LeashDesignColors, shape: RoundedCornerShape, interactive: Boolean) = GlassStyle {
+private fun lensStyle(c: LeashDesignColors, shape: RoundedCornerShape, interactive: Boolean, optics: GlassOptics) = GlassStyle {
     shape(shape)
-    optics(LeashOptics)
+    optics(optics)
     tint(c.glassLensTint)
     specularIntensity(if (c.dark) 0.5f else 0.55f)
     // the library's darker rim in dark mode painted over the hairline that carries the shape on straight edges
@@ -239,18 +250,19 @@ fun Modifier.softTopEdge(): Modifier {
 }
 
 /**
- * The bottom edge (IMG_5524): content scrolls on under the composer and chips to the screen bottom. Over liquid glass it
- * stays sharp down to the slab and then dims with a trace of blur, as on the iPhone, still readable between the controls;
- * under blurred or solid glass it is blurred and faded harder so no sharp text shows between the slab and the chips.
+ * The bottom edge (IMG_5524): content scrolls on under the composer and chips to the screen bottom. Over liquid glass
+ * [DockFade][dev.leash.personal.ui.design.components.DockFade] gives it only a low band, which dims towards the screen
+ * edge with a trace of blur; under blurred or solid glass it covers the whole dock, blurred and faded harder so no sharp
+ * text shows between the slab and the chips.
  */
 @Composable
 fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     val c = Leash.colors
     val state = LocalGlassState.current
-    val lens = glassLensSupported && LocalGlassLensAllowed.current && LocalGlassBlurAllowed.current
+    val lens = glassLensActive()
     val style = remember(c, lens) {
         blurStyle(c.bgBase, if (lens) 2.dp else 12.dp) {
-            mask(Brush.verticalGradient(0f to Color.Transparent, (if (lens) 0.65f else 0.25f) to Color.Black, 1f to Color.Black))
+            mask(Brush.verticalGradient(0f to Color.Transparent, (if (lens) 0.6f else 0.25f) to Color.Black, 1f to Color.Black))
         }
     }
     var m = this
@@ -263,7 +275,7 @@ fun Modifier.softBottomEdge(blur: Boolean = true): Modifier {
     }
     val end = c.bgGradientEnd
     return m.background(
-        if (lens) Brush.verticalGradient(0f to Color.Transparent, 0.62f to end.copy(alpha = 0.3f), 1f to end.copy(alpha = 0.75f))
+        if (lens) Brush.verticalGradient(0f to Color.Transparent, 0.5f to end.copy(alpha = 0.35f), 1f to end.copy(alpha = 0.8f))
         else Brush.verticalGradient(0f to Color.Transparent, 0.3f to end.copy(alpha = 0.6f), 1f to end.copy(alpha = 0.85f)),
     )
 }
