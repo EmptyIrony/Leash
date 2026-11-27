@@ -7,16 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -50,6 +47,7 @@ import dev.leash.personal.core.DisplayItem
 import dev.leash.personal.core.StepRowModel
 import dev.leash.personal.ui.components.LocalChatVersion
 import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.components.dockInsets
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.Leash
@@ -131,7 +129,7 @@ fun SubagentScreen(model: AppModel, rootId: String, childId: String, onBack: () 
         )
         if (requests.isNotEmpty()) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
             Box(Modifier.matchParentSize().softBottomEdge())
-            Column(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 8.dp)) {
+            Column(Modifier.dockInsets().padding(start = 12.dp, end = 12.dp, top = 16.dp)) {
                 RequestStack(model, requests, showsAgent = { it.subagent?.sessionId != childId }, onOpenSubagent = { _, child -> onOpenSubagent(child) })
             }
         }

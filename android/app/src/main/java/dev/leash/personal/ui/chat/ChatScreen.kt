@@ -8,16 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -83,6 +79,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import dev.leash.personal.ui.components.topBarSpace
+import dev.leash.personal.ui.design.components.dockInsets
 import dev.leash.personal.ui.design.GlassScope
 import dev.leash.personal.ui.design.GlassSource
 import dev.leash.personal.ui.design.Leash
@@ -521,7 +518,7 @@ fun ChatScreen(
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { dockPx = it.height }) {
                 Box(Modifier.matchParentSize().softBottomEdge())
                 Column(
-                    Modifier.fillMaxWidth().imePadding().windowInsetsPadding(WindowInsets.navigationBars).padding(top = 10.dp, bottom = 6.dp),
+                    Modifier.fillMaxWidth().dockInsets().padding(top = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
