@@ -1,6 +1,7 @@
 node_modules/
 .probe/
 .shots/
+.claude/
 ios/build/
 ios/DerivedData/
 xcuserdata/

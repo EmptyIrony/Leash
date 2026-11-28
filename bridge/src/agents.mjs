@@ -7,6 +7,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { findCommand, pathApi, spawnSpec, shellSpec } from './platform.mjs';
+import { hasNodeSqlite } from './agylock.mjs';
 import { CONFIG_PATH, CLAUDE_ADAPTER_PKG, localClaudeEntry } from './config.mjs';
 
 const BRIDGE_DIR = fileURLToPath(new URL('..', import.meta.url));
@@ -18,6 +19,7 @@ export function systemDeps(over = {}) {
   const home = over.home ?? os.homedir();
   const find = over.find ?? (c => findCommand(c, { platform, env, home, isFile: over.isFile, extraDirs: over.extraDirs }));
   return { platform, env, home, find, exists: over.exists ?? (p => fs.existsSync(p)), readJson: over.readJson ?? readJson,
+    hasNodeSqlite: over.hasNodeSqlite ?? hasNodeSqlite,
     bridgeDir: over.bridgeDir ?? BRIDGE_DIR, configPath: over.configPath ?? CONFIG_PATH };
 }
 
@@ -101,19 +103,27 @@ export const detectedEntries = plan => plan.agents.filter(a => a.ok).map(a => a.
 
 // ---------------------------------------------------------------- what the platform lets us do
 
-/** Antigravity quota needs a pty for agy's TUI: script(1). */
+/** Antigravity quota needs a pty for agy's TUI: script(1) on Unix, PowerShell + ConPTY on Windows. */
 export function quotaSupport(d) {
-  if (d.platform === 'win32') return { ok: false, reason: 'agy quota needs a pty (script), which Windows does not have' };
+  if (d.platform === 'win32') return { ok: true };
   if (!d.find('script')) return { ok: false, reason: '`script` (util-linux / bsdutils) not found' };
   return { ok: true };
 }
 
-/** The Antigravity "busy on the desktop" lock reads presence locks (lsof), ps and the summaries DB (sqlite3). */
+/**
+ * Antigravity "busy on the desktop" lock:
+ * - Unix: presence locks (lsof), ps and sqlite3
+ * - Windows: Windows Restart Manager (PowerShell), Win32_Process and node:sqlite (or sqlite3)
+ */
 export function lockSupport(d, dataDir = agyDataDir(d)) {
-  if (d.platform === 'win32') return { ok: false, reason: 'needs lsof / ps / sqlite3, which Windows does not have (conversations are never locked)' };
+  if (!d.exists(dataDir)) return { ok: false, reason: dataDir + ' does not exist (no desktop app data)' };
+  if (d.platform === 'win32') {
+    const sqliteOk = (typeof d.hasNodeSqlite === 'function' ? d.hasNodeSqlite() : !!d.hasNodeSqlite) || !!d.find('sqlite3');
+    if (!sqliteOk) return { ok: false, reason: 'needs Node 22.5+ (node:sqlite) or sqlite3 on PATH' };
+    return { ok: true };
+  }
   const missing = ['lsof', 'ps', 'sqlite3'].filter(c => !d.find(c));
   if (missing.length) return { ok: false, reason: missing.join(', ') + ' not found' };
-  if (!d.exists(dataDir)) return { ok: false, reason: dataDir + ' does not exist (no desktop app data)' };
   return { ok: true };
 }
 

@@ -16,9 +16,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const MOCK = path.join(here, 'mock-agent.mjs');
 
 /** Deps for a pretend machine: `files` are the paths that exist, `cmds` the commands on PATH. */
-function machine({ cmds = {}, files = [], env = {}, platform = 'linux', home = '/home/u' } = {}) {
+function machine({ cmds = {}, files = [], env = {}, platform = 'linux', home = '/home/u', hasNodeSqlite = false } = {}) {
   const set = new Set(files);
-  return systemDeps({ platform, env, home, bridgeDir: '/opt/leash/bridge', configPath: '/home/u/.leash/config.json',
+  return systemDeps({ platform, env, home, hasNodeSqlite, bridgeDir: '/opt/leash/bridge', configPath: '/home/u/.leash/config.json',
     find: c => cmds[c] ?? (c === process.execPath || (path.isAbsolute(c) && set.has(c)) ? c : null), exists: p => set.has(p), readJson: p => (set.has(p) ? { version: '9.9.9' } : null) });
 }
 const ADAPTER = '/home/u/.leash/claude-acp/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js';
@@ -131,12 +131,16 @@ test('detectedEntries: what add-claude / remove-claude write when the config had
 test('quota and busy lock: skipped with a reason where script / lsof / sqlite3 / the data dir are missing', () => {
   assert.equal(quotaSupport(machine({ cmds: { script: '/usr/bin/script' } })).ok, true);
   assert.match(quotaSupport(machine()).reason, /script/);
-  assert.match(quotaSupport(machine({ platform: 'win32', cmds: { script: 'x' } })).reason, /Windows/);
+  assert.equal(quotaSupport(machine({ platform: 'win32' })).ok, true);
   const all = { lsof: '/usr/sbin/lsof', ps: '/bin/ps', sqlite3: '/usr/bin/sqlite3' };
   assert.equal(lockSupport(machine({ cmds: all, files: ['/home/u/.gemini/antigravity'] })).ok, true);
   assert.match(lockSupport(machine({ cmds: { ps: 'x' }, files: ['/home/u/.gemini/antigravity'] })).reason, /lsof, sqlite3 not found/);
   assert.match(lockSupport(machine({ cmds: all })).reason, /does not exist/);
-  assert.match(lockSupport(machine({ platform: 'win32', cmds: all })).reason, /Windows/);
+  const winData = 'C:\\Users\\me\\.gemini\\antigravity';
+  assert.match(lockSupport(machine({ platform: 'win32', home: 'C:\\Users\\me', hasNodeSqlite: true })).reason, /does not exist/);
+  assert.match(lockSupport(machine({ platform: 'win32', home: 'C:\\Users\\me', files: [winData] })).reason, /node:sqlite/);
+  assert.equal(lockSupport(machine({ platform: 'win32', home: 'C:\\Users\\me', files: [winData], hasNodeSqlite: true })).ok, true);
+  assert.equal(lockSupport(machine({ platform: 'win32', home: 'C:\\Users\\me', files: [winData], cmds: { sqlite3: 'C:\\sqlite3.exe' } })).ok, true);
 });
 
 test('diagnose / formatDiagnosis: versions, what is missing, next step', async () => {
@@ -153,10 +157,11 @@ test('diagnose / formatDiagnosis: versions, what is missing, next step', async (
   const bad = await diagnose({ port: 1, bind: 'auto' }, machine(), { deps: { ok: false, hint: 'Packages are not installed: run npm install' } });
   assert.equal(bad.ok, false);
   assert.match(formatDiagnosis(bad), /MISSING[\s\S]*Packages are not installed[\s\S]*Not ready yet/);
-  const win = formatDiagnosis(await diagnose({ port: 1, bind: 'auto' }, machine({ platform: 'win32', home: 'C:\\Users\\me', cmds: { agy: 'C:\\x\\agy.exe', pwsh: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' } }),
+  const win = formatDiagnosis(await diagnose({ port: 1, bind: 'auto' }, machine({ platform: 'win32', home: 'C:\\Users\\me', files: ['C:\\Users\\me\\.gemini\\antigravity'], hasNodeSqlite: true, cmds: { agy: 'C:\\x\\agy.exe', pwsh: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' } }),
     { probeVersion: async () => ({ out: '1.0' }), net: { port: 1, bind: 'auto', hosts: [], tailscale: [], dns: null, lan: [], portFree: true } }));
   assert.match(win, /Windows Firewall/);
-  assert.match(win, /Busy lock\s+off: .*Windows/);
+  assert.match(win, /Quota\s+on,/);
+  assert.match(win, /Busy lock\s+on \(Antigravity desktop\)/);
   assert.match(win, /"!" shell\s+C:\\Program Files\\PowerShell\\7\\pwsh\.exe/);
 });
 

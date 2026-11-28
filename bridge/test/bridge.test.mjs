@@ -11,7 +11,7 @@ import { imageSize, phoneUpdate, MEDIA_CHUNK } from '../src/media.mjs';
 import { QuotaPoller, normalizeQuota } from '../src/quota.mjs';
 import { Router } from '../src/router.mjs';
 import { createServer } from '../src/server.mjs';
-import { agyLocks, parsePresenceLsof, parseSummaries } from '../src/agylock.mjs';
+import { agyLocks, parsePresenceLsof, parseSummaries, parseWinLocks } from '../src/agylock.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN = 'test-token-123';
@@ -261,6 +261,43 @@ test('quota poller failure reports exit code and TUI text (email redacted)', asy
 test('normalizeQuota ignores disabled buckets', () => {
   const q = normalizeQuota({ quota: { 'x-5h': { remaining_fraction: 0.5, disabled: true }, 'x-weekly': { remaining_fraction: 0.2 } } });
   assert.equal(q.pools.length, 1); assert.equal(q.pools[0].buckets.length, 1); assert.equal(q.pools[0].buckets[0].window, 'weekly');
+});
+
+test('win32 QuotaPoller builds statusline.cmd + statusline.mjs and spawns PowerShell ConPTY', async () => {
+  const { EventEmitter } = await import('node:events');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'agr-win-quota-'));
+  const spawned = [];
+  const spawnFn = (cmd, args, opts) => {
+    spawned.push({ cmd, args, opts });
+    const child = new EventEmitter();
+    child.pid = 0; // avoid taskkill on macOS/Linux test host
+    setTimeout(() => {
+      fs.writeFileSync(path.join(work, 'status.json'), JSON.stringify({
+        plan_tier: 'Google AI Pro',
+        quota: { 'gemini-5h': { remaining_fraction: 0.75, reset_time: '2026-11-28T12:00:00Z' } },
+      }));
+    }, 50);
+    return child;
+  };
+  const p = new QuotaPoller({
+    agentCommand: 'C:\\Users\\me\\AppData\\Local\\agy\\bin\\agy.exe',
+    workDir: work,
+    timeoutMs: 5000,
+    platform: 'win32',
+    find: c => (c === 'pwsh' ? 'C:\\Program Files\\PowerShell\\7\\pwsh.exe' : null),
+    spawnFn,
+  });
+  const q = await p.refresh();
+  assert.equal(q.planTier, 'Google AI Pro');
+  assert.equal(q.pools[0].buckets[0].remainingFraction, 0.75);
+  assert.equal(spawned[0].cmd, 'C:\\Program Files\\PowerShell\\7\\pwsh.exe');
+  assert.equal(spawned[0].args[3], '-EncodedCommand');
+  const psScript = Buffer.from(spawned[0].args[4], 'base64').toString('utf16le');
+  assert.match(psScript, /LeashConPty/);
+  assert.match(psScript, /CreatePseudoConsole/);
+  const cmdFile = fs.readFileSync(path.join(work, 'statusline.cmd'), 'utf8');
+  assert.match(cmdFile, /@echo off/);
+  assert.match(cmdFile, /statusline\.mjs/);
 });
 
 async function setupMulti() {
@@ -900,6 +937,44 @@ test('agyLocks: foreign presence lock + busy status = held; own agy acp tree and
   assert.ok(calls.some(([c, a]) => c === 'sqlite3' && a === '-separator'), 'fell back to a read-write copy');
   assert.equal(parsePresenceLsof('p1\nn/p/not-a-lock.txt').size, 0);
   assert.equal(parseSummaries('garbage').size, 0);
+});
+
+test('win32 agyLocks: skips PowerShell when idle; parses Restart Manager holders and excludes own agy acp tree when busy', async () => {
+  const A = 'aaaaaaaa-1111-2222-3333-444444444444', B = 'bbbbbbbb-1111-2222-3333-444444444444';
+  let idleRows = true;
+  const calls = [];
+  const run = async (cmd, args) => {
+    calls.push([cmd, args]);
+    return ['P 43820 46240', 'P 46240 1', 'P 500 1', 'P 501 500', `L ${A} 43820`, `L ${B} 501`].join('\r\n');
+  };
+  const readDb = async () => new Map([
+    [A, { status: idleRows ? 'CASCADE_RUN_STATUS_IDLE' : 'CASCADE_RUN_STATUS_RUNNING', busy: !idleRows, modifiedAt: 1000 }],
+    [B, { status: idleRows ? 'CASCADE_RUN_STATUS_IDLE' : 'CASCADE_RUN_STATUS_RUNNING', busy: !idleRows, modifiedAt: 2000 }],
+  ]);
+  const locks = agyLocks({
+    dataDir: 'C:\\Users\\me\\.gemini\\antigravity',
+    platform: 'win32',
+    ownPids: () => [500],
+    exists: p => p.endsWith(`${A}.lock`) || p.endsWith(`${B}.lock`),
+    readDb,
+    run,
+    powershell: 'powershell.exe',
+  });
+  const rIdle = await locks();
+  assert.deepEqual(rIdle.held, []);
+  assert.equal(calls.length, 0, 'no PowerShell process spawned while idle');
+  idleRows = false;
+  const rBusy = await locks();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'powershell.exe');
+  assert.equal(calls[0][1][3], '-EncodedCommand');
+  const script = Buffer.from(calls[0][1][4], 'base64').toString('utf16le');
+  assert.match(script, /rstrtmgr\.dll/);
+  assert.match(script, /C:\\Users\\me\\\.gemini\\antigravity\\presence\\aaaaaaaa-1111-2222-3333-444444444444\.lock/);
+  assert.deepEqual(rBusy.held, [{ sessionId: A, pid: 43820, entrypoint: 'antigravity', status: 'CASCADE_RUN_STATUS_RUNNING', basis: 'busy' }]);
+  const parsed = parseWinLocks('P 10 1\nL ' + A + ' 10,20\n');
+  assert.equal(parsed.parent.get(10), 1);
+  assert.deepEqual([...parsed.locks.get(A)], [10, 20]);
 });
 
 test('lock (busy basis): our own running turn is never blocked; desktop turn -> lock, finish -> session_unlocked', async () => {
