@@ -33,6 +33,7 @@ struct ChatView: View {
     @State private var stopTick = 0
     @State private var showQuota = false
     @State private var showModelEffort = false
+    @State private var chipOverflow = ChipOverflow()
     @State private var showFiles = false
     /// "New Conversation Here" is waiting on the agent (session/new can take a while)
     @State private var startingNew = false
@@ -1008,6 +1009,11 @@ struct ChatView: View {
     }
 
     // MARK: selector chips
+    private struct ChipOverflow: Equatable {
+        var leading = false
+        var trailing = false
+    }
+
     private var chipRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -1019,15 +1025,45 @@ struct ChatView: View {
             .padding(.vertical, 2)
         }
         .contentMargins(.horizontal, 12, for: .scrollContent)
+        .onScrollGeometryChange(for: ChipOverflow.self) { g in
+            let hasOverflow = g.contentSize.width > g.containerSize.width + 1
+            let visibleLeading = g.contentOffset.x + g.contentInsets.leading
+            let visibleTrailing = visibleLeading + g.containerSize.width
+            return ChipOverflow(
+                leading: hasOverflow && visibleLeading > 1,
+                trailing: hasOverflow && visibleTrailing < g.contentSize.width - 1
+            )
+        } action: { _, next in
+            if chipOverflow != next { chipOverflow = next }
+        }
         .mask {
             HStack(spacing: 0) {
-                LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: 10)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black.opacity(0.25), location: 0.3),
+                        .init(color: .black.opacity(0.75), location: 0.7),
+                        .init(color: .black, location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: chipOverflow.leading ? 24 : 0)
                 Rectangle().fill(.black)
-                LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                    .frame(width: 10)
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black.opacity(0.75), location: 0.3),
+                        .init(color: .black.opacity(0.25), location: 0.7),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: chipOverflow.trailing ? 40 : 0)
             }
         }
+        .animation(Motion.quick, value: chipOverflow)
     }
 
     private var modelEffortChip: some View {
@@ -1099,9 +1135,11 @@ struct ChatView: View {
                         RingGauge(fraction: f, size: 13, lineWidth: 2, tint: f < 0.4 ? quotaTint(f) : Theme.accent)
                         Text(verbatim: "\(b.shortLabel) \(Int((f * 100).rounded()))%")
                             .font(.footnote.monospacedDigit()).foregroundStyle(f < 0.4 ? quotaTint(f) : Theme.textSecondary)
+                            .lineLimit(1)
                     } else {
                         RingGauge(fraction: nil, size: 13, lineWidth: 2)
                         Text("Quota").font(.footnote).foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
                     }
                 }
                 .padding(.horizontal, 12).frame(height: 32)

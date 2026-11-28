@@ -56,8 +56,8 @@
 /* Begin PBXFileReference section */
 		AA0000000000000000000001 /* Leash.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Leash.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000011 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		AA0000000000000000000101 /* LeashLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LeashLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000012 /* Leash.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Leash.xcconfig; sourceTree = "<group>"; };
+		AA0000000000000000000101 /* LeashLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LeashLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000010E /* LiveActivity-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "LiveActivity-Info.plist"; sourceTree = "<group>"; };
 		AA0000000000000000000201 /* LeashWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LeashWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA000000000000000000020E /* Watch-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Watch-Info.plist"; sourceTree = "<group>"; };

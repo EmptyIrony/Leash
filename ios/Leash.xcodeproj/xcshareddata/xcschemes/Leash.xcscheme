@@ -46,7 +46,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "AA0000000000000000000006"
             BuildableName = "Leash.app"
-            BlueprintName = "Leash"
             ReferencedContainer = "container:Leash.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -57,6 +56,15 @@
       savedToolIdentifier = ""
       useCustomWorkingDirectory = "NO"
       debugDocumentVersioning = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "AA0000000000000000000006"
+            BuildableName = "Leash.app"
+            BlueprintName = "Leash"
+            ReferencedContainer = "container:Leash.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">
