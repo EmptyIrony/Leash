@@ -1122,6 +1122,16 @@
         }
       }
     },
+    "Connecting to Tailscale…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接 Tailscale…"
+          }
+        }
+      }
+    },
     "Connecting…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1158,6 +1168,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上下文：%1$@ / %2$@ tokens"
+          }
+        }
+      }
+    },
+    "Continue anyway" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跳过，先进入主页"
           }
         }
       }
@@ -1218,6 +1238,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拷贝路径"
+          }
+        }
+      }
+    },
+    "Could not reach your tailnet in time. Check your network, auth key, or control URL in Settings." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能在预期时间内连上 tailnet。请检查网络，或前往设置重新配置 auth key 与 Control URL。"
           }
         }
       }
@@ -1746,6 +1776,16 @@
         }
       }
     },
+    "Joining your tailnet before opening your conversations" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在加入你的 tailnet，连接后进入主页"
+          }
+        }
+      }
+    },
     "Invalid image data" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2197,6 +2237,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开拴绳再回复。"
+          }
+        }
+      }
+    },
+    "Open Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "前往设置"
           }
         }
       }
@@ -3178,12 +3228,52 @@
         }
       }
     },
+    "Tailscale connected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale 已连接"
+          }
+        }
+      }
+    },
+    "Tailscale connection timed out" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale 连接超时"
+          }
+        }
+      }
+    },
+    "Tailscale could not connect" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tailscale 无法连接"
+          }
+        }
+      }
+    },
     "Tailscale is in an unexpected state" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tailscale 处于意外状态"
+          }
+        }
+      }
+    },
+    "Tailscale needs a new auth key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要新的 Tailscale auth key"
           }
         }
       }

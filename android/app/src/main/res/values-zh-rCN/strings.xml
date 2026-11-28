@@ -338,6 +338,15 @@
     <string name="tailnet_detail">Leash 自己加入你的 tailnet，不占用系统 VPN，所以在别的 VPN 开着时也能用。只有连接 bridge 的流量走它，而且只在 Leash 运行时。请在 Tailscale 管理后台创建 auth key，并把 bridge 的 Tailscale IP 或 MagicDNS 名称填作地址。</string>
     <string name="tailnet_unavailable">这个版本不含内置 Tailscale</string>
     <string name="tailnet_unavailable_detail">这个版本构建时没有包含 Tailscale 节点。请在构建主机上安装 Android NDK，然后重新构建拴绳。</string>
+    <string name="tailnet_boot_connecting">正在连接 Tailscale…</string>
+    <string name="tailnet_boot_connecting_detail">正在加入你的 tailnet，连接后进入主页</string>
+    <string name="tailnet_boot_connected">Tailscale 已连接</string>
+    <string name="tailnet_boot_timed_out">Tailscale 连接超时</string>
+    <string name="tailnet_boot_timed_out_detail">未能在预期时间内连上 tailnet。请检查网络，或前往设置重新配置 auth key 与 Control URL。</string>
+    <string name="tailnet_boot_needs_key">需要新的 Tailscale auth key</string>
+    <string name="tailnet_boot_failed">Tailscale 无法连接</string>
+    <string name="tailnet_boot_open_settings">前往设置</string>
+    <string name="tailnet_boot_continue">跳过，先进入主页</string>
     <string name="live_running">正在运行 %1$s…</string>
     <string name="live_reading">正在读取 %1$s…</string>
     <string name="live_editing">正在编辑 %1$s…</string>

@@ -194,6 +194,12 @@ final class AppModel {
         if isConfigured { link.connect() } else { tailnet.warmUp() }
     }
 
+    /// Restarts built-in Tailscale and the bridge link for a fresh attempt (e.g. cold-start retry).
+    func retryTailnet() {
+        tailnet.stop()
+        reconfigure()
+    }
+
     func foreground() {
         guard isConfigured else { return }
         link.ensureConnected()

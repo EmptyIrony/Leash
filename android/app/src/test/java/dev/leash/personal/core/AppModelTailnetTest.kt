@@ -1,11 +1,14 @@
 package dev.leash.personal.core
 
+import dev.leash.personal.ui.TailnetBootPhase
+import dev.leash.personal.ui.resolveTailnetBootPhase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -151,5 +154,47 @@ class AppModelTailnetTest {
         gate.complete(Unit); runCurrent()
         assertEquals("ws://127.0.0.1:40123/ws", transport.last.endpoint.url)
         assertEquals(1, node.starts.size)
+    }
+
+    @Test fun coldStartGateActivatesOnlyWhenPairedAndTailnetEnabled() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val node = FakeTailnetNode().apply { startGate = gate }
+        val tailnet = TailnetController(backgroundScope, node, InMemoryTailnetPrefs(TailnetConfig(enabled = true, authKey = "tskey-auth-x")), "/data/tailnet")
+        val model = AppModel(
+            backgroundScope,
+            InMemorySettingsStore(Settings(host = "jerrymac-mini.tail1.ts.net", port = 8787, token = "tok")),
+            BridgeConnection(backgroundScope, FakeTransport()), null, tailnet = tailnet,
+        )
+        model.start(); runCurrent()
+        assertFalse(model.state.value.tailnetGateDismissed)
+        model.dismissTailnetGate()
+        assertTrue(model.state.value.tailnetGateDismissed)
+        gate.complete(Unit); runCurrent()
+
+        val offRig = Rig(this, TailnetConfig(enabled = false))
+        offRig.model.start(); runCurrent()
+        assertTrue(offRig.model.state.value.tailnetGateDismissed)
+
+        val unpairedRig = Rig(this, TailnetConfig(enabled = true, authKey = "tskey-auth-x"), paired = false)
+        unpairedRig.model.start(); runCurrent()
+        assertTrue(unpairedRig.model.state.value.tailnetGateDismissed)
+    }
+
+    @Test fun retryTailnetStopsAndRestartsNode() = runTest {
+        val r = Rig(this, TailnetConfig(enabled = true, authKey = "tskey-auth-x"))
+        r.model.start(); runCurrent()
+        assertEquals(1, r.node.starts.size)
+        r.model.retryTailnet(); runCurrent()
+        assertEquals(1, r.node.stops)
+        assertEquals(2, r.node.starts.size)
+    }
+
+    @Test fun bootPhasePrioritizesTerminalStatusOverTimeout() {
+        assertEquals(TailnetBootPhase.Connecting, resolveTailnetBootPhase(TailnetStatus.Connecting, timedOut = false))
+        assertEquals(TailnetBootPhase.TimedOut, resolveTailnetBootPhase(TailnetStatus.Connecting, timedOut = true))
+        assertEquals(TailnetBootPhase.TimedOut, resolveTailnetBootPhase(TailnetStatus.Stopped, timedOut = true))
+        assertEquals(TailnetBootPhase.Connected("leash", "100.64.0.1"), resolveTailnetBootPhase(TailnetStatus.Connected("leash", "100.64.0.1"), timedOut = true))
+        assertEquals(TailnetBootPhase.NeedsKey("expired"), resolveTailnetBootPhase(TailnetStatus.NeedsKey("expired"), timedOut = true))
+        assertEquals(TailnetBootPhase.Failed("boom", null), resolveTailnetBootPhase(TailnetStatus.Failed("boom"), timedOut = true))
     }
 }

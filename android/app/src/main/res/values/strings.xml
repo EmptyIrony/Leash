@@ -353,6 +353,15 @@
     <string name="tailnet_detail">Leash joins your tailnet on its own, without the system VPN, so it works while another VPN is on. Only the connection to the bridge uses it, and only while Leash is running. Create an auth key in the Tailscale admin console, and use the bridge\'s Tailscale IP or MagicDNS name as its address.</string>
     <string name="tailnet_unavailable">Not included in this build</string>
     <string name="tailnet_unavailable_detail">This build was made without the Tailscale node. Install the Android NDK on the build host and build Leash again.</string>
+    <string name="tailnet_boot_connecting">Connecting to Tailscale…</string>
+    <string name="tailnet_boot_connecting_detail">Joining your tailnet before opening your conversations</string>
+    <string name="tailnet_boot_connected">Tailscale connected</string>
+    <string name="tailnet_boot_timed_out">Tailscale connection timed out</string>
+    <string name="tailnet_boot_timed_out_detail">Could not reach your tailnet in time. Check your network, auth key, or control URL in Settings.</string>
+    <string name="tailnet_boot_needs_key">Tailscale needs a new auth key</string>
+    <string name="tailnet_boot_failed">Tailscale could not connect</string>
+    <string name="tailnet_boot_open_settings">Open Settings</string>
+    <string name="tailnet_boot_continue">Continue anyway</string>
 
     <!-- what the agent does, as core reports it (see text/CoreText.kt) -->
     <string name="live_running">Running %1$s…</string>

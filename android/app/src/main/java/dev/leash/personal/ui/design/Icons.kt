@@ -63,6 +63,7 @@ import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardCommandKey
 import androidx.compose.material.icons.rounded.Lock
@@ -99,6 +100,7 @@ object LeashIcons {
     val search = Icons.Rounded.Search
     val settings = Icons.Outlined.Settings
     val server = Icons.Outlined.Dns
+    val tailnet = Icons.Rounded.Hub
     val squareAndPencil: ImageVector by lazy { squareAndPencilVector() }
     val refresh = Icons.Rounded.Refresh
     val scrollDown = Icons.Rounded.ArrowDownward

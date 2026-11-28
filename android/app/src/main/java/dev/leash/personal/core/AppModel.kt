@@ -143,6 +143,8 @@ data class AppState(
     val keepAlive: Boolean = true,
     /** the notification permission was asked for (once, at the first turn) */
     val notificationsAsked: Boolean = false,
+    /** cold-start built-in Tailscale loading gate has finished (connected, skipped, or not needed) */
+    val tailnetGateDismissed: Boolean = false,
 ) {
     val isConfigured: Boolean get() = useDemo || (host.isNotEmpty() && token.isNotEmpty())
     val isConnected: Boolean get() = connection == LinkState.Connected
@@ -237,9 +239,14 @@ class AppModel(
             // DataStore+Keystore decryption finishing after settings.load() leaves link.route null.
             tailnet?.awaitLoaded()
             unreadSinceMs = st.unreadSinceMs ?: Clock.now()
-            set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = st.useDemo && demoLink != null,
+            val demo = st.useDemo && demoLink != null
+            val configured = demo || (st.host.isNotEmpty() && st.token.isNotEmpty())
+            val needsGate = tailnet != null && tailnet.enabled && configured && !demo &&
+                tailnet.state.value.status !is TailnetStatus.Connected
+            set { copy(settingsLoaded = true, host = st.host, port = st.port, token = st.token, bridgeName = st.bridgeName, useDemo = demo,
                 drafts = st.drafts, lastSeen = st.lastSeen, markedUnread = st.markedUnread,
-                turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed, keepAlive = st.keepAlive, notificationsAsked = st.notificationsAsked) }
+                turboConfirmed = st.turboConfirmed, bypassConfirmed = st.bypassConfirmed, keepAlive = st.keepAlive, notificationsAsked = st.notificationsAsked,
+                tailnetGateDismissed = !needsGate) }
             if (st.unreadSinceMs == null) persist()
             select(s.useDemo)
             if (s.isConfigured) reconfigure() else tailnet?.warmUp()
@@ -296,7 +303,7 @@ class AppModel(
         if (demoLink == null || on == s.useDemo) return
         link.disconnect()
         resetLive()
-        set { copy(useDemo = on, connection = LinkState.Idle) }
+        set { copy(useDemo = on, connection = LinkState.Idle, tailnetGateDismissed = if (on) true else tailnetGateDismissed) }
         persist()
         select(on)
         if (s.isConfigured) reconfigure()
@@ -315,8 +322,19 @@ class AppModel(
 
     // MARK: built-in Tailscale (Settings)
 
+    fun dismissTailnetGate() {
+        if (!s.tailnetGateDismissed) set { copy(tailnetGateDismissed = true) }
+    }
+
+    /** Restarts built-in Tailscale and the bridge link for a fresh attempt (e.g. cold-start retry). */
+    fun retryTailnet() {
+        tailnet?.stop()
+        reconfigure()
+    }
+
     fun setTailnetEnabled(on: Boolean) {
         val t = tailnet ?: return
+        if (!on) dismissTailnetGate()
         scope.launch { t.setEnabled(on); reconfigure() }
     }
 
@@ -328,6 +346,7 @@ class AppModel(
 
     fun tailnetLogout() {
         val t = tailnet ?: return
+        dismissTailnetGate()
         scope.launch { t.logout(); reconfigure() }
     }
 
@@ -337,6 +356,7 @@ class AppModel(
     fun unpair() {
         link.disconnect()
         tailnet?.stop()
+        dismissTailnetGate()
         resetLive()
         set { copy(host = "", token = "", bridgeName = "", port = LeashLink.DEFAULT_PORT, useDemo = false, connection = LinkState.Idle) }
         persist()
